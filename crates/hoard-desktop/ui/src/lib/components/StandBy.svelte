@@ -11,7 +11,14 @@
    * shaded wedges, the ladder below. The headdress at the top of the original
    * is left out on purpose. The text is part of the drawing, so it is not
    * translated, and the palette is the screen's own olive, not the accent.
+   *
+   * At Halloween the inner circle is a jack-o'-lantern, in the same ink: the
+   * needle stops at the circle and curls into its stem, the wedges become its
+   * eyes and a grin goes under the lettering. The little numbers go, they
+   * would sit on an eye.
    */
+  import { halloween } from "../stores/theme";
+
   // Each card carries its own copy, and a pattern id has to be unique in the page.
   const uid = `standby-${nextId++}`;
 
@@ -55,7 +62,7 @@
 
   <svg class="absolute inset-[4%] h-[92%] w-[92%]" viewBox="0 0 200 200" fill="none">
     <g stroke={INK} stroke-linecap="round">
-      <path d="M100 8V136" stroke-width="1.4" opacity="0.7" />
+      <path d={$halloween ? "M100 8V60" : "M100 8V136"} stroke-width="1.4" opacity="0.7" />
       <path
         d="M37 37 72 72M163 37 128 72M37 163 72 128M163 163 128 128"
         stroke-width="1.6"
@@ -63,11 +70,23 @@
       />
       <circle cx="100" cy="100" r="93" stroke-width="2.4" opacity="0.85" />
     </g>
-    <path d={wedge(40, 205, 240)} fill={INK} opacity="0.55" />
-    <path d={wedge(40, 25, 60)} fill={INK} opacity="0.55" />
-    <path d="M97 62 103 62 106 140 94 140Z" fill={INK} opacity="0.35" />
+    {#if $halloween}
+      <g stroke={INK} stroke-linecap="round" fill="none">
+        <ellipse cx="100" cy="100" rx="17" ry="40" stroke-width="1.2" opacity="0.3" />
+        <path d="M100 60C99 54 100.5 50 105 46.5" stroke-width="3.4" opacity="0.8" />
+      </g>
+      <path
+        d="M78 91 87.5 75 97 91ZM103 91 112.5 75 122 91ZM72 114Q100 123 128 114L123 126 116 121 108 131 100 124 92 131 84 121 77 126Z"
+        fill={INK}
+        opacity="0.6"
+      />
+    {:else}
+      <path d={wedge(40, 205, 240)} fill={INK} opacity="0.55" />
+      <path d={wedge(40, 25, 60)} fill={INK} opacity="0.55" />
+      <path d="M97 62 103 62 106 140 94 140Z" fill={INK} opacity="0.35" />
+    {/if}
     <circle cx="100" cy="100" r="40" stroke={INK} stroke-width="2" opacity="0.85" />
-    {#each numbers as n, i (n)}
+    {#each $halloween ? [] : numbers as n, i (n)}
       {@const p = polar(30, -68 + i * 11)}
       {@const q = polar(30, 112 + i * 11)}
       <text x={p.x} y={p.y} fill={INK} font-size="6.5" font-weight="700" text-anchor="middle" opacity="0.6"

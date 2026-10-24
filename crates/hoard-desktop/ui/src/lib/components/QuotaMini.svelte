@@ -158,7 +158,9 @@
       {/if}
     </div>
     {#if capped}
-      <div class="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+      <!-- Stock green whatever the gem or the special mode: a yellow or
+           orange bar reads as the 60 % warning. -->
+      <div class="always-emerald h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
         <div
           class="h-full rounded-full transition-[width] duration-500 ease-out {barClass}"
           style:width="{pct}%"

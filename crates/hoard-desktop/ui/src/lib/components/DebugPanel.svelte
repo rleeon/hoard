@@ -26,6 +26,14 @@
     wizardPreview,
   } from "../stores/debug";
   import { routeForStep, type OnboardingStep } from "../stores/onboarding";
+  import { setSpecialChoice, specialActive, specialChoice } from "../stores/theme";
+  import {
+    SPIDER_DEFAULTS,
+    garlandRoll,
+    spiderTune,
+    spiderWalkNow,
+    type SpiderTune,
+  } from "../stores/spider";
 
   const GB = 1024 ** 3;
 
@@ -45,6 +53,24 @@
   $effect(() => {
     if (!router.location.startsWith("/onboarding")) wizardPreview.set(false);
   });
+
+  const SPIDER_SLIDERS: { key: keyof SpiderTune; label: string; min: number; max: number; step: number }[] = [
+    { key: "size", label: "size (px)", min: 24, max: 80, step: 1 },
+    { key: "speed", label: "speed (px/s)", min: 6, max: 90, step: 1 },
+    { key: "restMin", label: "rest, shortest (s)", min: 0.5, max: 20, step: 0.5 },
+    { key: "restMax", label: "rest, longest (s)", min: 0.5, max: 30, step: 0.5 },
+    { key: "maxSteps", label: "crossings per walk, at most", min: 1, max: 8, step: 1 },
+    { key: "webMax", label: "web radius, at most (px)", min: 60, max: 320, step: 2 },
+    { key: "legSwing", label: "leg swing (deg)", min: 0, max: 35, step: 1 },
+    { key: "beat", label: "leg tempo (ms per swing)", min: 60, max: 400, step: 10 },
+    { key: "lean", label: "lean (deg)", min: 0, max: 20, step: 1 },
+    { key: "lookReach", label: "eyes, how far they follow", min: 0, max: 2, step: 0.05 },
+    { key: "idleMin", label: "idle gesture, soonest (s)", min: 0.5, max: 15, step: 0.5 },
+    { key: "idleMax", label: "idle gesture, latest (s)", min: 0.5, max: 20, step: 0.5 },
+  ];
+  function setSpider(key: keyof SpiderTune, value: number) {
+    spiderTune.update((t) => ({ ...t, [key]: value }));
+  }
 
   const tune = $derived($surfaceTune ?? SURFACE_DEFAULTS);
   function setTune(key: keyof SurfaceTune, value: number) {
@@ -279,6 +305,66 @@
           language is real.
         </p>
       {/if}
+    </div>
+    <div class="mt-4 border-t border-white/[0.08] pt-3">
+      <span class="mb-2 block font-semibold text-violet-300"
+        >special mode ({$specialActive ? "worn" : "off"})</span
+      >
+      <div class="grid grid-cols-3 gap-1">
+        {#each ["auto", "on", "off"] as const as choice (choice)}
+          <button
+            type="button"
+            class="rounded border px-1 py-1 {$specialChoice === choice
+              ? 'border-violet-400 text-violet-200'
+              : 'border-zinc-700 hover:border-violet-400 hover:text-violet-200'}"
+            onclick={() => setSpecialChoice(choice)}
+          >
+            {choice === "auto" ? "by date" : choice}
+          </button>
+        {/each}
+      </div>
+    </div>
+    <div class="mt-4 border-t border-white/[0.08] pt-3">
+      <span class="mb-2 block font-semibold text-violet-300">spider</span>
+      {#each SPIDER_SLIDERS as sl (sl.key)}
+        <label class="mb-1 flex items-baseline justify-between" for="dbg-sp-{sl.key}">
+          <span>{sl.label}</span>
+          <span class="text-zinc-100">{$spiderTune[sl.key]}</span>
+        </label>
+        <input
+          id="dbg-sp-{sl.key}"
+          type="range"
+          min={sl.min}
+          max={sl.max}
+          step={sl.step}
+          value={$spiderTune[sl.key]}
+          oninput={(e) => setSpider(sl.key, Number((e.currentTarget as HTMLInputElement).value))}
+          class="mb-2 w-full accent-violet-500"
+        />
+      {/each}
+      <div class="grid grid-cols-2 gap-1">
+        <button
+          type="button"
+          class="rounded border border-zinc-700 px-2 py-1 hover:border-violet-400 hover:text-violet-200"
+          onclick={() => spiderWalkNow.update((n) => n + 1)}
+        >
+          walk now
+        </button>
+        <button
+          type="button"
+          class="rounded border border-zinc-700 px-2 py-1 hover:border-emerald-500 hover:text-emerald-300"
+          onclick={() => spiderTune.set({ ...SPIDER_DEFAULTS })}
+        >
+          defaults
+        </button>
+        <button
+          type="button"
+          class="col-span-2 rounded border border-zinc-700 px-2 py-1 hover:border-orange-400 hover:text-orange-200"
+          onclick={() => garlandRoll.update((n) => n + 1)}
+        >
+          new garland
+        </button>
+      </div>
     </div>
     <div class="mt-4 border-t border-white/[0.08] pt-3">
       <span class="mb-2 block font-semibold text-violet-300">surfaces</span>

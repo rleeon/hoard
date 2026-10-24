@@ -308,7 +308,7 @@
           {formatBytes(remaining)} / {formatBytes(limitBytes)}
         </span>
       </div>
-      <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+      <div class="always-emerald mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
         <div
           class="h-full rounded-full {fits ? 'bg-emerald-500' : 'bg-red-500'}"
           style="width: {limitBytes > 0

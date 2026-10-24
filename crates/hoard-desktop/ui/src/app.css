@@ -752,8 +752,13 @@ html.is-linux {
 /* Where green means "on" it stays green, whatever gem is picked: with the ruby
    accent the Sync and Automatic buttons turned red, the colour they wear when
    they are off. This puts Tailwind's own emerald, and the default accent, back
-   for the subtree, beneath the gem's inline values on <html>. */
-.keep-emerald {
+   for the subtree, beneath the gem's inline values on <html>.
+   Except at Halloween: there the whole app wears the pumpkin, these too, and
+   the "ON" written on them carries the state. `always-emerald` holds even then
+   (the Halloween title bar, and the storage bars, which keep the stock green
+   whatever the gem: a yellow or orange bar reads as the warning). */
+html:not([data-halloween]) .keep-emerald,
+.always-emerald {
   --color-emerald-50: oklch(97.9% 0.021 166.113);
   --color-emerald-100: oklch(95% 0.052 163.051);
   --color-emerald-200: oklch(90.5% 0.093 164.15);
@@ -767,6 +772,65 @@ html.is-linux {
   --color-emerald-950: oklch(26.2% 0.051 172.552);
   --color-accent: oklch(0.62 0.15 158);
   --color-accent-hover: oklch(0.72 0.16 160);
+}
+
+/* ---- Halloween ------------------------------------------------------ */
+/* The gem only reaches what is drawn in `emerald`. At Halloween the pumpkin
+   also takes what no gem touches: the upgrade pill's teal, the panels' edges
+   and the grey border utilities. Those are matched by exact token, so a
+   `hover:` border still wins (more specific) and a state that swaps the token
+   out keeps its own colour. */
+html[data-halloween] {
+  --color-teal-300: oklch(0.75 0.15 35);
+  --color-teal-400: oklch(0.7 0.16 35);
+  --edge: color-mix(in oklab, var(--color-emerald-700) 60%, transparent);
+  --edge-strong: color-mix(in oklab, var(--color-emerald-600) 70%, transparent);
+}
+@layer utilities {
+  :where(html[data-halloween])
+    :is(
+      [class~="border-white/[0.08]"],
+      [class~="border-white/[0.09]"],
+      [class~="border-white/[0.1]"],
+      [class~="border-white/[0.10]"],
+      [class~="border-white/[0.12]"],
+      [class~="border-white/[0.14]"],
+      [class~="border-zinc-800"],
+      [class~="border-zinc-800/60"]
+    ) {
+    border-color: color-mix(in oklab, var(--color-emerald-700) 60%, transparent);
+  }
+  :where(html[data-halloween])
+    :is([class~="border-zinc-700"], [class~="border-zinc-600"], [class~="border-l-zinc-700"]) {
+    border-color: color-mix(in oklab, var(--color-emerald-600) 70%, transparent);
+  }
+  :where(html[data-halloween])
+    :is(
+      [class~="divide-white/[0.06]"],
+      [class~="divide-zinc-800"],
+      [class~="divide-zinc-800/60"]
+    )
+    > :not(:last-child) {
+    border-color: color-mix(in oklab, var(--color-emerald-700) 45%, transparent);
+  }
+}
+
+/* The scrollbars and the text selection, the last greys left: the thumb in the
+   pumpkin at the same weight the white one has. WebView2 honours the standard
+   `scrollbar-color` over the `::-webkit-scrollbar` parts, so both are set. */
+html[data-halloween] * {
+  scrollbar-color: color-mix(in oklab, var(--color-emerald-500) 40%, transparent) transparent;
+}
+html[data-halloween] ::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--color-emerald-500) 35%, transparent);
+  background-clip: content-box;
+}
+html[data-halloween] ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--color-emerald-500) 60%, transparent);
+  background-clip: content-box;
+}
+html[data-halloween] ::selection {
+  background-color: color-mix(in oklab, var(--color-emerald-500) 45%, transparent);
 }
 
 /* ---- Motion --------------------------------------------------------- */

@@ -60,7 +60,8 @@
     type Cube,
   } from "./cardCanvas";
   import { coverKey, coverSize, coverUrl } from "../stores/covers";
-  import { ACCENT_STOPS, accentHue, gems } from "../stores/theme";
+  import { ACCENT_STOPS, DEFAULT_GEM_HUE, accentHue, gemFor, gems } from "../stores/theme";
+  import GemIcon, { cutFor } from "../components/GemIcon.svelte";
   import { toastError, toastSuccess } from "../stores/toasts";
 
   let {
@@ -217,7 +218,8 @@
   // is the stock emerald like Settings' first gem.
   const cardHue = $derived(prefs.accentMode === "app" ? $accentHue : prefs.accentHue);
   const palette = $derived(cardPalette(cardHue, ACCENT_STOPS));
-  const swatch = (hue: number | null) => cardPalette(hue, ACCENT_STOPS).a400;
+  /** A picked stone's edge, in its own colour. */
+  const gemEdge = (hue: number | null) => `oklch(0.58 0.16 ${hue ?? DEFAULT_GEM_HUE} / 0.75)`;
 
   function onCardHue(e: Event): void {
     const v = Number((e.currentTarget as HTMLInputElement).value);
@@ -567,15 +569,12 @@
             type="button"
             onclick={() => setCardAccent("app")}
             aria-pressed={prefs.accentMode === "app"}
-            class="inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition {prefs.accentMode === 'app'
-              ? 'border-[var(--color-accent)]/60 text-zinc-100'
+            class="inline-flex h-9 items-center gap-1.5 rounded-lg border pl-1.5 pr-2.5 text-xs transition {prefs.accentMode === 'app'
+              ? 'text-zinc-100'
               : 'border-white/[0.08] text-zinc-400 hover:border-white/25'}"
+            style:border-color={prefs.accentMode === "app" ? gemEdge($accentHue) : undefined}
           >
-            <span
-              class="h-3.5 w-3.5 rounded-[3px]"
-              style="background: {swatch($accentHue)}"
-              data-anim="pop"
-            ></span>
+            <GemIcon cut={cutFor(gemFor($accentHue)?.id)} hue={$accentHue} size={22} />
             {$_("wrapped.card_same_as_the_app")}
           </button>
           {#each gems as g (g.id)}
@@ -586,15 +585,12 @@
               aria-pressed={active}
               title={$_(g.labelKey)}
               aria-label={$_(g.labelKey)}
-              class="grid h-8 w-8 place-items-center rounded-lg border transition {active
-                ? 'border-[var(--color-accent)]/60'
+              class="grid h-9 w-9 place-items-center rounded-lg border transition {active
+                ? ''
                 : 'border-white/[0.08] hover:border-white/25'}"
+              style:border-color={active ? gemEdge(g.hue) : undefined}
             >
-              <span
-                class="h-4 w-4 rounded-[3px]"
-                style="background: {swatch(g.hue)}"
-                data-anim="pop"
-              ></span>
+              <GemIcon cut={cutFor(g.id)} hue={g.hue} size={24} />
             </button>
           {/each}
         </div>

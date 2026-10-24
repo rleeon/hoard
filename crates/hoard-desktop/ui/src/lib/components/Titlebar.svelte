@@ -21,6 +21,7 @@
   import { _ } from "svelte-i18n";
 
   import AnimIcon from "./AnimIcon.svelte";
+  import HalloweenGarland from "./HalloweenGarland.svelte";
   import Logo from "./Logo.svelte";
   import MarioStar from "./MarioStar.svelte";
   import { notifications } from "../stores/notifications";
@@ -34,6 +35,8 @@
     updatePromptOpen,
   } from "../stores/panels";
   import { prefs } from "../stores/prefs";
+  import { garlandRoll } from "../stores/spider";
+  import { halloween } from "../stores/theme";
   import { isWindows } from "../os";
   import { lastReport } from "../stores/updates";
   import { tapVersion } from "../stores/versionTap";
@@ -51,6 +54,35 @@
     !!($lastReport && ($lastReport.client.available || $lastReport.server?.available)),
   );
   let maximized = $state(false);
+
+  /** Halloween dresses the bar as a pale green strip with a dark green edge,
+   *  while the rest of the app wears the pumpkin. Pinned to the stock emerald
+   *  (`always-emerald` on the bar) so the orange gem can't reach it. */
+  const NORMAL = {
+    bar: "border-white/[0.08] bg-layer-3",
+    brand: "text-zinc-500",
+    version: "text-zinc-600",
+    update: "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20",
+    star: "text-yellow-400 hover:bg-white/[0.07] hover:ring-white/[0.10]",
+    on: "bg-white/[0.07] text-emerald-400 ring-white/[0.10]",
+    off: "text-zinc-400 ring-transparent hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]",
+    badge: "bg-emerald-500 text-emerald-950",
+    rule: "bg-white/[0.08]",
+    close: "text-zinc-400",
+  };
+  const HALLOWEEN = {
+    bar: "always-emerald border-emerald-800 bg-emerald-200",
+    brand: "text-emerald-950",
+    version: "text-emerald-800",
+    update: "border-amber-700/50 bg-amber-500/20 text-amber-800 hover:bg-amber-500/30",
+    star: "text-yellow-600 hover:bg-emerald-950/10 hover:ring-emerald-800/50",
+    on: "bg-emerald-950/10 text-emerald-950 ring-emerald-800/60",
+    off: "text-emerald-900 ring-transparent hover:bg-emerald-950/10 hover:text-emerald-950 hover:ring-emerald-800/50",
+    badge: "bg-emerald-900 text-emerald-50",
+    rule: "bg-emerald-800/40",
+    close: "text-emerald-900",
+  };
+  const look = $derived($halloween ? HALLOWEEN : NORMAL);
 
   onMount(() => {
     let dispose: (() => void) | null = null;
@@ -110,11 +142,11 @@
      to close the window. -->
 <div
   data-tauri-drag-region
-  class="fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b border-white/[0.08] bg-layer-3 pl-3 pr-1"
+  class="fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b {look.bar} pl-3 pr-1"
 >
   <span
     data-tauri-drag-region
-    class="pointer-events-none flex items-center gap-2 text-zinc-500"
+    class="pointer-events-none flex items-center gap-2 {look.brand}"
   >
     <Logo size={15} mono class="opacity-90" />
     <span class="translate-y-[2px] text-[13px] font-medium tracking-wide">Hoard</span>
@@ -125,7 +157,7 @@
       type="button"
       tabindex="-1"
       onclick={() => tapVersion($_("diagnostics.unlocked_toast"))}
-      class="pointer-events-auto translate-y-[4px] cursor-default select-none text-[11px] text-zinc-600 outline-none"
+      class="pointer-events-auto translate-y-[4px] cursor-default select-none text-[11px] {look.version} outline-none"
     >
       v{APP_VERSION}
     </button>
@@ -141,7 +173,7 @@
               values: { latest: $lastReport?.server?.latest ?? "?" },
             })}
         aria-label={$_("updates.button_label")}
-        class="pointer-events-auto ml-1 flex h-5 items-center justify-center rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 text-amber-300 transition-colors hover:bg-amber-500/20"
+        class="pointer-events-auto ml-1 flex h-5 items-center justify-center rounded-md border px-1.5 transition-colors {look.update}"
       >
         <AnimIcon icon={AlertCircle} on={hasUpdate} kind="pop" size={12} />
       </button>
@@ -161,7 +193,7 @@
       onclick={openRepoPage}
       aria-label={$_("github.star_label")}
       title={$_("github.star_label")}
-      class="flex h-7 w-9 items-center justify-center rounded-lg text-yellow-400 ring-1 ring-transparent transition-colors hover:bg-white/[0.07] hover:ring-white/[0.10]"
+      class="flex h-7 w-9 items-center justify-center rounded-lg ring-1 ring-transparent transition-colors {look.star}"
     >
       <AnimIcon icon={MarioStar} on={false} kind="pop" size={14} />
     </button>
@@ -171,8 +203,8 @@
       aria-label={$_("activity.toggle_label")}
       title={$_("activity.toggle_label")}
       class="flex h-7 w-9 items-center justify-center rounded-lg ring-1 transition-colors {activityVisible
-        ? 'bg-white/[0.07] text-emerald-400 ring-white/[0.10]'
-        : 'text-zinc-400 ring-transparent hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]'}"
+        ? look.on
+        : look.off}"
     >
       <AnimIcon icon={ScrollText} iconOff={Scroll} on={activityVisible} kind="unfurl" size={14} />
     </button>
@@ -185,13 +217,13 @@
       aria-label={$_("notifications.title")}
       aria-expanded={$notifOpen}
       class="relative flex h-7 w-9 items-center justify-center rounded-lg ring-1 transition-colors {$notifOpen
-        ? 'bg-white/[0.07] text-emerald-400 ring-white/[0.10]'
-        : 'text-zinc-400 ring-transparent hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]'}"
+        ? look.on
+        : look.off}"
     >
       <AnimIcon icon={Bell} on={$notifOpen} kind="ring" size={14} />
       {#if $notifications.length > 0}
         <span
-          class="absolute right-1 top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold text-emerald-950"
+          class="absolute right-1 top-0.5 flex h-3 min-w-3 items-center justify-center rounded-full px-1 text-[9px] font-bold {look.badge}"
         >
           {$notifications.length}
         </span>
@@ -203,15 +235,15 @@
       aria-label={$_("eye.title")}
       aria-expanded={$eyeOpen}
       class="flex h-7 w-9 items-center justify-center rounded-lg ring-1 transition-colors {$eyeOpen
-        ? 'bg-white/[0.07] text-emerald-400 ring-white/[0.10]'
-        : 'text-zinc-400 ring-transparent hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]'}"
+        ? look.on
+        : look.off}"
     >
       <AnimIcon icon={Eye} iconOff={EyeOff} on={$eyeOpen} kind="pop" size={14} />
     </button>
-    <span class="mx-1.5 h-4 w-px bg-white/[0.08]" aria-hidden="true"></span>
+    <span class="mx-1.5 h-4 w-px {look.rule}" aria-hidden="true"></span>
     <button
       type="button"
-      class="group flex h-7 w-9 items-center justify-center rounded-lg text-zinc-400 ring-1 ring-transparent transition-colors hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]"
+      class="group flex h-7 w-9 items-center justify-center rounded-lg ring-1 transition-colors {look.off}"
       aria-label={$_("titlebar.minimize")}
       onclick={() => win.minimize()}
     >
@@ -221,7 +253,7 @@
     </button>
     <button
       type="button"
-      class="flex h-7 w-9 items-center justify-center rounded-lg text-zinc-400 ring-1 ring-transparent transition-colors hover:bg-white/[0.07] hover:text-zinc-100 hover:ring-white/[0.10]"
+      class="flex h-7 w-9 items-center justify-center rounded-lg ring-1 transition-colors {look.off}"
       aria-label={maximized ? $_("titlebar.restore") : $_("titlebar.maximize")}
       onclick={() => win.toggleMaximize()}
     >
@@ -254,7 +286,7 @@
     </button>
     <button
       type="button"
-      class="flex h-7 w-9 items-center justify-center rounded-lg text-zinc-400 ring-1 ring-transparent transition-colors hover:bg-red-600 hover:text-white hover:ring-red-400/40"
+      class="flex h-7 w-9 items-center justify-center rounded-lg {look.close} ring-1 ring-transparent transition-colors hover:bg-red-600 hover:text-white hover:ring-red-400/40"
       aria-label={$_("titlebar.close")}
       onclick={() => win.close()}
     >
@@ -281,6 +313,12 @@
     </button>
   </div>
 </div>
+
+{#if $halloween}
+  {#key $garlandRoll}
+    <HalloweenGarland />
+  {/key}
+{/if}
 
 <!-- The edge the decoration took with it. Windows keeps drawing a 1 px border
      of its own around an undecorated window; Linux draws nothing, and a

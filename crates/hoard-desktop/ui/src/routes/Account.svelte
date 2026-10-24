@@ -517,7 +517,7 @@
               {serverStorage.usedLabel} / {serverStorage.capLabel} · {serverStorage.pct}%
             </span>
           </div>
-          <div class="h-2 overflow-hidden rounded-full bg-zinc-800">
+          <div class="always-emerald h-2 overflow-hidden rounded-full bg-zinc-800">
             <div
               class="h-full rounded-full transition-all duration-500 {serverStorage.color}"
               style={`width: ${serverStorage.pct}%`}
@@ -790,7 +790,7 @@
               {/if}
             </span>
           </div>
-          <div class="h-2 overflow-hidden rounded-full bg-zinc-800">
+          <div class="always-emerald h-2 overflow-hidden rounded-full bg-zinc-800">
             <div
               class="h-full rounded-full transition-all duration-500 {storageView.color}"
               style={`width: ${storageView.unlimited ? 100 : storageView.pct}%`}

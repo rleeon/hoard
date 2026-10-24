@@ -35,6 +35,7 @@
     Gamepad2,
     ZoomIn,
     PanelTop,
+    Sparkles,
   } from "@lucide/svelte";
 
   import Card from "../lib/components/Card.svelte";
@@ -46,13 +47,20 @@
   import MaskedEmail from "../lib/components/MaskedEmail.svelte";
   import SettingsRow from "../lib/components/SettingsRow.svelte";
   import Select from "../lib/components/Select.svelte";
+  import GemIcon, { cutFor } from "../lib/components/GemIcon.svelte";
   import { prefs, hydratePrefs, updatePrefs } from "../lib/stores/prefs";
   import {
     accentHue,
     setAccentHue,
     gems,
-    gemSwatch,
+    DEFAULT_GEM_HUE,
     gemFor,
+    setSpecialChoice,
+    setSpecialModeId,
+    specialActive,
+    specialModeId,
+    specialModes,
+    type SpecialModeId,
   } from "../lib/stores/theme";
   import {
     uiScale,
@@ -138,11 +146,10 @@
   // The named gems; `gemFor` is null for a custom hue, which rings none of them.
   const selectedGem = $derived(gemFor($accentHue));
 
-  /** The mark's gradient for a given hue, as an inline `background`, same
-   *  maths the logo uses, so a swatch previews the real thing. */
-  function gemStyle(hue: number | null): string {
-    const { from, to } = gemSwatch(hue);
-    return `background: linear-gradient(140deg, ${from}, ${to});`;
+  /** A picked gem's edge, in its own colour rather than the accent's: the
+   *  accent is the pumpkin while a special mode is on. */
+  function gemEdge(hue: number | null): string {
+    return `oklch(0.58 0.16 ${hue ?? DEFAULT_GEM_HUE} / 0.75)`;
   }
 
   // Interface scale. Engine zoom, so `onchange` would feel laggy, `oninput`
@@ -947,34 +954,27 @@
                 </p>
               </div>
             </div>
-            <div class="mt-3 flex flex-wrap gap-2">
+            <div class="mt-3 flex flex-wrap gap-1">
               {#each gems as g (g.id)}
                 {@const active = selectedGem?.id === g.id}
+                <!-- The stone itself, cut the way that gem is known for. Only
+                     the edge answers the pointer; picked, it takes the stone's
+                     colour. -->
                 <button
                   type="button"
+                  disabled={$specialActive}
                   onclick={() => setAccentHue(g.hue)}
                   aria-pressed={active}
-                  class="group flex w-20 flex-col items-center gap-1.5 rounded-lg border p-1.5 transition-colors {active
-                    ? 'border-[var(--color-accent)]/50 bg-white/[0.04]'
-                    : 'border-transparent hover:bg-white/[0.03]'}"
+                  class="flex w-[4.5rem] flex-col items-center gap-1.5 rounded-xl border pb-1.5 pt-2.5 transition-colors disabled:pointer-events-none disabled:opacity-40 {active
+                    ? ''
+                    : 'border-transparent hover:border-white/[0.14]'}"
+                  style:border-color={active ? gemEdge(g.hue) : undefined}
                 >
-                  <!-- The mark itself, not a coloured dot: same tile, same
-                       gradient maths, so the swatch shows what the logo will
-                       actually become. -->
+                  <GemIcon cut={cutFor(g.id)} hue={g.hue} size={34} />
                   <span
-                    class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0a0a0a] ring-1 ring-inset ring-white/[0.08]"
-                    data-anim="pop"
-                  >
-                    <span
-                      class="h-4 w-4 rounded-[3px]"
-                      style={gemStyle(g.hue)}
-                      aria-hidden="true"
-                    ></span>
-                  </span>
-                  <span
-                    class="w-full truncate text-center text-[10px] {active
+                    class="w-full truncate px-1 text-center text-[11px] {active
                       ? 'text-zinc-100'
-                      : 'text-zinc-500 group-hover:text-zinc-300'}"
+                      : 'text-zinc-500'}"
                   >
                     {$_(g.labelKey)}
                   </span>
@@ -989,16 +989,59 @@
                 step="1"
                 value={$accentHue ?? 160}
                 oninput={onAccentInput}
-                class="hue-slider min-w-0 flex-1"
+                disabled={$specialActive}
+                class="hue-slider min-w-0 flex-1 disabled:opacity-40"
                 aria-label={$_("settings.accent_label")}
               />
               <button
                 type="button"
                 onclick={resetAccent}
-                class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-layer-hover hover:text-zinc-100"
+                disabled={$specialActive}
+                class="shrink-0 rounded-md border border-white/[0.08] px-2 py-1 text-xs text-zinc-400 transition-colors hover:bg-layer-hover hover:text-zinc-100 disabled:pointer-events-none disabled:opacity-40"
               >
                 {$_("settings.accent_reset")}
               </button>
+            </div>
+
+            <!-- Special modes, a seasonal look worn over the gem. While one is on
+                 the gems above are dimmed rather than live: a pick would show
+                 nothing until the mode ends, and it used to end the mode. -->
+            <div class="mt-4 flex items-start justify-between gap-4">
+              <div class="flex min-w-0 flex-1 items-start gap-3">
+                <Sparkles size={16} class="mt-0.5 shrink-0 text-zinc-500" data-anim="pop" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-medium text-zinc-100">
+                    {$_("settings.special_label")}
+                  </p>
+                  <p class="mt-0.5 text-xs text-zinc-500">
+                    {$_("settings.special_desc")}
+                  </p>
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-3">
+                <Select
+                  value={$specialModeId}
+                  onchange={(v) => setSpecialModeId(v as SpecialModeId)}
+                  aria-label={$_("settings.special_label")}
+                  options={specialModes.map((m) => ({ value: m.id, label: $_(m.labelKey) }))}
+                />
+                <label class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center">
+                  <input
+                    type="checkbox"
+                    class="peer sr-only"
+                    checked={$specialActive}
+                    onchange={(e) =>
+                      setSpecialChoice((e.currentTarget as HTMLInputElement).checked ? "on" : "off")}
+                    aria-label={$_("settings.special_label")}
+                  />
+                  <span
+                    class="absolute inset-0 rounded-full bg-zinc-700 transition-colors peer-checked:bg-emerald-600/90"
+                  ></span>
+                  <span
+                    class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-zinc-100 shadow transition-transform peer-checked:translate-x-4"
+                  ></span>
+                </label>
+              </div>
             </div>
           </div>
 

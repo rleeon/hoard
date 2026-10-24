@@ -79,17 +79,12 @@ export function applyAccentHue(hue: number | null): void {
     return;
   }
   const deg = ((hue % 360) + 360) % 360;
-  const h = deg.toFixed(1);
-  for (const [k, l, c] of ACCENT_STOPS) {
-    root.style.setProperty(k, `oklch(${l} ${c} ${h})`);
-  }
+  for (const [k, v] of gemRampVars(deg)) root.style.setProperty(k, v);
   for (const [k, l, c, offset] of GEM_STOPS) {
     const gh = ((deg + offset) % 360).toFixed(1);
     root.style.setProperty(k, `oklch(${l} ${c} ${gh})`);
   }
-  root.style.setProperty("--color-accent", `oklch(0.62 0.15 ${h})`);
-  root.style.setProperty("--color-accent-hover", `oklch(0.72 0.16 ${h})`);
-  root.style.setProperty("--tint-hue", h);
+  root.style.setProperty("--tint-hue", deg.toFixed(1));
 }
 
 /**
@@ -114,24 +109,9 @@ export const gems: Gem[] = [
   { id: "aquamarine", hue: 205, labelKey: "settings.gem_aquamarine" },
 ];
 
-/** Default hue for the swatch preview when the choice is `null`. Matches the
- *  `--logo-gem-*` defaults in `app.css`, i.e. what the default gem paints. */
-const DEFAULT_GEM_HUE = 161;
-
-/**
- * The two gradient stops a given hue produces, as CSS colours. Settings uses
- * them to draw each swatch with the *same* maths `applyAccentHue` will apply,
- * so a swatch is a real preview of the mark rather than a lookalike dot.
- */
-export function gemSwatch(hue: number | null): { from: string; to: string } {
-  const deg = hue == null ? DEFAULT_GEM_HUE : (((hue % 360) + 360) % 360);
-  const at = (key: string) => {
-    const stop = GEM_STOPS.find(([k]) => k === key)!;
-    const [, l, c, offset] = stop;
-    return `oklch(${l} ${c} ${(deg + offset) % 360})`;
-  };
-  return { from: at("--logo-gem-from"), to: at("--logo-gem-to") };
-}
+/** The default gem's hue, for drawing it when the choice is `null`. Matches
+ *  the `--logo-gem-*` defaults in `app.css`, i.e. what the default gem paints. */
+export const DEFAULT_GEM_HUE = 161;
 
 /** Which gem a stored hue corresponds to, or `null` when it's a custom hue.
  *  Drives the selected ring. */
@@ -139,7 +119,8 @@ export function gemFor(hue: number | null): Gem | null {
   return gems.find((g) => g.hue === hue) ?? null;
 }
 
-/** Persist a custom hue (or clear it) and apply immediately. */
+/** Persist a custom hue (or clear it) and apply immediately. While a special
+ *  mode is on the pick is kept and shows the day the mode ends. */
 export function setAccentHue(hue: number | null): void {
   accentHue.set(hue);
   try {
@@ -148,10 +129,128 @@ export function setAccentHue(hue: number | null): void {
   } catch {
     /* best-effort */
   }
-  applyAccentHue(hue);
+  refreshAccent();
 }
 
 /** Paint the stored gem before mount, so the first frame already wears it. */
 export function initAccent(): void {
-  applyAccentHue(readAccent());
+  refreshAccent();
+  // The window lives in the tray for days: a check at startup alone would
+  // keep the pumpkin until a restart in November, or miss the 24th entirely.
+  setInterval(refreshAccent, 60 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshAccent();
+  });
+}
+
+// ---- special modes
+
+/**
+ * A seasonal look worn over the gem: the accent, the edges and whatever the
+ * mode adds (Halloween's spider and green title bar). Settings has a switch
+ * and a picker for them; there is only Halloween so far.
+ *
+ * Left alone, a mode turns itself on during its season. Switching it off is
+ * remembered for good. Switching it on outside the season is remembered too,
+ * but on during the season is just the default again, so nobody who flicks it
+ * off and back on in October ends up with a pumpkin in March.
+ */
+export type SpecialModeId = "halloween";
+export type SpecialChoice = "auto" | "on" | "off";
+
+type SpecialMode = {
+  id: SpecialModeId;
+  labelKey: string;
+  hue: number;
+  inSeason: (d: Date) => boolean;
+};
+
+/** 24 October to 1 November, by the computer's own clock and time zone, so it
+ *  is Halloween when it is Halloween where the user lives. */
+export function isHalloweenSeason(d: Date = new Date()): boolean {
+  const day = d.getDate();
+  return (d.getMonth() === 9 && day >= 24) || (d.getMonth() === 10 && day === 1);
+}
+
+export const specialModes: SpecialMode[] = [
+  // Pumpkin: the same lightness and chroma as every gem, only the hue moves.
+  { id: "halloween", labelKey: "settings.special_halloween", hue: 50, inSeason: isHalloweenSeason },
+];
+
+const SPECIAL_CHOICE_KEY = "hoard-special-mode";
+const SPECIAL_ID_KEY = "hoard-special-mode-id";
+
+export const specialChoice = writable<SpecialChoice>(readSpecialChoice());
+export const specialModeId = writable<SpecialModeId>(readSpecialModeId());
+/** Whether a special mode is being worn right now. */
+export const specialActive = writable(false);
+/** Whether that mode is Halloween. The spider and the title bar read this. */
+export const halloween = writable(false);
+
+function readSpecialChoice(): SpecialChoice {
+  try {
+    const v = localStorage.getItem(SPECIAL_CHOICE_KEY);
+    return v === "on" || v === "off" ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+function readSpecialModeId(): SpecialModeId {
+  try {
+    const v = localStorage.getItem(SPECIAL_ID_KEY);
+    return specialModes.find((m) => m.id === v)?.id ?? specialModes[0].id;
+  } catch {
+    return specialModes[0].id;
+  }
+}
+
+function currentMode(): SpecialMode {
+  const id = readSpecialModeId();
+  return specialModes.find((m) => m.id === id) ?? specialModes[0];
+}
+
+function refreshAccent(): void {
+  const choice = readSpecialChoice();
+  const mode = currentMode();
+  const on = choice === "on" || (choice === "auto" && mode.inSeason(new Date()));
+  applyAccentHue(on ? mode.hue : readAccent());
+  document.documentElement.toggleAttribute("data-halloween", on && mode.id === "halloween");
+  specialChoice.set(choice);
+  specialModeId.set(mode.id);
+  specialActive.set(on);
+  halloween.set(on && mode.id === "halloween");
+}
+
+/** The Settings switch (and the debug panel, which can also hand it back to
+ *  the calendar with "auto"). */
+export function setSpecialChoice(choice: SpecialChoice): void {
+  const inSeason = currentMode().inSeason(new Date());
+  const stored = choice === "on" && inSeason ? "auto" : choice;
+  try {
+    if (stored === "auto") localStorage.removeItem(SPECIAL_CHOICE_KEY);
+    else localStorage.setItem(SPECIAL_CHOICE_KEY, stored);
+  } catch {
+    /* best-effort */
+  }
+  refreshAccent();
+}
+
+export function setSpecialModeId(id: SpecialModeId): void {
+  try {
+    localStorage.setItem(SPECIAL_ID_KEY, id);
+  } catch {
+    /* best-effort */
+  }
+  refreshAccent();
+}
+
+/** The accent ramp a hue paints on `<html>`. */
+function gemRampVars(hue: number): [string, string][] {
+  const h = (((hue % 360) + 360) % 360).toFixed(1);
+  return [
+    ...ACCENT_STOPS.map(([k, l, c]): [string, string] => [k, `oklch(${l} ${c} ${h})`]),
+    ["--color-accent", `oklch(0.62 0.15 ${h})`],
+    ["--color-accent-hover", `oklch(0.72 0.16 ${h})`],
+  ];
 }

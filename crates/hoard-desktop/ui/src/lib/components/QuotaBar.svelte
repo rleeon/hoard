@@ -103,7 +103,7 @@
   {#if !user.is_local_server && quota > 0}
     <!-- Track + fill. Width is bound to the derived `pct` so the bar
          animates smoothly as polls land. -->
-    <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+    <div class="always-emerald mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
       <div
         class="h-full rounded-full transition-[width] duration-500 ease-out {barClass}"
         style:width="{pct}%"

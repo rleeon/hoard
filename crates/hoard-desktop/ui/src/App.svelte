@@ -73,6 +73,8 @@
   import Logo from "./lib/components/Logo.svelte";
   import ActivityFeed from "./lib/components/ActivityFeed.svelte";
   import StorageFullBanner from "./lib/components/StorageFullBanner.svelte";
+  import HalloweenSpider from "./lib/components/HalloweenSpider.svelte";
+  import { halloween } from "./lib/stores/theme";
   import {
     subscribeLive,
     unsubscribeLive,
@@ -961,7 +963,9 @@
           </button>
 {/snippet}
 
-      <nav class="flex-1 space-y-1 px-3 py-2">
+      <!-- At Halloween the menu stops growing and the spider takes the space
+           it leaves above the footer. -->
+      <nav class="{$halloween && !narrow ? 'flex-none' : 'flex-1'} space-y-1 px-3 py-2">
         {#each navEntries as entry (entry.kind === "group" ? entry.id : entry.route)}
           {#if entry.kind === "link"}
             {@render navLink(entry, false)}
@@ -1000,6 +1004,7 @@
           {/if}
         {/each}
       </nav>
+      {#if $halloween && !narrow}<HalloweenSpider />{/if}
 
       <!-- Sidebar footer: "Modo Automático" toggle. The "Update available"
            alert lives next to the version up top now, not here. Colour
