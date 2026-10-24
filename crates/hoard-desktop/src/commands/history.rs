@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use hoard_agent::backup;
 use hoard_agent::config::CliConfig;
 use hoard_agent::presets;
-use hoard_agent::restore::{self, RestoreOptions};
+use hoard_agent::restore::{self, ExportOptions, RestoreOptions};
 use hoard_agent::state::CliState;
 use hoard_core::ipc::{HoldState, IpcError, Payload, Request};
 use serde::Serialize;
@@ -579,6 +579,75 @@ pub async fn restore_snapshot(
         destination: outcome.destination.to_string_lossy().into_owned(),
         safety_version,
     })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExportOutcome {
+    pub files_extracted: usize,
+    pub bytes_extracted: u64,
+    pub destination: String,
+}
+
+/// Download a version into a folder of its own under `parent`, the system's
+/// downloads folder when `None`. The save is not touched, so there is no hold
+/// and no safety copy. See [`restore::export_snapshot`].
+#[tauri::command]
+pub async fn export_snapshot(
+    app: AppHandle,
+    save_id: String,
+    version: i64,
+    name: String,
+    parent: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ExportOutcome, String> {
+    let client = current_client(&app, &state).await?;
+    let parent = match parent.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => PathBuf::from(p),
+        _ => restore::default_export_parent()
+            .ok_or_else(|| "Couldn't find a downloads folder; choose one instead.".to_string())?,
+    };
+    let reuse_from = CliState::load_default()
+        .ok()
+        .and_then(|(st, _)| st.saves.get(&save_id).map(|s| s.local_path.clone()));
+
+    let app_for_dl = app.clone();
+    let save_id_for_dl = save_id.clone();
+    let outcome = restore::export_snapshot(
+        &client,
+        &save_id,
+        version,
+        &parent,
+        &name,
+        ExportOptions {
+            reuse_from,
+            staging_root: None,
+        },
+        move |downloaded, total| {
+            let _ = app_for_dl.emit(
+                "export://progress",
+                RestoreProgress {
+                    save_id: save_id_for_dl.clone(),
+                    version,
+                    phase: RestorePhase::Downloading,
+                    downloaded,
+                    total,
+                },
+            );
+        },
+    )
+    .await
+    .map_err(pretty_error)?;
+
+    Ok(ExportOutcome {
+        files_extracted: outcome.files_extracted,
+        bytes_extracted: outcome.bytes_extracted,
+        destination: outcome.destination.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub fn default_export_folder() -> Option<String> {
+    restore::default_export_parent().map(|p| p.to_string_lossy().into_owned())
 }
 
 /// How long one hold on a save lasts in the service, and how often it is

@@ -449,6 +449,24 @@ html.is-overlay ::-webkit-scrollbar-thumb {
   --icon-anim-dur: 560ms;
   animation: icon-nudge var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
 }
+/* The same lean, downwards: the download arrow. */
+@keyframes icon-drop {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+  28% {
+    transform: translateY(3px);
+  }
+  76% {
+    transform: translateY(1.5px);
+  }
+}
+[data-anim="drop"][data-anim-play] {
+  --icon-anim-dur: 560ms;
+  animation: icon-drop var(--icon-anim-dur) cubic-bezier(0.3, 0.7, 0.4, 1);
+}
 
 .icon-anim-hop {
   --icon-anim-dur: 900ms;

@@ -405,6 +405,101 @@ where
     Ok(outcome)
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ExportOptions {
+    /// As [`RestoreOptions::reuse_from`]: the save's own folder, only ever read.
+    pub reuse_from: Option<PathBuf>,
+    pub staging_root: Option<PathBuf>,
+}
+
+/// Copy `version` of `save_id` into a new folder under `parent`, named after
+/// `name` and the version, and leave the save's own folder alone.
+///
+/// It is how a user takes one file out of an old version. A restore puts the
+/// whole version back over the save, and the only way round that was restoring
+/// into a scratch folder by hand. Everything in the version is written, config
+/// included: nothing here gets overwritten, and another machine's config may be
+/// exactly the file someone came for.
+pub async fn export_snapshot<F>(
+    client: &ApiClient,
+    save_id: &str,
+    version: i64,
+    parent: &Path,
+    name: &str,
+    options: ExportOptions,
+    progress: F,
+) -> Result<RestoreOutcome>
+where
+    F: Fn(u64, u64) + Send + Sync + 'static,
+{
+    std::fs::create_dir_all(parent)
+        .with_context(|| format!("couldn't create {}", parent.display()))?;
+    let dest = claim_export_folder(parent, &export_folder_name(name, version))?;
+    let restore = RestoreOptions {
+        gate: RestoreGate::permissive(),
+        reuse_from: options.reuse_from,
+        staging_root: options.staging_root,
+        ..RestoreOptions::default()
+    };
+    let outcome = download_snapshot(client, save_id, version, &dest, restore, progress).await;
+    if outcome.is_err() {
+        // `remove_dir` only takes it while it is still empty.
+        let _ = std::fs::remove_dir(&dest);
+    }
+    outcome
+}
+
+/// Where an export lands when the user does not pick: the system's downloads
+/// folder, or `~/Downloads` where none is configured (a Linux without
+/// `user-dirs.dirs`).
+pub fn default_export_parent() -> Option<PathBuf> {
+    let dirs = directories::UserDirs::new()?;
+    Some(
+        dirs.download_dir()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| dirs.home_dir().join("Downloads")),
+    )
+}
+
+/// `<name> v<version>`, safe as one folder name on all three systems.
+fn export_folder_name(name: &str, version: i64) -> String {
+    let clean: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || r#"<>:"/\|?*"#.contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .take(64)
+        .collect();
+    // A leading dot hides the folder on Linux and macOS.
+    let clean = clean.trim().trim_start_matches('.').trim();
+    let base = if clean.is_empty() { "save" } else { clean };
+    format!("{base} v{version}")
+}
+
+/// Create `parent/<name>`, or `<name> (2)`, `(3)`... when it is taken. An
+/// export never writes into a folder that was already there, so downloading the
+/// same version twice gives two copies rather than mixing them.
+fn claim_export_folder(parent: &Path, name: &str) -> Result<PathBuf> {
+    for n in 1..1000 {
+        let candidate = match n {
+            1 => parent.join(name),
+            _ => parent.join(format!("{name} ({n})")),
+        };
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => {
+                return Err(e).with_context(|| format!("couldn't create {}", candidate.display()))
+            }
+        }
+    }
+    bail!("{} already holds 999 copies of {name}", parent.display())
+}
+
 /// Download and verify `version` into `staging`, an empty folder the caller
 /// owns, and stop there. The automatic restore merges from it on its own terms
 /// (`agent::restore_files_into`, mtime and conflict copies), so it takes the
@@ -2526,6 +2621,29 @@ pub(crate) fn dest_in(root: &Path, rel: &Path, in_prefix: bool) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn export_folder_name_is_one_safe_component() {
+        assert_eq!(export_folder_name("elden-ring", 12), "elden-ring v12");
+        assert_eq!(export_folder_name("a/b\\c:d*?", 3), "a_b_c_d__ v3");
+        assert_eq!(export_folder_name("..hidden", 1), "hidden v1");
+        assert_eq!(export_folder_name("  ", 1), "save v1");
+        assert_eq!(export_folder_name(&"x".repeat(200), 1).len(), 64 + 3);
+    }
+
+    #[test]
+    fn export_never_reuses_a_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let first = claim_export_folder(tmp.path(), "game v1").unwrap();
+        std::fs::write(first.join("slot.sav"), b"earlier copy").unwrap();
+        let second = claim_export_folder(tmp.path(), "game v1").unwrap();
+        assert_eq!(first, tmp.path().join("game v1"));
+        assert_eq!(second, tmp.path().join("game v1 (2)"));
+        assert_eq!(
+            std::fs::read(first.join("slot.sav")).unwrap(),
+            b"earlier copy"
+        );
+    }
 
     /// `dest` with `old` in it and `staging` with `new`, file by file.
     fn folder_and_version(

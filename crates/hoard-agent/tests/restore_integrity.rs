@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex};
 
 use async_compression::tokio::write::ZstdEncoder;
 use hoard_agent::api::ApiClient;
-use hoard_agent::restore::{download_snapshot, RestoreOptions};
+use hoard_agent::restore::{download_snapshot, export_snapshot, ExportOptions, RestoreOptions};
 use hoard_core::kernel::fileclass::RestoreGate;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
@@ -366,6 +366,64 @@ async fn self_hosted_restore_lands_whole_and_keeps_the_originals() {
         std::fs::read(kept.join("slot1.sav")).unwrap(),
         b"slot 1, the good local save"
     );
+}
+
+/// A download goes into a folder of its own, config and all, and the save it
+/// came from stays exactly as it was even when it is read for reuse.
+#[tokio::test]
+async fn self_hosted_export_lands_beside_the_save_and_leaves_it_alone() {
+    let tmp = tempfile::tempdir().unwrap();
+    let save = good_save(tmp.path());
+    let before = picture(&save);
+    let (base, routes) = spawn_stub();
+    let mut listed = version_files();
+    listed.push(("graphics.ini", b"width=3840".to_vec()));
+    self_hosted(&routes, &listed, tar_zst(&listed).await, None);
+
+    let client = ApiClient::new(&base, "token").unwrap();
+    let downloads = tmp.path().join("Downloads");
+    let opts = || ExportOptions {
+        reuse_from: Some(save.clone()),
+        staging_root: Some(tmp.path().join("staging")),
+    };
+    let outcome = export_snapshot(&client, SAVE, 1, &downloads, "game", opts(), |_, _| {})
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.destination, downloads.join("game v1"));
+    for (name, bytes) in &listed {
+        assert_eq!(
+            &std::fs::read(outcome.destination.join(name)).unwrap(),
+            bytes
+        );
+    }
+    assert_eq!(picture(&save), before);
+
+    let again = export_snapshot(&client, SAVE, 1, &downloads, "game", opts(), |_, _| {})
+        .await
+        .unwrap();
+    assert_eq!(again.destination, downloads.join("game v1 (2)"));
+}
+
+#[tokio::test]
+async fn failed_export_leaves_no_empty_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (base, routes) = spawn_stub();
+    let listed = version_files();
+    let mut served = listed.clone();
+    served[1].1 = vec![b'X'; served[1].1.len()];
+    self_hosted(&routes, &listed, tar_zst(&served).await, None);
+
+    let client = ApiClient::new(&base, "token").unwrap();
+    let downloads = tmp.path().join("Downloads");
+    let opts = ExportOptions {
+        reuse_from: None,
+        staging_root: Some(tmp.path().join("staging")),
+    };
+    export_snapshot(&client, SAVE, 1, &downloads, "game", opts, |_, _| {})
+        .await
+        .unwrap_err();
+    assert_eq!(std::fs::read_dir(&downloads).unwrap().count(), 0);
 }
 
 // ---- Cloud, content-addressed

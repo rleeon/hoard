@@ -1381,6 +1381,37 @@ export function restoreSnapshot(args: {
   });
 }
 
+export type ExportOutcome = {
+  files_extracted: number;
+  bytes_extracted: number;
+  destination: string;
+};
+
+/** Download a version into a new folder under `parent` (the system's
+ *  downloads folder when null) without touching the save. Progress arrives
+ *  on `export://progress`. */
+export function exportSnapshot(args: {
+  save_id: string;
+  version: number;
+  name: string;
+  parent: string | null;
+}): Promise<ExportOutcome> {
+  return invoke<ExportOutcome>("export_snapshot", {
+    saveId: args.save_id,
+    version: args.version,
+    name: args.name,
+    parent: args.parent,
+  });
+}
+
+export function defaultExportFolder(): Promise<string | null> {
+  return invoke<string | null>("default_export_folder");
+}
+
+export function openFolder(path: string): Promise<void> {
+  return invoke<void>("open_folder", { path });
+}
+
 /** Sentinel error string from the Rust side meaning "we have no local path
  *  for this save, prompt the user to pick one and retry with
  *  `destination_override`". */

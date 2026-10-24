@@ -23,6 +23,7 @@
   import {
     ArrowLeft,
     UploadCloud,
+    Download,
     RotateCcw,
     Trash2,
     Pin,
@@ -100,6 +101,15 @@
   // block it.
   let preview = $state<api.RestorePreview | null>(null);
   let previewFailed = $state(false);
+
+  // Downloading a version into a folder of its own, for taking one file out of
+  // it without restoring the rest over the save. `exportParent` stays picked
+  // for the rest of the visit.
+  let exportTarget = $state<SnapshotEntry | null>(null);
+  let exportParent = $state<string | null>(null);
+  let exporting = $state(false);
+  let exportProgress = $state<RestoreProgress | null>(null);
+  let exported = $state<api.ExportOutcome | null>(null);
 
   function openRestore(snap: SnapshotEntry) {
     restoreTarget = snap;
@@ -219,10 +229,14 @@
   let savingPreset = $state(false);
 
   let unlisten: UnlistenFn | null = null;
+  let unlistenExport: UnlistenFn | null = null;
 
   onMount(async () => {
     unlisten = await listen<RestoreProgress>("restore://progress", (e) => {
       if (e.payload.save_id === saveId) restoreProgress = e.payload;
+    });
+    unlistenExport = await listen<RestoreProgress>("export://progress", (e) => {
+      if (e.payload.save_id === saveId) exportProgress = e.payload;
     });
     api
       .listSavePresets()
@@ -237,7 +251,10 @@
     await hydrate();
   });
 
-  onDestroy(() => unlisten?.());
+  onDestroy(() => {
+    unlisten?.();
+    unlistenExport?.();
+  });
 
   async function hydrate() {
     loading = true;
@@ -477,6 +494,57 @@
         return;
       }
       await performRestore(pickingDestination, picked);
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  async function openExport(snap: SnapshotEntry) {
+    exportTarget = snap;
+    exported = null;
+    exportProgress = null;
+    if (exportParent === null) {
+      exportParent = await api.defaultExportFolder().catch(() => null);
+    }
+  }
+
+  async function chooseExportFolder() {
+    try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        defaultPath: exportParent ?? undefined,
+        title: $_("history.export_pick_title"),
+      });
+      if (typeof picked === "string" && picked.length > 0) exportParent = picked;
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    }
+  }
+
+  async function startExport() {
+    if (!exportTarget || !save) return;
+    exporting = true;
+    exportProgress = null;
+    try {
+      exported = await api.exportSnapshot({
+        save_id: saveId,
+        version: exportTarget.version_num,
+        name: save.game_slug,
+        parent: exportParent,
+      });
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      exporting = false;
+      exportProgress = null;
+    }
+  }
+
+  async function openExported() {
+    if (!exported) return;
+    try {
+      await api.openFolder(exported.destination);
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     }
@@ -759,13 +827,16 @@
       </div>
 
       <div class="mt-4 flex flex-wrap items-center gap-2">
-        <Button variant="primary" onclick={backupNow} loading={backingUp}>
-          <UploadCloud size={14} /> {$_("history.back_up_now")}
+        <Button variant="outline" onclick={backupNow} loading={backingUp}>
+          {#if !backingUp}
+            <UploadCloud size={14} data-anim="bump" />
+          {/if}
+          {$_("history.back_up_now")}
         </Button>
         <!-- Same gate as the config button below: a cloud-only row has no
              `state.json` entry, so pausing it fails on click. -->
         <Button
-          variant="secondary"
+          variant="muted"
           onclick={togglePause}
           loading={togglingPause}
           disabled={save.orphan || !save.local_path}
@@ -774,13 +845,36 @@
             : undefined}
         >
           {#if save.paused}
-            <PlayCircle size={14} /> {$_("history.resume_tracking")}
+            <PlayCircle size={14} data-anim="pop" /> {$_("history.resume_tracking")}
           {:else}
-            <PauseCircle size={14} /> {$_("history.pause_tracking")}
+            <PauseCircle size={14} data-anim="pop" /> {$_("history.pause_tracking")}
           {/if}
         </Button>
-        <Button variant="secondary" onclick={() => (editingPath = true)}>
-          <Edit3 size={14} /> {$_("history.edit_folder")}
+        <Button variant="muted" onclick={() => (editingPath = true)}>
+          <Edit3 size={14} data-anim="pop" /> {$_("history.edit_folder")}
+        </Button>
+        <!-- A cloud-only row (`orphan`) has no `state.json` entry on this
+             machine, so there is nowhere to store the decision: the backend
+             answered a raw "That save isn't tracked on this machine". Disable
+             the button and say why, rather than letting them press something
+             that cannot work. -->
+        <Button
+          variant="muted"
+          disabled={save.orphan || !save.local_path}
+          onclick={() => changeAllowConfig(!(save?.allow_device_local ?? false))}
+          loading={savingAllowConfig}
+          title={save.orphan || !save.local_path
+            ? $_("history.allow_config_game_orphan")
+            : save.allow_device_local
+              ? $_("history.allow_config_game_hint_on")
+              : $_("history.allow_config_game_hint_off")}
+        >
+          <SlidersHorizontal size={14} data-anim="pop" />
+          {#if save.allow_device_local}
+            {$_("history.allow_config_game_off")}
+          {:else}
+            {$_("history.allow_config_game_on")}
+          {/if}
         </Button>
         {#if presets.length > 0}
           <div class="flex items-center gap-2 text-xs text-zinc-400">
@@ -798,29 +892,6 @@
             />
           </div>
         {/if}
-        <!-- A cloud-only row (`orphan`) has no `state.json` entry on this
-             machine, so there is nowhere to store the decision: the backend
-             answered a raw "That save isn't tracked on this machine". Disable
-             the button and say why, rather than letting them press something
-             that cannot work. -->
-        <Button
-          variant="secondary"
-          disabled={save.orphan || !save.local_path}
-          onclick={() => changeAllowConfig(!(save?.allow_device_local ?? false))}
-          loading={savingAllowConfig}
-          title={save.orphan || !save.local_path
-            ? $_("history.allow_config_game_orphan")
-            : save.allow_device_local
-              ? $_("history.allow_config_game_hint_on")
-              : $_("history.allow_config_game_hint_off")}
-        >
-          <SlidersHorizontal size={14} />
-          {#if save.allow_device_local}
-            {$_("history.allow_config_game_off")}
-          {:else}
-            {$_("history.allow_config_game_on")}
-          {/if}
-        </Button>
       </div>
       <p class="mt-2 text-xs text-zinc-500">
         {#if save.orphan || !save.local_path}
@@ -856,7 +927,7 @@
             type="button"
             onclick={reactivate}
             disabled={reactivating}
-            class="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-lg bg-sky-500 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-400 disabled:opacity-50 sm:self-auto"
+            class="inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-[var(--radius-control)] border border-sky-700/80 bg-black px-3 py-2 text-sm font-medium text-sky-300 transition-colors hover:border-sky-500 hover:text-sky-200 disabled:opacity-60 sm:self-auto"
           >
             <RotateCw size={14} class={reactivating ? "animate-spin" : ""} />
             {reactivating
@@ -1144,7 +1215,7 @@
                   <div class="flex items-center gap-1">
                     {#if isDeleted}
                       <Button
-                        variant="secondary"
+                        variant="muted"
                         size="md"
                         onclick={() => {
                           restorePressed = !restorePressed;
@@ -1161,7 +1232,15 @@
                       </Button>
                     {:else}
                       <Button
-                        variant="secondary"
+                        variant="muted"
+                        size="md"
+                        onclick={() => openExport(snap)}
+                      >
+                        <Download size={12} data-anim="drop" />
+                        {$_("history.export")}
+                      </Button>
+                      <Button
+                        variant="muted"
                         size="md"
                         onclick={() => {
                           // Same trick as the upload button: a press flips a bit
@@ -1243,6 +1322,110 @@
     {/if}
   {/if}
 </div>
+
+{#snippet progressBar(p: RestoreProgress)}
+  <div>
+    <div class="text-xs text-zinc-400">
+      {progressLabel(p)}
+    </div>
+    {#if progressPercent(p) !== null}
+      <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+        <div
+          class="h-full bg-emerald-500 transition-all"
+          style="width: {progressPercent(p)}%"
+        ></div>
+      </div>
+    {:else}
+      <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+        <div class="h-full w-1/3 animate-pulse bg-emerald-500"></div>
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
+<!-- Download a version into a folder of its own -->
+<Modal
+  open={!!exportTarget}
+  title={exportTarget
+    ? $_("history.export_title", {
+        values: { version: exportTarget.version_num },
+      })
+    : ""}
+  description={$_("history.export_description")}
+  dismissible={!exporting}
+  onClose={() => {
+    if (!exporting) exportTarget = null;
+  }}
+>
+  <div class="space-y-4 text-sm text-zinc-300">
+    {#if exported}
+      <div class="rounded-md border border-white/[0.08] bg-layer-2 p-3 text-xs">
+        <div class="mb-1 font-medium text-zinc-200">
+          {$_("history.export_done", {
+            values: { count: exported.files_extracted },
+          })}
+        </div>
+        <div class="font-mono break-all text-zinc-400">
+          {exported.destination}
+        </div>
+      </div>
+    {:else}
+      <div class="rounded-md border border-white/[0.08] bg-layer-2 p-3 text-xs">
+        <div class="mb-1.5 font-medium text-zinc-300">
+          {$_("history.export_destination")}
+        </div>
+        <div class="flex items-center justify-between gap-3">
+          <span class="min-w-0 font-mono break-all text-zinc-400">
+            {exportParent ?? $_("history.export_no_default")}
+          </span>
+          <Button
+            variant="muted"
+            class="shrink-0"
+            onclick={chooseExportFolder}
+            disabled={exporting}
+          >
+            <FolderOpen size={14} data-anim="pop" />
+            {$_("history.export_change")}
+          </Button>
+        </div>
+        <p class="mt-2 text-zinc-500">{$_("history.export_hint")}</p>
+      </div>
+      {#if exportProgress}
+        {@render progressBar(exportProgress)}
+      {/if}
+    {/if}
+  </div>
+  {#snippet footer()}
+    {#if exported}
+      <Button variant="muted" onclick={() => (exportTarget = null)}>
+        {$_("common.close")}
+      </Button>
+      <Button variant="outline" onclick={openExported}>
+        <FolderOpen size={14} data-anim="pop" />
+        {$_("history.export_open_folder")}
+      </Button>
+    {:else}
+      <Button
+        variant="muted"
+        onclick={() => (exportTarget = null)}
+        disabled={exporting}
+      >
+        {$_("common.cancel")}
+      </Button>
+      <Button
+        variant="outline"
+        onclick={startExport}
+        loading={exporting}
+        disabled={!exportParent}
+      >
+        {#if !exporting}
+          <Download size={14} data-anim="drop" />
+        {/if}
+        {$_("history.export")}
+      </Button>
+    {/if}
+  {/snippet}
+</Modal>
 
 <!-- Restore confirmation -->
 <Modal
@@ -1352,23 +1535,7 @@
     {/if}
 
     {#if restoreProgress}
-      <div>
-        <div class="text-xs text-zinc-400">
-          {progressLabel(restoreProgress)}
-        </div>
-        {#if progressPercent(restoreProgress) !== null}
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-            <div
-              class="h-full bg-emerald-500 transition-all"
-              style="width: {progressPercent(restoreProgress)}%"
-            ></div>
-          </div>
-        {:else}
-          <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-            <div class="h-full w-1/3 animate-pulse bg-emerald-500"></div>
-          </div>
-        {/if}
-      </div>
+      {@render progressBar(restoreProgress)}
     {/if}
 
     {#if !restoring}
@@ -1382,13 +1549,13 @@
   </div>
   {#snippet footer()}
     <Button
-      variant="secondary"
+      variant="muted"
       onclick={() => (restoreTarget = null)}
       disabled={restoring}
     >
       {$_("common.cancel")}
     </Button>
-    <Button variant="primary" onclick={startRestore} loading={restoring}>
+    <Button variant="outline" onclick={startRestore} loading={restoring}>
       {$_("history.restore")}
     </Button>
   {/snippet}
@@ -1411,18 +1578,18 @@
   </p>
   {#snippet footer()}
     <Button
-      variant="secondary"
+      variant="muted"
       onclick={() => (pickingDestination = null)}
       disabled={restoring}
     >
       {$_("common.cancel")}
     </Button>
     <Button
-      variant="primary"
+      variant="outline"
       onclick={pickDestinationAndRestore}
       loading={restoring}
     >
-      <FolderOpen size={14} />
+      <FolderOpen size={14} data-anim="pop" />
       {$_("history.browse")}
     </Button>
   {/snippet}
@@ -1453,14 +1620,14 @@
   </p>
   {#snippet footer()}
     <Button
-      variant="secondary"
+      variant="muted"
       onclick={() => (deleteTarget = null)}
       disabled={deleting}
     >
       {$_("common.cancel")}
     </Button>
     <Button
-      variant={$isCloudLoggedIn ? "danger" : "primary"}
+      variant={$isCloudLoggedIn ? "danger" : "outline"}
       onclick={confirmDelete}
       loading={deleting}
     >
@@ -1493,14 +1660,14 @@
   </p>
   {#snippet footer()}
     <Button
-      variant="secondary"
+      variant="muted"
       onclick={() => (bulkConfirm = false)}
       disabled={bulkDeleting}
     >
       {$_("common.cancel")}
     </Button>
     <Button
-      variant={$isCloudLoggedIn ? "danger" : "primary"}
+      variant={$isCloudLoggedIn ? "danger" : "outline"}
       onclick={confirmBulkDelete}
       loading={bulkDeleting}
     >
@@ -1531,23 +1698,23 @@
       />
     </div>
     <Button
-      variant="secondary"
+      variant="muted"
       onclick={browseEditFolder}
       disabled={savingPath}
     >
-      <FolderOpen size={14} />
+      <FolderOpen size={14} data-anim="pop" />
       {$_("history.browse")}
     </Button>
   </div>
   {#snippet footer()}
     <Button
-      variant="secondary"
+      variant="muted"
       onclick={() => (editingPath = false)}
       disabled={savingPath}
     >
       {$_("common.cancel")}
     </Button>
-    <Button variant="primary" onclick={commitPath} loading={savingPath}>
+    <Button variant="outline" onclick={commitPath} loading={savingPath}>
       {$_("history.update_folder")}
     </Button>
   {/snippet}

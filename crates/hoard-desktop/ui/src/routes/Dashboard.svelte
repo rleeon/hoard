@@ -969,13 +969,13 @@
   />
   {#snippet footer()}
     <Button
-      variant="ghost"
+      variant="muted"
       onclick={() => (renameTarget = null)}
       disabled={renaming}
     >
       {$_("common.cancel")}
     </Button>
-    <Button onclick={confirmRename} loading={renaming}>
+    <Button variant="outline" onclick={confirmRename} loading={renaming}>
       {$_("common.save")}
     </Button>
   {/snippet}

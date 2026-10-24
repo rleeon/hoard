@@ -29,12 +29,64 @@ pub async fn open_external(url: String) -> Result<(), String> {
         return Err("refusing to open non-web URL".into());
     }
 
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = opener(std::ffi::OsStr::new(&url));
+
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        // Do NOT route through `cmd /C start`: cmd re-parses its command line
+        // and treats every `&` in the URL as a command separator, so an OAuth
+        // sign-in URL like `.../login?desktop=1&port=65491&state=<nonce>` was
+        // truncated at the first `&`, so the browser only ever received
+        // `?desktop=1`, dropping the loopback port and the CSRF nonce. The
+        // callback then reached the app with no `state`, and every desktop
+        // sign-in failed with "auth callback state mismatch". rundll32 is not a
+        // shell: it hands the URL to the registered protocol handler verbatim.
+        let mut c = tokio::process::Command::new("rundll32.exe");
+        c.args(["url.dll,FileProtocolHandler", &url]);
+        c
+    };
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not open browser: {e}"))
+}
+
+/// Show a folder in the system's file manager: where a version downloaded
+/// from History landed.
+#[tauri::command]
+pub async fn open_folder(path: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(path);
+    // A folder and nothing else: an opener handed a file runs it.
+    if !path.is_dir() {
+        return Err(format!("{} isn't a folder", path.display()));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = opener(path.as_os_str());
+
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new("explorer.exe");
+        c.arg(&path);
+        c
+    };
+
+    cmd.spawn()
+        .map(|_| ())
+        .map_err(|e| format!("could not open {}: {e}", path.display()))
+}
+
+/// The platform's opener for `target`, on Linux with what the AppImage did to
+/// the environment undone (see [`open_external`]).
+#[cfg(not(target_os = "windows"))]
+fn opener(target: &std::ffi::OsStr) -> tokio::process::Command {
     use tokio::process::Command;
 
     #[cfg(target_os = "linux")]
-    let mut cmd = {
+    let cmd = {
         let mut c = Command::new("xdg-open");
-        c.arg(&url);
+        c.arg(target);
         // AppImage-injected loader/toolkit vars: restore the pre-AppImage value
         // if AppRun stashed it as `<VAR>_ORIG`, otherwise drop it entirely so
         // the child falls back to the host defaults.
@@ -78,30 +130,13 @@ pub async fn open_external(url: String) -> Result<(), String> {
     };
 
     #[cfg(target_os = "macos")]
-    let mut cmd = {
+    let cmd = {
         let mut c = Command::new("open");
-        c.arg(&url);
+        c.arg(target);
         c
     };
 
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        // Do NOT route through `cmd /C start`: cmd re-parses its command line
-        // and treats every `&` in the URL as a command separator, so an OAuth
-        // sign-in URL like `.../login?desktop=1&port=65491&state=<nonce>` was
-        // truncated at the first `&`, so the browser only ever received
-        // `?desktop=1`, dropping the loopback port and the CSRF nonce. The
-        // callback then reached the app with no `state`, and every desktop
-        // sign-in failed with "auth callback state mismatch". rundll32 is not a
-        // shell: it hands the URL to the registered protocol handler verbatim.
-        let mut c = Command::new("rundll32.exe");
-        c.args(["url.dll,FileProtocolHandler", &url]);
-        c
-    };
-
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not open browser: {e}"))
+    cmd
 }
 
 /// `XDG_DATA_DIRS` as the session had it before the AppImage launched us, or
