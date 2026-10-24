@@ -17,10 +17,12 @@
     Receipt,
   } from "@lucide/svelte";
   import Button from "../lib/components/Button.svelte";
-  import { cloud, openUpgradePage } from "../lib/stores/cloud";
+  import { cloud, openExternal, openUpgradePage } from "../lib/stores/cloud";
   import { track } from "../lib/stores/telemetry";
+  import { FUNDING } from "../lib/funding";
   import {
     PLANS,
+    formatSaveSize,
     formatSaveSizeRange,
     formatStorage,
     type BillingCycle,
@@ -30,9 +32,31 @@
   let opening = $state(false);
 
   const plan = $derived($cloud.account?.plan ?? null);
+  // Someone on a pass is Pro and still has something to buy here: the next
+  // year, which picks up where the current one ends.
+  const onPass = $derived($cloud.account?.subscription_interval === "once");
+  const canBuy = $derived(plan !== "pro" || (onPass && cycle === "once"));
 
   const proPrice = $derived(
-    cycle === "monthly" ? PLANS.pro.priceMonthly : PLANS.pro.priceYearly,
+    cycle === "monthly"
+      ? PLANS.pro.priceMonthly
+      : cycle === "yearly"
+        ? PLANS.pro.priceYearly
+        : PLANS.pro.priceOnce,
+  );
+  const proSuffix = $derived(
+    cycle === "monthly"
+      ? $_("pricing.per_month")
+      : cycle === "yearly"
+        ? $_("pricing.per_year")
+        : $_("pricing.per_once"),
+  );
+  const proBilled = $derived(
+    cycle === "monthly"
+      ? $_("pricing.billed_monthly")
+      : cycle === "yearly"
+        ? $_("pricing.billed_yearly")
+        : $_("pricing.billed_once"),
   );
   const proPriceLabel = $derived(
     `${proPrice.toLocaleString($locale ?? undefined, { minimumFractionDigits: 2 })} €`,
@@ -44,7 +68,7 @@
   async function continueToPayment() {
     if (opening) return;
     opening = true;
-    const interval = cycle === "yearly" ? "year" : "month";
+    const interval = cycle === "once" ? "once" : cycle === "yearly" ? "year" : "month";
     track("pricing.continue", { interval });
     try {
       await openUpgradePage("pro", interval);
@@ -52,6 +76,28 @@
       opening = false;
     }
   }
+
+  // Every paying customer so far paid because one of their games was over the
+  // per-game cap and Free could not sync it whole, so the page leads with that.
+  const sizes = {
+    perSave: formatSaveSize("free"),
+    total: formatStorage("free"),
+    proPerSave: formatSaveSize("pro"),
+    proTotal: formatStorage("pro"),
+  };
+
+  const money = $derived({
+    perUser: FUNDING.perUserEur.toLocaleString($locale ?? undefined, {
+      style: "currency",
+      currency: "EUR",
+      maximumFractionDigits: 4,
+    }),
+    covers: FUNDING.proCoversFree.join("–"),
+    price: PLANS.pro.priceMonthly.toLocaleString($locale ?? undefined, {
+      style: "currency",
+      currency: "EUR",
+    }),
+  });
 
   const bands = $derived([
     {
@@ -68,7 +114,7 @@
     },
     {
       label: $_("pricing.band_big_label"),
-      note: $_("pricing.band_big_note"),
+      note: $_("pricing.band_big_note", { values: sizes }),
       verdict: $_("pricing.band_big_verdict"),
       pro: true,
     },
@@ -119,7 +165,7 @@
       {$_("pricing.title")}
     </h1>
     <p class="mt-0.5 max-w-3xl text-sm text-zinc-400">
-      {$_("pricing.subtitle")}
+      {$_("pricing.subtitle", { values: sizes })}
     </p>
   </div>
 
@@ -149,10 +195,11 @@
     {$_("pricing.bands_note")}
   </p>
 
-  <!-- billing cycle -->
-  <div class="mb-4 mt-8 flex items-center gap-3">
+  <!-- billing cycle, with the "2 months free" note underneath: both yearly
+       options earn it, the pass costs the same as a year of subscription -->
+  <div class="mb-4 mt-8 flex flex-col items-start gap-1.5">
     <div class="flex gap-1 rounded-lg border border-white/[0.08] bg-layer-2 p-1">
-      {#each [["monthly", "pricing.toggle_monthly"], ["yearly", "pricing.toggle_yearly"]] as const as [c, label] (c)}
+      {#each [["monthly", "pricing.toggle_monthly"], ["yearly", "pricing.toggle_yearly"], ["once", "pricing.toggle_once"]] as const as [c, label] (c)}
         <button
           type="button"
           onclick={() => (cycle = c)}
@@ -167,7 +214,7 @@
     </div>
     <span
       class="font-mono text-[11px] text-emerald-400 transition-opacity"
-      style="opacity: {cycle === 'yearly' ? 1 : 0.5}"
+      style="opacity: {cycle === 'monthly' ? 0.5 : 1}"
     >
       {$_("pricing.yearly_badge")}
     </span>
@@ -179,7 +226,7 @@
   >
     <div class="border-b border-white/[0.08] p-5"></div>
     <div class="flex flex-col gap-1.5 border-b border-l border-white/[0.08] p-5 text-center">
-      <h2 class="font-display text-base font-semibold text-zinc-100">Hoard Free</h2>
+      <h2 class="font-display text-base font-semibold text-zinc-100">Free</h2>
       <p class="font-mono text-xl text-zinc-100">0 €</p>
       <p class="text-xs text-zinc-500">{$_("pricing.free_forever")}</p>
       {#if plan === "free"}
@@ -191,15 +238,11 @@
     <div
       class="flex flex-col gap-1.5 rounded-tr-2xl border-b border-l border-emerald-800/60 p-5 text-center"
     >
-      <h2 class="font-display text-base font-semibold text-emerald-400">Hoard Pro</h2>
+      <h2 class="font-display text-base font-semibold text-emerald-400">Pro</h2>
       <p class="font-mono text-xl text-zinc-100">
-        {proPriceLabel}<span class="text-sm text-zinc-500"
-          >{cycle === "monthly" ? $_("pricing.per_month") : $_("pricing.per_year")}</span
-        >
+        {proPriceLabel}<span class="text-sm text-zinc-500">{proSuffix}</span>
       </p>
-      <p class="text-xs text-zinc-500">
-        {cycle === "monthly" ? $_("pricing.billed_monthly") : $_("pricing.billed_yearly")}
-      </p>
+      <p class="text-xs text-zinc-500">{proBilled}</p>
       <p class="relative flex items-center justify-center gap-1 text-xs text-zinc-500">
         {$_("pricing.tax_note")}
         <span class="group inline-flex">
@@ -212,7 +255,7 @@
         </span>
       </p>
       <div class="mt-auto pt-3">
-        {#if plan === "pro"}
+        {#if !canBuy}
           <p class="text-xs font-medium text-emerald-400">{$_("pricing.cta_current")}</p>
         {:else}
           <Button
@@ -269,9 +312,42 @@
     {/each}
   </div>
 
-  <p class="mt-6 max-w-3xl text-sm leading-relaxed text-zinc-400">
-    {$_("pricing.who_pays")}
-  </p>
+  <!-- where the money goes; the figures come from lib/funding.ts -->
+  <div class="mt-6 rounded-2xl border border-white/[0.08] bg-layer-1 p-5">
+    <h2 class="font-display text-lg font-semibold text-zinc-100">{$_("pricing.money_title")}</h2>
+    <p class="mt-1.5 max-w-3xl text-sm leading-relaxed text-zinc-400">
+      {$_("pricing.money_lead")}
+    </p>
+    <dl class="mt-4 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-xl border border-white/[0.08] bg-layer-2 p-4">
+        <dt class="text-xs leading-relaxed text-zinc-500">{$_("pricing.money_per_user")}</dt>
+        <dd class="mt-1.5 font-mono text-xl text-zinc-100">{money.perUser}</dd>
+      </div>
+      <div class="rounded-xl border border-white/[0.08] bg-layer-2 p-4">
+        <dt class="text-xs leading-relaxed text-zinc-500">{$_("pricing.money_covers")}</dt>
+        <dd class="mt-1.5 font-mono text-xl text-zinc-100">{money.covers}</dd>
+        <dd class="mt-1.5 text-xs leading-relaxed text-zinc-500">
+          {$_("pricing.money_covers_note")}
+        </dd>
+      </div>
+    </dl>
+    <p class="mt-4 max-w-3xl text-sm leading-relaxed text-zinc-400">
+      {$_("pricing.money_donations")}
+    </p>
+    <p class="mt-2 max-w-3xl text-sm leading-relaxed text-zinc-400">
+      {$_("pricing.money_price", { values: { price: money.price } })}
+    </p>
+    <p class="mt-3 text-xs text-zinc-500">
+      <button
+        type="button"
+        class="text-emerald-400 transition-colors hover:text-emerald-300 hover:underline"
+        onclick={() => openExternal(FUNDING.url)}
+      >
+        {$_("pricing.money_link")}
+      </button>
+      · {$_("pricing.money_updated")}
+    </p>
+  </div>
 
   <div class="mt-6 grid gap-4 sm:grid-cols-3">
     {#each notes as n (n.title)}

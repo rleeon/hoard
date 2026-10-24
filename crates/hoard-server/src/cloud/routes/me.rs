@@ -35,8 +35,15 @@ pub struct Me {
     /// "premium features unlocked for the first 30 days" trial from this.
     pub created_at: Option<String>,
     pub subscription_status: Option<String>,
+    /// `month` | `year` | `once`. A `once` row is a pass: its `renews_at` is
+    /// the day its year ends and nothing renews, so a client must not print
+    /// "renews on" next to it.
+    pub subscription_interval: Option<String>,
     pub renews_at: Option<String>,
     pub cancel_at: Option<String>,
+    /// For a pass, the day Pro really ends: `renews_at` plus the grace month.
+    /// `null` for subscriptions, which end on `renews_at` or `cancel_at`.
+    pub pro_until: Option<String>,
     pub storage_used_bytes: i64,
     pub storage_limit_bytes: i64,
     /// Total bytes ever stored, monotonic: never credited back on delete or
@@ -161,48 +168,15 @@ pub async fn get_me(
         .device(Some(fp), header("x-hoard-app-version"))
         .spawn(&state.pool);
 
-    // Sync any subscriptions that actually expired but status wasn't updated
-    // (retroactive fix for webhooks that didn't fire or were delayed).
-    // Check both renews_at (renewal date) and cancel_at (cancellation scheduled date).
-    // Runs before the profile SELECT so a downgrade settled here is visible in
-    // the very response that reports it, not one poll later.
-    let expired_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM subscriptions
-         WHERE user_id = $1 AND status IN ('active','grace')
-         AND ((renews_at IS NOT NULL AND renews_at <= now())
-              OR (cancel_at IS NOT NULL AND cancel_at <= now()))",
-    )
-    .bind(user.user_id)
-    .fetch_one(&state.pool)
-    .await?;
-    if expired_count > 0 {
-        let _ = sqlx::query(
-            "UPDATE subscriptions SET status = 'expired', updated_at = now()
-             WHERE user_id = $1 AND status IN ('active','grace')
-             AND ((renews_at IS NOT NULL AND renews_at <= now())
-                  OR (cancel_at IS NOT NULL AND cancel_at <= now()))",
-        )
-        .bind(user.user_id)
-        .execute(&state.pool)
-        .await;
-        // Grace window first, plan flip second: `settle_storage_limit` reads the
-        // old plan off the row to size the grant (same ordering as the webhook).
-        if let Some(ref cloud) = state.config.cloud {
-            let _ = quota::settle_storage_limit(
-                &state.pool,
-                user.user_id,
-                Plan::Free,
-                None,
-                cloud.storage_downgrade_grace_days as i64,
-            )
-            .await;
-        }
-        let _ =
-            sqlx::query("UPDATE profiles SET plan = 'free', updated_at = now() WHERE user_id = $1")
-                .bind(user.user_id)
-                .execute(&state.pool)
-                .await;
-    }
+    // Expire whatever ran out without a webhook saying so. Runs before the
+    // profile SELECT so a downgrade settled here is visible in the very
+    // response that reports it, not one poll later.
+    let storage_grace_days = state
+        .config
+        .cloud
+        .as_ref()
+        .map_or(30, |c| c.storage_downgrade_grace_days as i64);
+    crate::cloud::lapse::expire_lapsed(&state.pool, user.user_id, storage_grace_days).await?;
 
     // Promote any downgrade whose grace window elapsed, so the limit + status
     // we report are the live ones.
@@ -246,10 +220,11 @@ pub async fn get_me(
         String,
         Option<time::OffsetDateTime>,
         Option<time::OffsetDateTime>,
+        String,
     )> = sqlx::query_as(
-        "SELECT status, renews_at, cancel_at FROM subscriptions
+        r#"SELECT status, renews_at, cancel_at, "interval" FROM subscriptions
               WHERE user_id = $1 AND status IN ('active','grace')
-              ORDER BY updated_at DESC LIMIT 1",
+              ORDER BY updated_at DESC LIMIT 1"#,
     )
     .bind(user.user_id)
     .fetch_optional(&state.pool)
@@ -318,8 +293,14 @@ pub async fn get_me(
         plan: plan.as_str().to_string(),
         created_at: Some(format_dt(row.6)),
         subscription_status: sub.as_ref().map(|s| s.0.clone()),
+        subscription_interval: sub.as_ref().map(|s| s.3.clone()),
         renews_at: sub.as_ref().and_then(|s| s.1).map(format_dt),
         cancel_at: sub.as_ref().and_then(|s| s.2).map(format_dt),
+        pro_until: sub
+            .as_ref()
+            .filter(|s| s.3 == crate::cloud::polar::PASS_INTERVAL)
+            .and_then(|s| s.1)
+            .map(|end| format_dt(end + time::Duration::days(crate::cloud::polar::PASS_GRACE_DAYS))),
         storage_used_bytes: row.4,
         storage_limit_bytes: bytes_or_unlimited(limits.storage_bytes),
         lifetime_storage_bytes: row.7,
@@ -541,7 +522,7 @@ async fn upsert_profile_for(
     if !exists {
         if abuse::is_disposable_email(&user.email) {
             return Err(CloudError::Forbidden(
-                "disposable email addresses aren't allowed for Hoard Cloud",
+                "disposable email addresses aren't allowed for Hoard One",
             ));
         }
         if let Some(canon) = canonical.as_deref() {

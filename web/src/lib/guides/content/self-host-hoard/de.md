@@ -6,13 +6,13 @@ featured: true
 updated: 2026-10-18
 ---
 
-Hoard ist Open Source und selbst hostbar. Statt Hoard Cloud zu nutzen, kannst du denselben `hoard-server` auf deiner eigenen Maschine betreiben und jedes Gerät darauf verweisen – ohne Konto und ohne Speicherlimit außer der Festplatte, die du ihm gibst. Diese Anleitung bringt einen Server in wenigen Minuten mit Docker zum Laufen.
+Hoard ist Open Source und selbst hostbar. Statt Hoard One zu nutzen, kannst du denselben `hoard-server` auf deiner eigenen Maschine betreiben und jedes Gerät darauf verweisen – ohne Konto und ohne Speicherlimit außer der Festplatte, die du ihm gibst. Diese Anleitung bringt einen Server in wenigen Minuten mit Docker zum Laufen.
 
 ## Warum Hoard selbst hosten
 
 - **Volle Kontrolle.** Deine Spielstände liegen auf Hardware, die du kontrollierst, nicht in fremder Cloud.
 - **Kein Limit.** Der Speicher wird nur von deiner eigenen Festplatte begrenzt.
-- **Gleiche App, gleiche Funktionen.** Hintergrund-Sync und versionierter Verlauf funktionieren wie mit Hoard Cloud, mit einer eigenen Voreinstellung: Der Server dünnt alte Versionen mit der Zeit aus (mehr dazu weiter unten).
+- **Gleiche App, gleiche Funktionen.** Hintergrund-Sync und versionierter Verlauf funktionieren wie mit Hoard One, mit einer eigenen Voreinstellung: Der Server dünnt alte Versionen mit der Zeit aus (mehr dazu weiter unten).
 - **Open Source.** Du kannst den Server lesen, prüfen und anpassen.
 
 Das ist der entscheidende Unterschied zu Tools wie [Ludusavi](/guides/ludusavi-alternative): Ludusavi ist großartig für lokale Backups und eigene Cloud per Rclone, aber den Sync richtest du selbst ein. Hoard bietet dir einen verwalteten Sync-Server, den du einmal startest und mit dem sich jedes Gerät verbindet.
@@ -21,9 +21,9 @@ Das ist der entscheidende Unterschied zu Tools wie [Ludusavi](/guides/ludusavi-a
 
 Das gehört klar gesagt, denn genau hier liegen die meisten Vergleiche bei Hoard falsch.
 
-**Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Spielstände liegen auf unseren Servern in der EU.
+**Hoard One** ist die verwaltete Variante, die wir allen empfehlen: du meldest dich an, und deine Spielstände liegen auf unseren Servern in der EU.
 
-**Ein selbst gehostetes Hoard gehört vollständig dir.** Deine Geräte sprechen mit deinem Server und mit sonst nichts. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir können weder einen Spielstand noch einen Spieltitel noch eine E-Mail-Adresse sehen, schlicht weil davon nichts bei uns ankommt. Würde Hoard Cloud morgen abgeschaltet, liefe dein Setup unverändert weiter.
+**Ein selbst gehostetes Hoard gehört vollständig dir.** Deine Geräte sprechen mit deinem Server und mit sonst nichts. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir können weder einen Spielstand noch einen Spieltitel noch eine E-Mail-Adresse sehen, schlicht weil davon nichts bei uns ankommt. Würde Hoard One morgen abgeschaltet, liefe dein Setup unverändert weiter.
 
 Eine Sache der Genauigkeit halber: dein Server hat sehr wohl eigene Zugänge — den Benutzer, den du unten anlegst, und ein Token je Gerät. Die gehören dir, auf deiner Maschine, in deiner Datenbank. Was es nicht gibt, ist ein Konto bei uns.
 
@@ -82,7 +82,7 @@ Das Token wird nur einmal angezeigt und **kann später nicht wiederhergestellt w
 
 ## Die Desktop-App verbinden
 
-Installiere die [Hoard-Desktop-App](/download) auf jedem Rechner. Wähle im Onboarding **Self-Host** und füge deine Server-URL und das eben erstellte Token ein. Ab da verhält es sich genau wie Hoard Cloud: Es erkennt deine Spiele, sichert Spielstände automatisch und führt einen versionierten Verlauf. Siehe [Spielstände zwischen PCs synchronisieren](/guides/sync-game-saves-across-pcs) für den Alltag.
+Installiere die [Hoard-Desktop-App](/download) auf jedem Rechner. Wähle im Onboarding **Self-Host** und füge deine Server-URL und das eben erstellte Token ein. Ab da verhält es sich genau wie Hoard One: Es erkennt deine Spiele, sichert Spielstände automatisch und führt einen versionierten Verlauf. Siehe [Spielstände zwischen PCs synchronisieren](/guides/sync-game-saves-across-pcs) für den Alltag.
 
 ## Halte deinen Server aktuell
 
@@ -105,7 +105,7 @@ Hörst du nach der ersten auf, läuft der alte Container unberührt weiter: `/v1
 
 ## Wie viel Historie er behält
 
-Hoard Cloud behält jede Version. Ein selbst gehosteter Server dünnt alte Versionen ab Werk aus: Die jüngere Historie bleibt vollständig, die ältere wird lückenhafter. Mit der Standardeinstellung behält er die 15 neuesten Versionen eines Spiels und danach jeweils die letzte der 19 jüngsten Stunden, 11 jüngsten Tage und 6 jüngsten Wochen, in denen du gespielt hast. Ältere Versionen werden entfernt, außer angehefteten und der neuesten jedes Spiels, und eine entfernte Version liegt 30 Tage im Papierkorb des Servers, bevor sie endgültig gelöscht wird.
+Hoard One behält jede Version. Ein selbst gehosteter Server dünnt alte Versionen ab Werk aus: Die jüngere Historie bleibt vollständig, die ältere wird lückenhafter. Mit der Standardeinstellung behält er die 15 neuesten Versionen eines Spiels und danach jeweils die letzte der 19 jüngsten Stunden, 11 jüngsten Tage und 6 jüngsten Wochen, in denen du gespielt hast. Ältere Versionen werden entfernt, außer angehefteten und der neuesten jedes Spiels, und eine entfernte Version liegt 30 Tage im Papierkorb des Servers, bevor sie endgültig gelöscht wird.
 
 Um alles zu behalten, setze `snapshot_pruning = false` im Abschnitt `[retention]` der `config.toml` (in `./config/` neben der Compose-Datei) und starte den Server neu (`docker compose restart` mit Docker). Im selben Abschnitt verschiebt `data_saving` die Balance: `0.0` behält fast alles, `1.0` nur das Nötigste.
 
@@ -113,9 +113,9 @@ Um alles zu behalten, setze `snapshot_pruning = false` im Abschnitt `[retention]
 
 Für alles, was über dein lokales Netz hinausgeht, beende TLS an einem Reverse-Proxy (Caddy, nginx oder Traefik). Lieber Bare Metal? Das Repo liefert auch ein `systemd`-Installationsskript und einen Befehl `hoard-server upgrade`, der die Binärdatei atomar austauscht, ohne einen laufenden Sync abzubrechen.
 
-## Selbst hosten oder Hoard Cloud?
+## Selbst hosten oder Hoard One?
 
-Selbst-Hosting ist ideal, wenn du schon einen Server betreibst und volle Kontrolle ohne Limit willst. Wenn du keine Infrastruktur pflegen möchtest, bietet dir [Hoard Cloud](/pricing) denselben Sync verwaltet, mit einem kostenlosen Einstieg. So oder so bleiben App und Spielstände portabel – du kannst später wechseln.
+Selbst-Hosting ist ideal, wenn du schon einen Server betreibst und volle Kontrolle ohne Limit willst. Allen anderen empfehlen wir [Hoard One](/pricing): derselbe Sync, von uns verwaltet, mit einem kostenlosen Einstieg. So oder so bleiben App und Spielstände portabel – du kannst später wechseln.
 
 <!-- faq -->
 
@@ -125,7 +125,7 @@ Selbst-Hosting ist ideal, wenn du schon einen Server betreibst und volle Kontrol
 
 Nein. Die Desktop-App spricht mit der Serveradresse, die du ihr gibst. Deine Stände, deine Nutzer und deine Logs bleiben auf deiner Maschine, und nichts davon erreicht uns.
 
-### Ist der selbst gehostete Server derselbe Code wie Hoard Cloud?
+### Ist der selbst gehostete Server derselbe Code wie Hoard One?
 
 Ja, derselbe `hoard-server`-Code unter AGPL-3.0. Die gehostete Fassung ergänzt, was nur ein öffentlicher Dienst braucht, etwa Registrierung, Tarife und Abrechnung; alles, was deine Spielstände findet, synchronisiert und versioniert, ist gemeinsam. Eine abgespeckte Community-Edition gibt es nicht.
 
@@ -145,6 +145,6 @@ Im eigenen LAN nicht. Sobald der Server von außen erreichbar ist, gehört ein R
 
 Der Snapshot entsteht lokal, es geht also nichts verloren. Er wird von selbst hochgeladen, sobald der Server wieder antwortet.
 
-### Kann ich mit Hoard Cloud anfangen und später wechseln?
+### Kann ich mit Hoard One anfangen und später wechseln?
 
 Ja, in beide Richtungen. Über die Kontoseite lässt sich alles exportieren, und die App kann ohne Neuinstallation auf einen anderen Server zeigen.

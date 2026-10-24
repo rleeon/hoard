@@ -9,7 +9,7 @@ Perder um save significa perder horas de progresso. O Hoard faz backup dos teus 
 
 ## O que o Hoard guarda
 
-O Hoard deteta as pastas de save dos jogos a que jogas e copia-as para a tua própria nuvem — Hoard Cloud ou um servidor que alojes tu mesmo. Cada backup é versionado, por isso as cópias antigas nunca são sobrescritas.
+O Hoard deteta as pastas de save dos jogos a que jogas e copia-as para a tua própria nuvem — Hoard One ou um servidor que alojes tu mesmo. Cada backup é versionado, por isso as cópias antigas nunca são sobrescritas.
 
 Para encontrar onde cada jogo guarda os saves, o Hoard usa a mesma base de dados comunitária de localizações que alimenta o Ludusavi, por isso a deteção funciona logo para milhares de títulos. A diferença está no que acontece a seguir: em vez de deixar o backup no teu disco, o Hoard versiona-o automaticamente na nuvem.
 
@@ -19,7 +19,7 @@ Para encontrar onde cada jogo guarda os saves, o Hoard usa a mesma base de dados
 2. Inicia sessão, ou aponta a app para o teu servidor self-hosted.
 3. Abre a **Biblioteca**. O Hoard procura jogos instalados e lista os saves que encontra.
 4. Adiciona os jogos que queres proteger. O Hoard localiza cada pasta de save automaticamente; podes adicionar um caminho à mão se um jogo não for detetado.
-5. Deixa o **modo automático** ligado. O Hoard vigia as pastas de save e faz backup quando paras de jogar.
+5. Deixa o **modo automático** ligado. O Hoard vigia as pastas de save e faz backup sempre que o jogo grava, e outra vez quando paras de jogar.
 
 A partir daí cada sessão é capturada sem que faças nada.
 
@@ -49,7 +49,9 @@ Uma pasta de saves raramente contém só saves, por isso o Hoard separa o que en
 
 ## Quando é feita a cópia
 
-O Hoard vigia a pasta e captura-a **depois de parares de jogar**, não enquanto o jogo tem ficheiros abertos. Se o save foi escrito há segundos, espera que as coisas acalmem: um ficheiro a ser escrito não é um ficheiro que valha a pena capturar a meio.
+O Hoard vigia a pasta e captura-a **sempre que o jogo grava**, também a meio da sessão, e mais uma vez quando sais. Nunca captura um ficheiro a meio: espera que a pasta fique quieta durante uns segundos e, se o jogo ainda tiver um ficheiro aberto, espera também por isso. Os jogos que gravam sem parar têm um intervalo mínimo entre cópias, para que uma noite de jogo não se transforme em cem versões.
+
+O que chega das tuas outras máquinas funciona ao contrário: espera que feches o jogo, para que o teu progresso nunca mude debaixo dos teus pés.
 
 Cada captura é uma versão. Os snapshots são guardados por hash de conteúdo, por isso um ficheiro que não muda é guardado uma só vez: dez versões de um save de 2 GB que muda pouco entre sessões ocupam cerca de 2 GB, não 20.
 
@@ -73,7 +75,7 @@ Já usas uma ferramenta de backup local como o Ludusavi? Podes mantê-la — mas
 
 ### O Hoard faz cópias enquanto jogo?
 
-Não. Espera que saias e que a pasta de saves fique quieta, por isso uma cópia nunca é um ficheiro escrito a meio.
+Sim. Sempre que o jogo acaba de escrever um save e a pasta fica quieta durante uns segundos, o Hoard captura-o, e mais uma vez quando sais. Nunca envia um ficheiro escrito a meio, e os saves das tuas outras máquinas esperam que feches o jogo.
 
 ### Quanto espaço ocupam os meus saves?
 

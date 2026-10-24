@@ -21,7 +21,8 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     bandwidthQuotaBytes: 5 * GB,
     bandwidthWindowSecs: 15 * 60,
     priceMonthly: 0,
-    priceYearly: 0
+    priceYearly: 0,
+    priceOnce: 0
   },
   pro: {
     id: 'pro',
@@ -37,7 +38,10 @@ export const PLANS: Record<PlanId, PlanLimits> = {
     bandwidthWindowSecs: 15 * 60,
     priceMonthly: 1.99,
     // Yearly = monthly × 10 (two months free).
-    priceYearly: 19.99
+    priceYearly: 19.99,
+    // The one-year pass costs the same as a year of subscription: what it
+    // sells is not a discount but a card that is never charged again.
+    priceOnce: 19.99
   }
 };
 

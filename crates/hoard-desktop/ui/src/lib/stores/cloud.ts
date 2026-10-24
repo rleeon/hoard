@@ -54,10 +54,15 @@ export type CloudAccount = {
   bandwidth_quota_bytes: number;
   bandwidth_window_secs: number;
   subscription_status: string | null;
+  /** `once` is the one-year pass: `renews_at` is then the day its year ends
+   *  and nothing renews. Absent on older servers. */
+  subscription_interval?: "month" | "year" | "once" | null;
   /** RFC3339, when the current billing period renews. */
   renews_at: string | null;
   /** RFC3339, populated only when the user has scheduled a cancellation. */
   cancel_at: string | null;
+  /** RFC3339, for a pass only: the end of the month of Pro after its year. */
+  pro_until?: string | null;
   /** RFC3339, the first time this account was ever Pro, `null` if never.
    *  One-way: a downgrade doesn't clear it. It's why an account on Free can
    *  legitimately report an unlimited `devices_limit`, and what lets the
@@ -429,7 +434,7 @@ export async function openWebAccount(): Promise<void> {
  *  today. */
 export async function openUpgradePage(
   plan?: "pro",
-  interval: "month" | "year" = "month",
+  interval: "month" | "year" | "once" = "month",
 ): Promise<void> {
   try {
     const url = await invoke<string>("cloud_create_checkout", { interval });

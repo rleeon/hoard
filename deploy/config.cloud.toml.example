@@ -114,6 +114,9 @@ interval = "year"
 # 'grace' state a cancellation leaves behind.
 storage_downgrade_grace_days = 30
 
+# The webhook in Polar must be subscribed to subscription.*, order.paid (the
+# pass is granted from it) and order.refunded (a full refund takes Pro away,
+# from any product). Events left unticked there simply never arrive.
 [cloud.polar]
 access_token = ""
 webhook_secret = ""
@@ -135,6 +138,15 @@ interval = "month"
 product_id = "ee6d9395-cc3a-4b0c-96a5-4a008292ffc6"
 plan = "pro"
 interval = "year"
+
+# One year of Pro, paid once (€19.99). `once` makes the webhook grant it on
+# `order.paid` and set it to run out 365 days later; nothing renews. The Polar
+# product MUST be a one-time purchase: a recurring one here would charge again,
+# which is the very thing the pass exists to avoid.
+[[cloud.polar.products]]
+product_id = "2a0298c5-c587-4201-af5e-4cbcd5977991"
+plan = "pro"
+interval = "once"
 
 # --- Pro x2 (50 GB) ---
 # [[cloud.polar.products]]

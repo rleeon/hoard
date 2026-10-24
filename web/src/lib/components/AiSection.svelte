@@ -1,6 +1,6 @@
 <script lang="ts">
   import { _ } from 'svelte-i18n';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Check, ArrowRight } from 'lucide-svelte';
   import { reveal } from '$lib/actions/reveal';
   import { tilt } from '$lib/actions/tilt';
@@ -43,11 +43,36 @@
     lines = [...lines, { id: seq++, who, text }].slice(-24);
   }
 
+  // A native caret can't be a block, so the input hides its own and this one
+  // sits where the caret is, found by measuring the text before it in a hidden
+  // copy. It restarts lit on every move and blinks while it rests, like a
+  // terminal's. SCALE is the input's `transform` in `.term-input`.
+  const SCALE = 0.78125;
+  let mirror: HTMLSpanElement;
+  let caretPos = $state(0);
+  let caretX = $state(0);
+  let caretShown = $state(true);
+  let blink = $state(0);
+
+  function trackCaret() {
+    // A frame later, so a keydown has already moved the selection.
+    requestAnimationFrame(async () => {
+      if (!input) return;
+      const start = input.selectionStart ?? draft.length;
+      caretShown = start === (input.selectionEnd ?? start);
+      caretPos = start;
+      blink++;
+      await tick();
+      caretX = mirror.offsetWidth - input.scrollLeft * SCALE;
+    });
+  }
+
   function send(e: SubmitEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text) return;
     draft = '';
+    trackCaret();
     push('you', text);
     setTimeout(() => push('command', COMMAND), 350);
     setTimeout(() => push('agent', REPLY), 1100);
@@ -205,17 +230,38 @@
                 <input
                   bind:this={input}
                   bind:value={draft}
-                  onfocus={() => (focused = true)}
-                  onblur={() => (focused = false)}
+                  onfocus={() => {
+                    focused = true;
+                    trackCaret();
+                  }}
+                  onblur={() => {
+                    focused = false;
+                    trackCaret();
+                  }}
+                  oninput={trackCaret}
+                  onkeydown={trackCaret}
+                  onclick={trackCaret}
+                  onselect={trackCaret}
                   aria-label={$_('aihome.demo_input')}
                   maxlength="200"
                   autocomplete="off"
                   autocapitalize="off"
                   spellcheck="false"
-                  class="term-input bg-transparent text-ink caret-ink outline-none"
+                  class="term-input bg-transparent text-ink caret-transparent outline-none"
                 />
-                {#if !focused && !draft}
-                  <span class="caret pointer-events-none absolute left-0 top-1/2 -translate-y-1/2"></span>
+                <span
+                  bind:this={mirror}
+                  class="invisible absolute left-0 top-0 whitespace-pre"
+                  aria-hidden="true">{draft.slice(0, caretPos)}</span
+                >
+                {#if caretShown}
+                  {#key blink}
+                    <span
+                      class="caret pointer-events-none absolute top-1/2 -translate-y-1/2"
+                      style:left="{caretX}px"
+                      data-motion="keep"
+                    ></span>
+                  {/key}
                 {/if}
               </div>
             </form>
@@ -244,14 +290,15 @@
     mask-image: linear-gradient(to bottom, transparent 0, #000 2.5rem);
   }
 
-  /* A terminal's block caret. Under reduced-motion the site-wide rule freezes
-     it lit, which is how a terminal looks anyway. */
+  /* A terminal's block caret. It keeps blinking under reduced-motion
+     (`data-motion="keep"`), at the owner's request: it blinks in place and
+     travels nowhere. `difference` turns the letter under it dark, as a block
+     caret does. */
   .caret {
-    display: inline-block;
-    width: 0.55em;
+    width: 1ch;
     height: 1.05em;
-    vertical-align: -0.15em;
-    background: var(--color-ink-soft);
+    background: var(--color-ink);
+    mix-blend-mode: difference;
     animation: caret 1.1s steps(1) infinite;
   }
   @keyframes caret {

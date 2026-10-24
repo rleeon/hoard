@@ -12,7 +12,7 @@ frees up immediately. Devices nobody has seen in 90 days are removed on their
 own.
 
 {{#offer}}
-HOARD PRO - unlimited devices, yours for good
+PRO - unlimited devices, yours for good
 Desktop, laptop, handheld, the machine at your parents' place: sign in on all
 of them and stop counting. And the device allowance is kept for life, go Pro
 once and even if you cancel later, you never drop back to three. Plus 100 GB

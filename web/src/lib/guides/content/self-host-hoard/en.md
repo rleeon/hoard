@@ -7,13 +7,13 @@ updated: 2026-10-18
 related: sync-game-saves-across-pcs, opensave-alternative, back-up-game-saves
 ---
 
-Hoard is open source and self-hostable. Instead of using Hoard Cloud, you can run the same `hoard-server` on your own machine and point every device at it — no account, no storage quota beyond the disk you give it. This guide gets a server running with Docker in a few minutes.
+Hoard is open source and self-hostable. Instead of using Hoard One, you can run the same `hoard-server` on your own machine and point every device at it — no account, no storage quota beyond the disk you give it. This guide gets a server running with Docker in a few minutes.
 
 ## Why self-host Hoard
 
 - **Full ownership.** Your game saves live on hardware you control, not someone else's cloud.
 - **No quota.** Storage is limited only by your own disk.
-- **Same app, same features.** Background sync and versioned history work as they do with Hoard Cloud, with one default of its own: the server thins out old versions over time (more on that below).
+- **Same app, same features.** Background sync and versioned history work as they do with Hoard One, with one default of its own: the server thins out old versions over time (more on that below).
 - **Open source.** You can read, audit and modify the server.
 
 This is the key difference from tools like [Ludusavi](/guides/ludusavi-alternative): Ludusavi is great for local backups and bring-your-own-cloud via Rclone, but you wire up the sync yourself. Hoard gives you a managed sync server you run once and every device connects to.
@@ -22,9 +22,9 @@ This is the key difference from tools like [Ludusavi](/guides/ludusavi-alternati
 
 Worth stating plainly, because it's the thing most comparisons get wrong about Hoard.
 
-**Hoard Cloud** is the managed option: you sign in, and your saves sit on our servers, in the EU.
+**Hoard One** is the managed option, and the one we recommend for everyone: you sign in, and your saves sit on our servers, in the EU.
 
-**A self-hosted Hoard is entirely yours.** Your devices talk to your server and to nothing else. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, for the simple reason that none of it ever reaches us. If Hoard Cloud shut down tomorrow, your setup would carry on unchanged.
+**A self-hosted Hoard is entirely yours.** Your devices talk to your server and to nothing else. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, for the simple reason that none of it ever reaches us. If Hoard One shut down tomorrow, your setup would carry on unchanged.
 
 To be exact about one thing: your server does have logins of its own — the user you create below, and a token per device. Those are yours, on your machine, in your database. What doesn't exist is an account with us.
 
@@ -83,7 +83,7 @@ The token is printed once and **cannot be retrieved later**, so copy it now. For
 
 ## Connect the desktop app
 
-Install the [Hoard desktop app](/download) on each machine. In the onboarding flow, pick **Self-Host**, then paste your server URL and the token you just created. From there it behaves exactly like Hoard Cloud: it detects your games, backs up saves automatically, and keeps versioned history. See [syncing saves across PCs](/guides/sync-game-saves-across-pcs) for the day-to-day flow.
+Install the [Hoard desktop app](/download) on each machine. In the onboarding flow, pick **Self-Host**, then paste your server URL and the token you just created. From there it behaves exactly like Hoard One: it detects your games, backs up saves automatically, and keeps versioned history. See [syncing saves across PCs](/guides/sync-game-saves-across-pcs) for the day-to-day flow.
 
 ## Keep your server up to date
 
@@ -106,7 +106,7 @@ Stop after the first and the old container keeps running untouched: `/v1/health`
 
 ## How much history it keeps
 
-Hoard Cloud keeps every version. A self-hosted server, out of the box, thins old ones out: recent history stays complete and older history gets sparser. With the default setting it keeps a game's 15 newest versions, then the last one of each of the 19 most recent hours, 11 most recent days and 6 most recent weeks in which you played. Older versions are removed, except pinned versions and each game's newest one, and a removed version sits in the server's trash for 30 days before it's deleted for good.
+Hoard One keeps every version. A self-hosted server, out of the box, thins old ones out: recent history stays complete and older history gets sparser. With the default setting it keeps a game's 15 newest versions, then the last one of each of the 19 most recent hours, 11 most recent days and 6 most recent weeks in which you played. Older versions are removed, except pinned versions and each game's newest one, and a removed version sits in the server's trash for 30 days before it's deleted for good.
 
 To keep everything, set `snapshot_pruning = false` under `[retention]` in `config.toml` (in `./config/`, next to the compose file) and restart the server (`docker compose restart` with Docker). In the same section, `data_saving` moves the balance: `0.0` keeps almost everything, `1.0` keeps only the essentials.
 
@@ -114,9 +114,9 @@ To keep everything, set `snapshot_pruning = false` under `[retention]` in `confi
 
 For anything exposed beyond your local network, terminate TLS at a reverse proxy (Caddy, nginx or Traefik). Prefer bare metal? The repo also ships a `systemd` install script and a `hoard-server upgrade` command that swaps the binary atomically without killing an in-flight sync.
 
-## Self-host or Hoard Cloud?
+## Self-host or Hoard One?
 
-Self-hosting is ideal if you already run a server and want full control with no quota. If you'd rather not maintain infrastructure, [Hoard Cloud](/pricing) gives you the same sync managed for you, with a free tier to start. Either way the app and your saves stay portable — you can switch later.
+Self-hosting is ideal if you already run a server and want full control with no quota. For everyone else we recommend [Hoard One](/pricing): the same sync, managed for you, with a free tier to start. Either way the app and your saves stay portable — you can switch later.
 
 <!-- faq -->
 
@@ -126,7 +126,7 @@ Self-hosting is ideal if you already run a server and want full control with no 
 
 No. The desktop app talks to the server address you give it. Your saves, your users and your logs stay on your machine, and nothing about them reaches us.
 
-### Is the self-hosted server the same code as Hoard Cloud?
+### Is the self-hosted server the same code as Hoard One?
 
 Yes, the same `hoard-server` code, under AGPL-3.0. The hosted build adds the parts only a public service needs, such as sign-up, plans and billing; everything that finds, syncs and versions your saves is shared. There is no cut-down community edition.
 
@@ -146,6 +146,6 @@ Not on your own LAN. The moment the server is reachable from outside it, put a r
 
 The snapshot is taken locally, so nothing is lost. It uploads on its own once the server answers again.
 
-### Can I start on Hoard Cloud and move later?
+### Can I start on Hoard One and move later?
 
 Yes, in both directions. You can export everything from your account page, and the app can be pointed at a different server without reinstalling.

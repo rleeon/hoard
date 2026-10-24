@@ -704,7 +704,7 @@ impl PolarConfig {
 pub struct PolarProduct {
     pub product_id: String, // UUID
     pub plan: String,       // 'pro'
-    pub interval: String,   // 'month' | 'year'
+    pub interval: String,   // 'month' | 'year' | 'once' (a pass, see cloud::polar)
     /// Storage this tier grants, in GB (Pro x1 = 25, x2 = 50, …). Written to
     /// `profiles.storage_limit_bytes` by the webhook. `None`/omitted means the
     /// plan default (so an old single-tier config keeps working).

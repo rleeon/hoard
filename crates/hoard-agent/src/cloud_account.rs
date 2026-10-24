@@ -35,14 +35,14 @@ impl CloudError {
     /// fallback for the cases it does not intercept by code.
     pub fn message(&self) -> String {
         match self {
-            CloudError::Unauthorized => "the Cloud session expired, sign in again".into(),
+            CloudError::Unauthorized => "the Hoard One session expired, sign in again".into(),
             CloudError::Http { status, body } => {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
                     if let Some(msg) = v.get("error").and_then(|x| x.as_str()) {
-                        return format!("Hoard Cloud: {msg} ({status})");
+                        return format!("Hoard One: {msg} ({status})");
                     }
                 }
-                format!("Hoard Cloud answered {status}: {body}")
+                format!("Hoard One answered {status}: {body}")
             }
             CloudError::Network(m) | CloudError::Parse(m) => m.clone(),
         }

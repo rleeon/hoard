@@ -108,7 +108,7 @@ impl std::fmt::Display for FeedbackError {
             FeedbackError::Unreadable(n) => write!(f, "{n} could not be read"),
             FeedbackError::Throttled(s) => write!(f, "too many reports, try again in {s} s"),
             FeedbackError::Http { status, body } => {
-                write!(f, "Hoard Cloud answered {status}: {body}")
+                write!(f, "Hoard One answered {status}: {body}")
             }
             FeedbackError::Network(m) => f.write_str(m),
         }

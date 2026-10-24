@@ -212,8 +212,8 @@ fn embed(a: Arrival, id: Uuid) -> serde_json::Value {
         _ => ("New idea", 0x39_87_e5),
     };
     let mode = match a.mode.as_deref() {
-        Some("cloud") if a.account => "Hoard Cloud",
-        Some("cloud") => "Hoard Cloud (signed out)",
+        Some("cloud") if a.account => "Hoard One",
+        Some("cloud") => "Hoard One (signed out)",
         Some("selfhosted") => "self-hosted",
         _ => "no server",
     };

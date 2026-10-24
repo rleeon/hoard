@@ -33,6 +33,7 @@
     downloadCloudExport,
     deleteCloudAccount,
     openBillingPortal,
+    openUpgradePage,
     openWebAccount,
     setMaxSaveSize,
     planLabel,
@@ -44,6 +45,7 @@
   import { healthCheck, type HealthInfo } from "../lib/api";
   import { toastError, toastInfo, toastSuccess } from "../lib/stores/toasts";
   import { formatBytes, fmtDate as dateIn } from "../lib/utils/format";
+  import { pass } from "../lib/stores/pass";
   import { formatCloudError } from "../lib/utils/cloudErrors";
 
   let busyAction = $state<
@@ -742,7 +744,18 @@
           <p class="mt-1 text-xl font-semibold text-emerald-400">
             {planLabel(account.plan)}
           </p>
-          {#if account.subscription_status}
+          {#if account.subscription_interval === "once" && account.renews_at}
+            <!-- A pass renews nothing: its date is where the year ends, and
+                 after it comes the month of Pro on us. "Renews on" here would
+                 promise a charge that never comes. -->
+            <p class="text-xs text-zinc-500">
+              {#if $pass?.phase === "grace"}
+                {$_("account.pass_grace", { values: { date: fmtDate($pass.proUntil) } })}
+              {:else}
+                {$_("account.pass_ends_on", { values: { date: fmtDate(account.renews_at) } })}
+              {/if}
+            </p>
+          {:else if account.subscription_status}
             <p class="text-xs text-zinc-500">
               {$_("account.status_" + account.subscription_status, {
                 default: account.subscription_status,
@@ -766,10 +779,18 @@
           {#if account.plan === "free"}
             <UpgradeButton from="account" />
           {/if}
+          {#if $pass}
+            <Button variant="outline" onclick={() => openUpgradePage("pro", "once")}>
+              {$_("pass.buy")}
+            </Button>
+          {/if}
           {#if account.plan !== "free"}
             <Button variant="ghost" onclick={openBillingPortal}>
               <CreditCard size={14} />
-              {$_("account.manage_billing")}
+              <!-- A pass has nothing to manage, only receipts. -->
+              {account.subscription_interval === "once"
+                ? $_("account.view_invoices")
+                : $_("account.manage_billing")}
             </Button>
           {/if}
         </div>

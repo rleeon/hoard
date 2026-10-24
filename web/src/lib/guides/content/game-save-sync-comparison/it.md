@@ -92,7 +92,7 @@ Hoard prende la sessione di gioco come unità. Il motore gira come servizio in b
 - **Cronologia versionata per sessione.** Ogni sessione è una versione a cui tornare, anche dopo un guasto al disco o un'installazione pulita.
 - **Deduplicazione per hash del contenuto.** Dieci versioni di un salvataggio da 2 GB che cambia poco tra una sessione e l'altra costano circa 2 GB, non 20 GB. I trasferimenti sono compressi con zstd.
 - **SHA-256 in salita e in discesa.** La corruzione viene intercettata prima che possa sovrascrivere un salvataggio buono. Niente viene mai sovrascritto in silenzio: è tutto il senso del progetto.
-- **Cloud o self-hosted, lo stesso codice.** Hoard Cloud ha un piano gratuito (2 GB, 3 dispositivi, cronologia completa). Oppure avvii `hoard-server` da solo con Docker Compose su qualsiasi archiviazione compatibile S3 — MinIO, Garage, Backblaze B2 — senza account e senza quota. AGPL-3.0.
+- **Cloud o self-hosted, lo stesso codice.** Hoard One ha un piano gratuito (2 GB, 3 dispositivi, cronologia completa). Oppure avvii `hoard-server` da solo con Docker Compose su qualsiasi archiviazione compatibile S3 — MinIO, Garage, Backblaze B2 — senza account e senza quota. AGPL-3.0.
 - **Windows, Linux, macOS**, più una CLI senza interfaccia per uno Steam Deck o un server.
 - **Emulatori in beta:** PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP e altri come preimpostazioni.
 
@@ -110,12 +110,12 @@ Sincronizza la cartella padre e ottieni un conflitto permanente tra due macchine
 - **È giovane.** Ludusavi e Game Backup Monitor hanno anni di segnalazioni alle spalle. Hoard no, e per qualcosa che custodisce una partita da 200 ore la differenza conta.
 - **Non fa condivisione cooperativa.** Se vuoi passare un mondo a un amico, SaveSync è fatto per quello e Hoard no.
 
-## La distinzione tra Hoard Cloud e self-hosting
+## La distinzione tra Hoard One e self-hosting
 
 I confronti su Hoard quasi sempre fondono i due in uno solo, e il risultato è sbagliato. Quindi, chiaramente:
 
-- **Hoard Cloud** è l'opzione gestita: accedi e i tuoi salvataggi stanno sui nostri server, nell'UE.
-- **Un Hoard self-hosted è interamente tuo.** Fai girare `hoard-server` sul tuo PC o NAS e i salvataggi vanno dalla tua macchina al tuo disco. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Non vediamo un salvataggio, il nome di un gioco o un indirizzo email, perché niente di tutto ciò ci arriva. Se Hoard Cloud chiudesse domani, un'installazione self-hosted continuerebbe uguale.
+- **Hoard One** è l'opzione gestita, quella che consigliamo a tutti: accedi e i tuoi salvataggi stanno sui nostri server, nell'UE.
+- **Un Hoard self-hosted è interamente tuo.** Fai girare `hoard-server` sul tuo PC o NAS e i salvataggi vanno dalla tua macchina al tuo disco. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Non vediamo un salvataggio, il nome di un gioco o un indirizzo email, perché niente di tutto ciò ci arriva. Se Hoard One chiudesse domani, un'installazione self-hosted continuerebbe uguale.
 
 Stesso codice, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, più un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, a meno che tu non lo disattivi. E per essere esatti su un dettaglio: il tuo server ha eccome i suoi accessi — un utente e un token per dispositivo — ma vivono nel tuo database, non nel nostro.
 
@@ -123,7 +123,7 @@ Stesso codice, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, 
 
 | Strumento | Sincronizzazione automatica tra dispositivi | Dove vivono i salvataggi | Cronologia | Piattaforme | Licenza |
 |---|---|---|---|---|---|
-| **Hoard** | Sì, per sessione di gioco | Hoard Cloud o un tuo server (compatibile S3) | Versionata per sessione, deduplicata | Win · Linux · macOS · Deck | AGPL-3.0, piano gratuito |
+| **Hoard** | Sì, per sessione di gioco | Hoard One o un tuo server (compatibile S3) | Versionata per sessione, deduplicata | Win · Linux · macOS · Deck | AGPL-3.0, piano gratuito |
 | **Ludusavi** | Manuale, o Rclone montato da te | Locale, più il tuo remote Rclone | Copie locali versionate | Win · Linux · macOS | Gratis, open source |
 | **Syncthing** | Sì, specchio continuo | Solo i tuoi dispositivi | Versionamento per file | Tutto | Gratis, open source |
 | **OpenSave** | Sì, peer-to-peer | I tuoi dispositivi, replica cloud opzionale | Snapshot e branch | Win · Linux · macOS · Deck | MIT |

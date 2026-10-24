@@ -9,7 +9,7 @@ Ein verlorener Spielstand bedeutet verlorene Stunden an Fortschritt. Hoard siche
 
 ## Was Hoard sichert
 
-Hoard erkennt die Speicherordner der Spiele, die du spielst, und kopiert sie in deine eigene Cloud — entweder Hoard Cloud oder einen selbst gehosteten Server. Jedes Backup ist versioniert, ältere Kopien werden also nie überschrieben.
+Hoard erkennt die Speicherordner der Spiele, die du spielst, und kopiert sie in deine eigene Cloud — entweder Hoard One oder einen selbst gehosteten Server. Jedes Backup ist versioniert, ältere Kopien werden also nie überschrieben.
 
 Um zu finden, wo jedes Spiel seine Stände ablegt, nutzt Hoard dieselbe Community-Datenbank für Speicherorte, die auch Ludusavi antreibt — die Erkennung funktioniert also sofort für Tausende von Titeln. Der Unterschied liegt darin, was danach passiert: Statt das Backup auf deiner Festplatte zu belassen, versioniert Hoard es automatisch in der Cloud.
 
@@ -19,7 +19,7 @@ Um zu finden, wo jedes Spiel seine Stände ablegt, nutzt Hoard dieselbe Communit
 2. Melde dich an oder richte die App auf deinen selbst gehosteten Server aus.
 3. Öffne die **Bibliothek**. Hoard sucht nach installierten Spielen und listet die gefundenen Stände auf.
 4. Füge die Spiele hinzu, die du schützen willst. Hoard findet jeden Speicherordner automatisch; du kannst einen Pfad von Hand ergänzen, falls ein Spiel nicht erkannt wird.
-5. Lass den **Automatikmodus** an. Hoard überwacht die Speicherordner und sichert sie, nachdem du aufhörst zu spielen.
+5. Lass den **Automatikmodus** an. Hoard überwacht die Speicherordner und sichert sie jedes Mal, wenn ein Spiel speichert, und noch einmal, wenn du aufhörst zu spielen.
 
 Ab jetzt wird jede Sitzung erfasst, ohne dass du etwas tun musst.
 
@@ -49,7 +49,9 @@ Ein Speicherordner enthält selten nur Spielstände, deshalb sortiert Hoard, was
 
 ## Wann gesichert wird
 
-Hoard beobachtet den Ordner und sichert ihn, **nachdem du aufgehört hast zu spielen**, nicht während ein Spiel Dateien offen hält. Wurde der Stand vor Sekunden geschrieben, wartet es, bis Ruhe einkehrt: eine Datei im Schreibvorgang ist keine Datei, die man halb sichern will.
+Hoard beobachtet den Ordner und sichert ihn **jedes Mal, wenn das Spiel speichert**, auch mitten in einer Sitzung, und noch einmal beim Beenden. Halbe Dateien sichert es nie: Es wartet, bis der Ordner ein paar Sekunden ruhig ist, und wenn das Spiel eine Datei noch offen hält, wartet es auch darauf. Spiele, die ständig speichern, bekommen einen Mindestabstand zwischen den Sicherungen, damit aus einem Spieleabend nicht hundert Versionen werden.
+
+Was von deinen anderen Rechnern kommt, läuft andersherum: Es wartet, bis du das Spiel schließt, damit sich dein Spielstand nie unter dir verändert.
 
 Jede Sicherung ist eine Version. Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal: Zehn Versionen eines 2 GB großen Stands, an dem sich zwischen den Sitzungen wenig ändert, kosten etwa 2 GB, nicht 20.
 
@@ -73,7 +75,7 @@ Nutzt du bereits ein lokales Backup-Tool wie Ludusavi? Du kannst es behalten —
 
 ### Sichert Hoard, während ich spiele?
 
-Nein. Es wartet, bis du aufhörst und der Speicherordner zur Ruhe kommt, damit ein Backup nie eine halb geschriebene Datei ist.
+Ja. Jedes Mal, wenn das Spiel einen Spielstand fertig geschrieben hat und der Ordner ein paar Sekunden ruhig ist, sichert Hoard ihn, und noch einmal beim Beenden. Eine halb geschriebene Datei lädt es nie hoch, und Spielstände von deinen anderen Rechnern warten, bis du das Spiel schließt.
 
 ### Wie viel Platz brauchen meine Spielstände?
 

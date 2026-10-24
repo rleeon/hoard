@@ -73,6 +73,7 @@
   import Logo from "./lib/components/Logo.svelte";
   import ActivityFeed from "./lib/components/ActivityFeed.svelte";
   import StorageFullBanner from "./lib/components/StorageFullBanner.svelte";
+  import PassReminderBanner from "./lib/components/PassReminderBanner.svelte";
   import HalloweenSpider from "./lib/components/HalloweenSpider.svelte";
   import { halloween } from "./lib/stores/theme";
   import {
@@ -1313,6 +1314,7 @@
     class="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[min(22rem,calc(100vw-2rem))] flex-col items-stretch gap-2"
   >
     <StorageFullBanner />
+    <PassReminderBanner />
     {#if $prefs?.live_activity_visible ?? true}
       <ActivityFeed onClose={() => toggleLiveActivity()} />
     {/if}

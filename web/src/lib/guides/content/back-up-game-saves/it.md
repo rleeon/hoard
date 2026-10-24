@@ -9,7 +9,7 @@ Perdere un salvataggio significa perdere ore di progressi. Hoard fa il backup de
 
 ## Cosa salva Hoard
 
-Hoard rileva le cartelle di salvataggio dei giochi a cui giochi e le copia sul tuo cloud — Hoard Cloud o un server che ospiti tu stesso. Ogni backup è versionato, quindi le copie più vecchie non vengono mai sovrascritte.
+Hoard rileva le cartelle di salvataggio dei giochi a cui giochi e le copia sul tuo cloud — Hoard One o un server che ospiti tu stesso. Ogni backup è versionato, quindi le copie più vecchie non vengono mai sovrascritte.
 
 Per trovare dove ogni gioco conserva i salvataggi, Hoard usa lo stesso database comunitario di posizioni che alimenta Ludusavi, quindi il rilevamento funziona da subito per migliaia di titoli. La differenza è ciò che succede dopo: invece di lasciare il backup sul disco, Hoard lo versiona automaticamente nel cloud.
 
@@ -19,7 +19,7 @@ Per trovare dove ogni gioco conserva i salvataggi, Hoard usa lo stesso database 
 2. Accedi, oppure punta l'app al tuo server self-hosted.
 3. Apri la **Libreria**. Hoard cerca i giochi installati ed elenca i salvataggi trovati.
 4. Aggiungi i giochi che vuoi proteggere. Hoard individua ogni cartella di salvataggio automaticamente; puoi aggiungere un percorso a mano se un gioco non viene rilevato.
-5. Lascia attiva la **modalità automatica**. Hoard sorveglia le cartelle di salvataggio e fa il backup dopo che smetti di giocare.
+5. Lascia attiva la **modalità automatica**. Hoard sorveglia le cartelle di salvataggio e fa il backup ogni volta che un gioco salva, e di nuovo quando smetti di giocare.
 
 Da ora ogni sessione viene catturata senza che tu faccia nulla.
 
@@ -49,7 +49,9 @@ Una cartella di salvataggi contiene raramente solo salvataggi, quindi Hoard divi
 
 ## Quando avviene il backup
 
-Hoard sorveglia la cartella e la cattura **dopo che smetti di giocare**, non mentre il gioco tiene i file aperti. Se il salvataggio è stato scritto pochi secondi fa, aspetta che tutto si calmi: un file in scrittura non è un file da catturare a metà.
+Hoard sorveglia la cartella e la cattura **ogni volta che il gioco salva**, anche a metà sessione, e un'ultima volta quando esci. Non cattura mai un file a metà: aspetta che la cartella resti ferma per qualche secondo e, se il gioco tiene ancora un file aperto, aspetta anche quello. I giochi che salvano di continuo hanno un intervallo minimo tra un backup e l'altro, così una serata di gioco non diventa cento versioni.
+
+Quello che arriva dalle tue altre macchine va al contrario: aspetta che tu chiuda il gioco, così la tua partita non cambia mai sotto i tuoi piedi.
 
 Ogni cattura è una versione. Gli snapshot sono archiviati per hash del contenuto, quindi un file invariato viene salvato una volta sola: dieci versioni di un salvataggio da 2 GB che cambia poco tra una sessione e l'altra occupano circa 2 GB, non 20.
 
@@ -73,7 +75,7 @@ Usi già uno strumento di backup locale come Ludusavi? Puoi tenerlo — ma se vu
 
 ### Hoard fa backup mentre gioco?
 
-No. Aspetta che tu smetta e che la cartella dei salvataggi si calmi, così un backup non è mai un file scritto a metà.
+Sì. Ogni volta che il gioco finisce di scrivere un salvataggio e la cartella resta ferma per qualche secondo, Hoard lo cattura, e un'ultima volta quando esci. Non carica mai un file scritto a metà, e i salvataggi delle tue altre macchine aspettano che tu chiuda il gioco.
 
 ### Quanto spazio occupano i miei salvataggi?
 

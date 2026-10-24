@@ -71,7 +71,7 @@ Wenn die Einstellungen doch mitreisen sollen, setz beim Wiederherstellen einer V
 
 Das gehört ausdrücklich gesagt, weil die meisten Vergleiche genau hier danebenliegen. Es gibt zwei Betriebsarten:
 
-- **Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Stände liegen auf unseren Servern in der EU.
+- **Hoard One** ist die verwaltete Variante, die wir allen empfehlen: du meldest dich an, und deine Stände liegen auf unseren Servern in der EU.
 - **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem eigenen PC oder NAS, und deine Geräte synchronisieren darüber. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Siehe [wie du Hoard selbst hostest](/guides/self-host-hoard).
 
 Dasselbe Programm, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest.

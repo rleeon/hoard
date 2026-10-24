@@ -6,13 +6,13 @@ featured: true
 updated: 2026-10-18
 ---
 
-Hoard es de código abierto y se puede autoalojar. En lugar de usar Hoard Cloud, puedes ejecutar el mismo `hoard-server` en tu propia máquina y apuntar todos tus dispositivos a él: sin cuenta y sin más límite de espacio que el disco que le des. Esta guía deja un servidor funcionando con Docker en pocos minutos.
+Hoard es de código abierto y se puede autoalojar. En lugar de usar Hoard One, puedes ejecutar el mismo `hoard-server` en tu propia máquina y apuntar todos tus dispositivos a él: sin cuenta y sin más límite de espacio que el disco que le des. Esta guía deja un servidor funcionando con Docker en pocos minutos.
 
 ## Por qué autoalojar Hoard
 
 - **Control total.** Tus partidas viven en hardware que tú controlas, no en la nube de otro.
 - **Sin cuota.** El espacio solo lo limita tu propio disco.
-- **La misma app, las mismas funciones.** La sincronización en segundo plano y el historial versionado funcionan igual que con Hoard Cloud, con un ajuste por defecto propio: el servidor va podando las versiones antiguas con el tiempo (lo tienes más abajo).
+- **La misma app, las mismas funciones.** La sincronización en segundo plano y el historial versionado funcionan igual que con Hoard One, con un ajuste por defecto propio: el servidor va podando las versiones antiguas con el tiempo (lo tienes más abajo).
 - **Código abierto.** Puedes leer, auditar y modificar el servidor.
 
 Esta es la diferencia clave frente a herramientas como [Ludusavi](/guides/ludusavi-alternative): Ludusavi es excelente para copias locales y para usar tu propia nube vía Rclone, pero la sincronización la montas tú. Hoard te da un servidor de sincronización gestionado que arrancas una vez y al que se conectan todos los dispositivos.
@@ -21,9 +21,9 @@ Esta es la diferencia clave frente a herramientas como [Ludusavi](/guides/ludusa
 
 Conviene decirlo sin rodeos, porque es lo que casi todas las comparativas se equivocan sobre Hoard.
 
-**Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas están en nuestros servidores, en la UE.
+**Hoard One** es la opción gestionada, la que recomendamos a todos: inicias sesión y tus partidas están en nuestros servidores, en la UE.
 
-**Un Hoard autoalojado es tuyo por completo.** Tus dispositivos hablan con tu servidor y con nada más. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, por la sencilla razón de que nada de eso nos llega. Si Hoard Cloud cerrara mañana, tu montaje seguiría funcionando igual.
+**Un Hoard autoalojado es tuyo por completo.** Tus dispositivos hablan con tu servidor y con nada más. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, por la sencilla razón de que nada de eso nos llega. Si Hoard One cerrara mañana, tu montaje seguiría funcionando igual.
 
 Y para ser exactos en una cosa: tu servidor sí tiene sus propios accesos — el usuario que crearás más abajo y un token por dispositivo. Son tuyos, en tu máquina, en tu base de datos. Lo que no existe es una cuenta con nosotros.
 
@@ -82,7 +82,7 @@ El token se muestra una sola vez y **no se puede recuperar después**, así que 
 
 ## Conecta la aplicación de escritorio
 
-Instala la [app de escritorio de Hoard](/download) en cada equipo. En el asistente inicial elige **Self-Host**, y pega la URL de tu servidor y el token que acabas de crear. A partir de ahí se comporta igual que Hoard Cloud: detecta tus juegos, copia las partidas automáticamente y mantiene el historial versionado. Consulta [sincronizar partidas entre varios PC](/guides/sync-game-saves-across-pcs) para el día a día.
+Instala la [app de escritorio de Hoard](/download) en cada equipo. En el asistente inicial elige **Self-Host**, y pega la URL de tu servidor y el token que acabas de crear. A partir de ahí se comporta igual que Hoard One: detecta tus juegos, copia las partidas automáticamente y mantiene el historial versionado. Consulta [sincronizar partidas entre varios PC](/guides/sync-game-saves-across-pcs) para el día a día.
 
 ## Mantén tu servidor al día
 
@@ -105,7 +105,7 @@ Si te quedas en la primera, el contenedor viejo sigue corriendo intacto: `/v1/he
 
 ## Cuánto historial guarda
 
-Hoard Cloud guarda todas las versiones. Un servidor autoalojado, tal como viene, va podando las antiguas: el historial reciente se queda completo y el antiguo se vuelve más espaciado. Con el ajuste por defecto conserva las 15 versiones más recientes de cada juego y, después, la última de cada una de las 19 horas, los 11 días y las 6 semanas más recientes en las que jugaste. Las versiones más antiguas se eliminan, salvo las fijadas y la más reciente de cada juego, y una versión eliminada pasa 30 días en la papelera del servidor antes de borrarse del todo.
+Hoard One guarda todas las versiones. Un servidor autoalojado, tal como viene, va podando las antiguas: el historial reciente se queda completo y el antiguo se vuelve más espaciado. Con el ajuste por defecto conserva las 15 versiones más recientes de cada juego y, después, la última de cada una de las 19 horas, los 11 días y las 6 semanas más recientes en las que jugaste. Las versiones más antiguas se eliminan, salvo las fijadas y la más reciente de cada juego, y una versión eliminada pasa 30 días en la papelera del servidor antes de borrarse del todo.
 
 Para conservarlo todo, pon `snapshot_pruning = false` en la sección `[retention]` de `config.toml` (en `./config/`, junto al fichero de compose) y reinicia el servidor (`docker compose restart` con Docker). En la misma sección, `data_saving` mueve el equilibrio: `0.0` lo conserva casi todo y `1.0` solo lo esencial.
 
@@ -113,9 +113,9 @@ Para conservarlo todo, pon `snapshot_pruning = false` en la sección `[retention
 
 Para cualquier cosa expuesta fuera de tu red local, termina el TLS en un proxy inverso (Caddy, nginx o Traefik). ¿Prefieres bare metal? El repositorio también incluye un script de instalación con `systemd` y un comando `hoard-server upgrade` que cambia el binario de forma atómica sin cortar una sincronización en curso.
 
-## ¿Self-hosted o Hoard Cloud?
+## ¿Self-hosted o Hoard One?
 
-Autoalojar es ideal si ya tienes un servidor y quieres control total sin límites. Si prefieres no mantener infraestructura, [Hoard Cloud](/pricing) te da la misma sincronización gestionada por nosotros, con un plan gratuito para empezar. En cualquier caso, la app y tus partidas siguen siendo portables: puedes cambiar más adelante.
+Autoalojar es ideal si ya tienes un servidor y quieres control total sin límites. Para todos los demás recomendamos [Hoard One](/pricing): la misma sincronización, gestionada por nosotros, con un plan gratuito para empezar. En cualquier caso, la app y tus partidas siguen siendo portables: puedes cambiar más adelante.
 
 <!-- faq -->
 
@@ -125,7 +125,7 @@ Autoalojar es ideal si ya tienes un servidor y quieres control total sin límite
 
 No. La aplicación de escritorio habla con la dirección de servidor que tú le des. Tus partidas, tus usuarios y tus registros se quedan en tu máquina, y nada de eso nos llega.
 
-### ¿El servidor autoalojado es el mismo código que Hoard Cloud?
+### ¿El servidor autoalojado es el mismo código que Hoard One?
 
 Sí, el mismo código de `hoard-server`, bajo AGPL-3.0. La versión alojada añade lo que solo necesita un servicio público, como el registro, los planes y los pagos; todo lo que encuentra, sincroniza y versiona tus partidas es común. No hay una edición comunitaria recortada.
 
@@ -145,6 +145,6 @@ En tu propia red local, no. En cuanto el servidor sea accesible desde fuera, pon
 
 La instantánea se toma en local, así que no se pierde nada. Se sube sola en cuanto el servidor vuelve a responder.
 
-### ¿Puedo empezar en Hoard Cloud y mudarme después?
+### ¿Puedo empezar en Hoard One y mudarme después?
 
 Sí, y en los dos sentidos. Puedes exportarlo todo desde la página de tu cuenta, y la aplicación se puede apuntar a otro servidor sin reinstalar nada.

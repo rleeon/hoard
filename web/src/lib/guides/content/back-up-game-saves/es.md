@@ -9,7 +9,7 @@ Perder una partida guardada significa perder horas de progreso. Hoard hace copia
 
 ## Qué guarda Hoard
 
-Hoard detecta las carpetas de guardado de los juegos a los que juegas y las copia a tu propia nube: Hoard Cloud o un servidor que alojes tú mismo. Cada copia está versionada, así que las versiones antiguas nunca se sobrescriben.
+Hoard detecta las carpetas de guardado de los juegos a los que juegas y las copia a tu propia nube: Hoard One o un servidor que alojes tú mismo. Cada copia está versionada, así que las versiones antiguas nunca se sobrescriben.
 
 Para saber dónde guarda cada juego sus partidas, Hoard usa la misma base de datos comunitaria de ubicaciones que utiliza Ludusavi, así que la detección funciona desde el primer momento con miles de títulos. La diferencia está en lo que pasa después: en vez de dejar la copia en tu disco, Hoard la versiona en la nube automáticamente.
 
@@ -19,7 +19,7 @@ Para saber dónde guarda cada juego sus partidas, Hoard usa la misma base de dat
 2. Inicia sesión o apunta la app a tu servidor autoalojado.
 3. Abre la **Biblioteca**. Hoard busca los juegos instalados y lista las partidas que encuentra.
 4. Añade los juegos que quieras proteger. Hoard localiza cada carpeta de guardado automáticamente; puedes añadir una ruta a mano si un juego no se detecta.
-5. Deja activado el **modo automático**. Hoard vigila las carpetas de guardado y hace la copia cuando dejas de jugar.
+5. Deja activado el **modo automático**. Hoard vigila las carpetas de guardado y hace una copia cada vez que el juego guarda, y otra al dejar de jugar.
 
 A partir de ahí cada sesión queda guardada sin que hagas nada.
 
@@ -49,7 +49,9 @@ Una carpeta de partidas rara vez contiene sólo partidas, así que Hoard reparte
 
 ## Cuándo se hace la copia
 
-Hoard vigila la carpeta y la captura **cuando dejas de jugar**, no mientras el juego tiene los ficheros abiertos. Si la partida se escribió hace unos segundos, espera a que la cosa se calme: un fichero que se está escribiendo no es un fichero que merezca capturarse a medias.
+Hoard vigila la carpeta y la captura **cada vez que el juego guarda**, también a mitad de partida, y otra vez al salir. Nunca copia un fichero a medias: espera a que la carpeta lleve unos segundos quieta y, si el juego aún tiene un fichero abierto, espera también a que lo suelte. Los juegos que guardan sin parar tienen un intervalo mínimo entre copias, para que una tarde de juego no se convierta en cien versiones.
+
+Lo que llega de tus otras máquinas va al revés: espera a que cierres el juego, así que tu partida nunca cambia mientras juegas.
 
 Cada captura es una versión. Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez: diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB, no 20.
 
@@ -73,7 +75,7 @@ Abre la pestaña **Historial** de un juego para ver cada copia con su fecha y ta
 
 ### ¿Hoard hace copias mientras juego?
 
-No. Espera a que salgas y a que la carpeta de partidas se quede quieta, así que una copia nunca es un fichero a medio escribir.
+Sí. Cada vez que el juego termina de escribir una partida y la carpeta se queda quieta unos segundos, Hoard la copia, y otra vez al salir. Nunca sube un fichero a medio escribir, y lo que llega de tus otras máquinas espera a que cierres el juego.
 
 ### ¿Cuánto espacio necesitan mis partidas?
 

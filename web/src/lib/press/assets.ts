@@ -21,7 +21,7 @@ export type PressAsset = {
 export const PRESS_ASSETS: PressAsset[] = [
   { file: 'WEB.webp', zipName: 'screenshots/hoard-desktop-app.webp', kind: 'main', label: 'press.asset.app' },
   { file: 'CLI.webp', zipName: 'screenshots/hoard-cli.webp', kind: 'screenshot', label: 'press.asset.cli' },
-  { file: 'cloud.png', zipName: 'diagrams/hoard-cloud-or-self-hosted.png', kind: 'diagram', label: 'press.asset.diagram' },
+  { file: 'cloud.png', zipName: 'diagrams/hoard-one-or-self-hosted.png', kind: 'diagram', label: 'press.asset.diagram' },
   { file: 'icon-512.png', zipName: 'icons/hoard-icon-512.png', kind: 'icon', label: 'press.asset.icon_square' },
   { file: 'icon2.png', zipName: 'icons/hoard-icon-transparent.png', kind: 'icon', label: 'press.asset.icon_mark' }
 ];

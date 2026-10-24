@@ -10,7 +10,7 @@ Losing a save file means losing hours of progress. Hoard backs up your PC game s
 
 ## What Hoard backs up
 
-Hoard detects the save folders of the games you play and copies them to your own cloud — either Hoard Cloud or a server you host yourself. Every backup is versioned, so older copies are never overwritten.
+Hoard detects the save folders of the games you play and copies them to your own cloud — either Hoard One or a server you host yourself. Every backup is versioned, so older copies are never overwritten.
 
 To find where each game stores its saves, Hoard reads the same community save-location database that powers Ludusavi, so detection works out of the box for thousands of titles. The difference is what happens next: instead of leaving the backup on your disk, Hoard versions it in the cloud automatically.
 
@@ -20,7 +20,7 @@ To find where each game stores its saves, Hoard reads the same community save-lo
 2. Sign in, or point the app at your self-hosted server.
 3. Open the **Library**. Hoard scans for installed games and lists the saves it finds.
 4. Add the games you want to protect. Hoard locates each save folder automatically; you can add a path by hand if a game isn't detected.
-5. Leave **automatic mode** on. Hoard watches the save folders and backs them up after you stop playing.
+5. Leave **automatic mode** on. Hoard watches the save folders and backs them up every time a game saves, and again when you stop playing.
 
 From now on every session is captured without you doing anything.
 
@@ -50,7 +50,9 @@ A save folder is rarely just saves, so Hoard sorts what it finds into three pile
 
 ## When a backup happens
 
-Hoard watches the folder and captures it **after you stop playing**, not while a game is holding files open. If the save was written to seconds ago, it waits until things go quiet: a file being written is not a file worth capturing halfway.
+Hoard watches the folder and captures it **every time the game saves**, in the middle of a session too, and once more when you quit. It never grabs a file halfway: it waits until the folder has been quiet for a few seconds, and if the game still has a file open, it waits for that too. Games that save non-stop get a minimum gap between copies, so an evening of play doesn't turn into a hundred versions.
+
+Saves coming from your other machines work the other way round: they wait until you close the game, so your progress never changes under your feet.
 
 Each capture is a version. Snapshots are stored by content hash, so unchanged files are stored once: ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20.
 
@@ -74,7 +76,7 @@ Already use a local backup tool like Ludusavi? You can keep it — but if you wa
 
 ### Does Hoard back up while I'm playing?
 
-No. It waits until you stop and the save folder goes quiet, so a backup is never a half-written file.
+Yes. Every time the game finishes writing a save and the folder goes quiet for a few seconds, Hoard captures it, and once more when you quit. It never uploads a half-written file, and saves from your other machines wait until you close the game.
 
 ### How much space do my saves need?
 

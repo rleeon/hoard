@@ -95,8 +95,15 @@ pub struct CloudAccount {
     #[serde(default)]
     pub bandwidth_quota_bytes: i64,
     pub subscription_status: Option<String>,
+    /// `once` for the one-year pass, whose `renews_at` is the day its year
+    /// ends: nothing renews. Absent on servers older than the pass.
+    #[serde(default)]
+    pub subscription_interval: Option<String>,
     pub renews_at: Option<String>,
     pub cancel_at: Option<String>,
+    /// For a pass, the day Pro really ends: the year plus the month after it.
+    #[serde(default)]
+    pub pro_until: Option<String>,
     /// Storage pressure: `"ok"` (green), `"purging"` (orange, old versions are
     /// being auto-deleted to make room) or `"full"` (red, at the hard limit with
     /// uploads rejected). `#[serde(default)]` gives `"ok"` on older servers.
@@ -274,7 +281,7 @@ pub(crate) async fn active_creds_via(state: &AppState) -> Result<Option<CloudCre
 pub(crate) async fn active_creds_or_msg(app: &AppHandle) -> Result<CloudCreds, String> {
     match active_creds(app).await {
         Ok(Some(creds)) => Ok(creds),
-        Ok(None) => Err("Not signed in to Hoard Cloud.".into()),
+        Ok(None) => Err("Not signed in to Hoard One.".into()),
         Err(e) => {
             if is_session_expired(&e) {
                 handle_session_expired(app);
@@ -1008,7 +1015,7 @@ impl MeError {
     fn into_message(self) -> String {
         match self {
             MeError::Unauthorized => {
-                "Your Hoard Cloud session expired. Please sign in again.".into()
+                "Your Hoard One session expired. Please sign in again.".into()
             }
             MeError::Other(m) => m,
         }
@@ -1057,7 +1064,7 @@ async fn fetch_me(base: &str, token: &str) -> Result<CloudAccount> {
 
 fn format_http_error(status: StatusCode, body: &str) -> String {
     if status == StatusCode::UNAUTHORIZED {
-        return "Your Hoard Cloud session expired. Please sign in again.".into();
+        return "Your Hoard One session expired. Please sign in again.".into();
     }
     if status == StatusCode::PAYMENT_REQUIRED {
         // /v1/me itself won't 402, but if a downstream call lands here we
@@ -1073,10 +1080,10 @@ fn format_http_error(status: StatusCode, body: &str) -> String {
             }
         }
         if let Some(msg) = v.get("error").and_then(|x| x.as_str()) {
-            return format!("Hoard Cloud: {msg} ({status})");
+            return format!("Hoard One: {msg} ({status})");
         }
     }
-    format!("Hoard Cloud returned {status}: {body}")
+    format!("Hoard One returned {status}: {body}")
 }
 
 /// Map a server error `code` to a UI i18n key, when the client knows it. The

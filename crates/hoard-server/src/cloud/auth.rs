@@ -281,7 +281,7 @@ pub async fn require_active_account(
         Ok(Some(true)) => CloudError::ForbiddenCode {
             code: "account_scheduled_deletion",
             message: "This account is scheduled for deletion. Reactivate it from \
-                      the account page to keep using Hoard Cloud.",
+                      the account page to keep using Hoard One.",
         }
         .into_response(),
         // No profile row yet (first GET /v1/me hasn't provisioned it), not

@@ -11,7 +11,7 @@ Beide Werkzeuge lösen dasselbe Problem und sind sich über die Architektur unei
 
 **OpenSave** arbeitet peer-to-peer. Deine Maschinen reden direkt miteinander, dazwischen sitzt nichts. Kein Konto, kein Speicher, den man bezahlt, und optional lässt sich eine Kopie in eine Cloud spiegeln, die du ohnehin hast.
 
-**Hoard** synchronisiert über einen Server. Dieser Server ist entweder Hoard Cloud, von uns betrieben, oder `hoard-server` auf deinem eigenen PC oder NAS. Dein Stand geht hoch, wenn du aufhörst, und kommt herunter, wenn eine andere Maschine danach fragt.
+**Hoard** synchronisiert über einen Server. Dieser Server ist entweder Hoard One, von uns betrieben, oder `hoard-server` auf deinem eigenen PC oder NAS. Dein Stand geht hoch, wenn du aufhörst, und kommt herunter, wenn eine andere Maschine danach fragt.
 
 Alles Weitere folgt aus dieser einen Entscheidung.
 
@@ -26,7 +26,7 @@ Alles Weitere folgt aus dieser einen Entscheidung.
 
 Fairerweise die andere Seite:
 
-- **Nie Speicher zu bezahlen.** Es gibt kein Limit zu erreichen, weil es keinen Speicherort gibt. Hoards kostenloser Tarif sind 2 GB, darüber zahlst du oder hostest selbst.
+- **Nie Speicher zu bezahlen.** Es gibt kein Limit zu erreichen, weil es keinen Speicherort gibt. Der kostenlose Tarif von Hoard One sind 2 GB, darüber zahlst du oder hostest selbst.
 - **Von Natur aus nichts dazwischen.** Wenn das Ziel ist, dass eine Datei nie die Platte eines Dritten berührt, ist direkte Übertragung die kürzestmögliche Antwort.
 - **Nichts zu betreiben.** Kein Server, der laufen muss, nicht einmal ein eigener.
 
@@ -36,8 +36,8 @@ Wenn du an zwei Desktops spielst, die beide eingeschaltet sind, nie zurückrolle
 
 Hier gehen Vergleiche zu Hoard meist schief, deshalb genau: es gibt zwei Betriebsarten, und sie unterscheiden sich wirklich.
 
-- **Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Stände liegen auf unseren Servern in der EU.
-- **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir sehen weder Spielstand noch Spieltitel noch E-Mail-Adresse, weil davon nichts bei uns ankommt. Würde Hoard Cloud morgen abgeschaltet, liefe ein selbst gehostetes Setup unverändert weiter.
+- **Hoard One** ist die verwaltete Variante, die wir allen empfehlen: du meldest dich an, und deine Stände liegen auf unseren Servern in der EU.
+- **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir sehen weder Spielstand noch Spieltitel noch E-Mail-Adresse, weil davon nichts bei uns ankommt. Würde Hoard One morgen abgeschaltet, liefe ein selbst gehostetes Setup unverändert weiter.
 
 "Server" heißt also nicht "der Computer von jemand anderem", außer du willst es so. Ein selbst gehostetes Hoard hält deine Stände auf deiner eigenen Hardware, genau wie eine direkte Übertragung, und gibt dir zusätzlich Historie und den Fall der ausgeschalteten Maschine.
 
@@ -58,7 +58,7 @@ Es gibt einen breiteren [Vergleich aller Sync-Tools](/guides/game-save-sync-comp
 
 ### Braucht Hoard ein Konto?
 
-Für Hoard Cloud ja, daran hängt die Synchronisierung. Selbst gehostet gibt es gar kein Konto bei uns: dein Server hat eigene Benutzer und ein Token je Gerät, und die verlassen deine Maschine nie.
+Für Hoard One ja, daran hängt die Synchronisierung. Selbst gehostet gibt es gar kein Konto bei uns: dein Server hat eigene Benutzer und ein Token je Gerät, und die verlassen deine Maschine nie.
 
 ### Funktioniert Hoard ganz ohne Cloud?
 

@@ -412,7 +412,7 @@ pub async fn fetch_me(base: &str, access: &str) -> Result<Me> {
         .with_context(|| format!("GET {url}"))?;
     let status = resp.status();
     if status == StatusCode::UNAUTHORIZED {
-        bail!("the Cloud session expired; sign in again");
+        bail!("the Hoard One session expired; sign in again");
     }
     let body = resp.text().await.unwrap_or_default();
     if !status.is_success() {
@@ -961,7 +961,7 @@ pub async fn refresh_freshest() -> Result<Tokens> {
                     *last = Some((Instant::now(), tokens.clone()));
                     Ok(tokens)
                 }
-                None => Err(e.context("the Cloud session expired; sign in again")),
+                None => Err(e.context("the Hoard One session expired; sign in again")),
             }
         }
         Err(e) => Err(e),

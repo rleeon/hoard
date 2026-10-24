@@ -54,7 +54,7 @@ Sólo después de que tu partida actual se haya capturado como una versión nuev
 
 ### ¿Hasta dónde llega el historial?
 
-En Hoard Cloud, hasta el principio: ningún plan tiene tope de versiones. El único tope es el que pongas tú, **Máx. versiones por juego** en el Panel, y ni ése borra nunca las versiones fijadas ni la más reciente de cada juego. Un servidor autoalojado, por defecto, va podando las versiones antiguas: el historial reciente se queda completo y el antiguo, más espaciado. Puedes desactivarlo en su configuración para conservarlo todo.
+En Hoard One, hasta el principio: ningún plan tiene tope de versiones. El único tope es el que pongas tú, **Máx. versiones por juego** en el Panel, y ni ése borra nunca las versiones fijadas ni la más reciente de cada juego. Un servidor autoalojado, por defecto, va podando las versiones antiguas: el historial reciente se queda completo y el antiguo, más espaciado. Puedes desactivarlo en su configuración para conservarlo todo.
 
 ### ¿Puedo restaurar en un PC donde el juego todavía no está instalado?
 

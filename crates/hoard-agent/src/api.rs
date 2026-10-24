@@ -1646,7 +1646,7 @@ impl ApiClient {
 
     pub async fn snapshot_restore(&self, save_id: &str, version: i64) -> Result<()> {
         if self.is_cloud().await {
-            bail!("Hoard Cloud has no trash to bring a version back from: deleting one there is permanent");
+            bail!("Hoard One has no trash to bring a version back from: deleting one there is permanent");
         }
         let resp = self
             .http

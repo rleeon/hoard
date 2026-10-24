@@ -23,7 +23,7 @@ Hoard turns that into **managed cloud sync**:
 - **Sign in and go.** No Rclone remotes, no scripts. Hoard uploads your save after you finish playing and downloads the latest before you start, on every PC on your account.
 - **Versioned history in the cloud.** Every backup is kept, so you can roll back to any earlier save — even after a disk failure or a fresh install.
 - **Conflict-aware.** Hoard compares timestamps and keeps a local copy of anything it replaces, so a sync never silently destroys progress.
-- **Still open source and self-hostable.** Like Ludusavi, you're not locked in — run Hoard Cloud or host the server yourself.
+- **Still open source and self-hostable.** Like Ludusavi, you're not locked in — run Hoard One or host the server yourself.
 
 ## Side by side
 
@@ -75,14 +75,14 @@ There's no importer, and that's on purpose. The steps:
 
 **Steam saves live one folder deeper than you think.** For Steam games, Hoard tracks `<AppID>/remote/` inside `userdata`, not the folder above it. The parent also holds `remotecache.vdf` and achievement and playtime files, and those legitimately differ from machine to machine. Sync the parent and every launch looks like a conflict even though no save actually moved. It's the most common reason a hand-rolled Steam Deck ↔ desktop setup ends up fighting itself.
 
-**Versions are cheap.** Snapshots are stored by content hash, so unchanged files are stored once. Ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20, which is why Hoard Cloud can keep the full history instead of pruning it.
+**Versions are cheap.** Snapshots are stored by content hash, so unchanged files are stored once. Ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20, which is why Hoard One can keep the full history instead of pruning it.
 
 ## What self-hosting actually means
 
 This is the point most comparisons get wrong about Hoard, so it's worth being exact. There are two ways to run it, and they are genuinely different:
 
-- **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
-- **Self-hosting is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, for the simple reason that none of it ever reaches us. If Hoard Cloud disappeared tomorrow, a self-hosted setup would carry on unchanged.
+- **Hoard One** is the managed option, and the one we recommend for everyone: you sign in, and your saves are stored on our servers, in the EU.
+- **Self-hosting is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, for the simple reason that none of it ever reaches us. If Hoard One disappeared tomorrow, a self-hosted setup would carry on unchanged.
 
 Same program, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off.
 
@@ -107,7 +107,7 @@ No, and that's deliberate. A backup folder is a copy that changes on its own sch
 
 ### Is Hoard free?
 
-Hoard Cloud has a free tier with 2 GB of storage and 3 devices, which covers most save collections; Pro raises both. Self-hosting the server is free and has no quota at all. Everything is open source under AGPL-3.0.
+Hoard One has a free tier with 2 GB of storage and 3 devices, which covers most save collections; Pro raises both. Self-hosting the server is free and has no quota at all. Everything is open source under AGPL-3.0.
 
 ### Does Hoard work on Steam Deck?
 
@@ -115,7 +115,7 @@ Yes, on Steam Deck and any Linux desktop, as well as Windows and macOS. The Deck
 
 ### Do I need Rclone or a cloud account of my own?
 
-No. That's the main practical difference: with Hoard Cloud, storage is already set up when you sign in. If you'd rather own the storage, run the server yourself against an S3-compatible bucket or a plain folder on your own machine.
+No. That's the main practical difference: with Hoard One, storage is already set up when you sign in. If you'd rather own the storage, run the server yourself against an S3-compatible bucket or a plain folder on your own machine.
 
 ### Does self-hosting send anything to Hoard?
 

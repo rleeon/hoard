@@ -105,7 +105,7 @@
           tu pantalla no sale de tu equipo.
         </li>
         <li>
-          <strong>Uso de la aplicación</strong> (sólo con Hoard Cloud): el día en que abres la
+          <strong>Uso de la aplicación</strong> (sólo con Hoard One): el día en que abres la
           aplicación, cuándo restauras una copia a mano, qué pantallas del plan Pro abres y desde
           dónde, y si el pago llegó a abrirse. Nunca se envía a un servidor propio.
         </li>
@@ -116,7 +116,7 @@
       </p>
       <p>
         Aparte, y sin depender de esa opción porque nacen del propio funcionamiento del Servicio,
-        el servidor de Hoard Cloud anota los <strong>hitos de tu cuenta</strong>: el alta, la
+        el servidor de Hoard One anota los <strong>hitos de tu cuenta</strong>: el alta, la
         primera copia subida y la primera descargada, cada dispositivo nuevo, cuándo el espacio
         usado cruza el 50, el 80 y el 100 %, los rechazos por falta de espacio o por tamaño, las
         limpiezas automáticas, las solicitudes de pago y los cambios de tu suscripción, las
@@ -392,7 +392,7 @@
           leave your machine.
         </li>
         <li>
-          <strong>App usage</strong> (Hoard Cloud only): the day you open the application, when
+          <strong>App usage</strong> (Hoard One only): the day you open the application, when
           you restore a copy by hand, which Pro plan screens you open and from where, and whether
           the payment page was reached. It is never sent to a server of your own.
         </li>
@@ -402,7 +402,7 @@
       </p>
       <p>
         Separately, and regardless of that setting because they arise from the Service's own
-        operation, the Hoard Cloud server records your <strong>account milestones</strong>:
+        operation, the Hoard One server records your <strong>account milestones</strong>:
         sign-up, the first copy uploaded and the first one downloaded, each new device, when the
         space used crosses 50, 80 and 100 %, refusals for lack of space or for size, automatic
         cleanups, payment requests and changes to your subscription, exports, account deletion or

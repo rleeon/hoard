@@ -71,7 +71,7 @@ Cuando sí quieras que los ajustes viajen, marca **Restaurar también los ficher
 
 Conviene decirlo explícitamente, porque es la parte que casi todas las comparativas se equivocan. Hay dos formas de usar esto:
 
-- **Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
+- **Hoard One** es la opción gestionada, la que recomendamos a todos: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
 - **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS y tus máquinas sincronizan a través de él. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. Mira [cómo autoalojar Hoard](/guides/self-host-hoard).
 
 El mismo programa, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives.

@@ -14,9 +14,10 @@
   // What the user picked on /pricing. Defaults keep the page sane if someone
   // lands on /checkout bare.
   let plan = $derived(($page.url.searchParams.get('plan') ?? 'pro') as Exclude<PlanId, 'free'>);
-  let cycle = $derived(
-    ($page.url.searchParams.get('cycle') === 'yearly' ? 'yearly' : 'monthly') as BillingCycle
-  );
+  let cycle = $derived.by((): BillingCycle => {
+    const c = $page.url.searchParams.get('cycle');
+    return c === 'yearly' || c === 'once' ? c : 'monthly';
+  });
 
   // Where to come back to after login, this exact page, intent preserved.
   let selfUrl = $derived(`/checkout?plan=${plan}&cycle=${cycle}`);
@@ -33,12 +34,16 @@
   });
 
   let price = $derived(
-    cycle === 'yearly' ? PLANS[plan].priceYearly : PLANS[plan].priceMonthly
+    cycle === 'yearly'
+      ? PLANS[plan].priceYearly
+      : cycle === 'once'
+        ? PLANS[plan].priceOnce
+        : PLANS[plan].priceMonthly
   );
   let priceLabel = $derived(
-    cycle === 'yearly'
-      ? $_('checkout.price_yearly', { values: { price: price.toLocaleString($locale ?? undefined) } })
-      : $_('checkout.price_monthly', { values: { price: price.toLocaleString($locale ?? undefined) } })
+    $_(`checkout.price_${cycle}`, {
+      values: { price: price.toLocaleString($locale ?? undefined) }
+    })
   );
 
   async function cont() {
@@ -128,9 +133,21 @@
            people who never got this far did not balk at two euros; they balked
            at handing a card to a name they had known for four minutes. -->
       <ul class="mt-4 space-y-2 text-left text-xs leading-relaxed text-ink-soft">
-        <li>{$_('checkout.trust_tax')}</li>
-        <li>{$_('checkout.trust_card')}</li>
-        <li>{$_('checkout.trust_cancel')}</li>
+        {#if cycle === 'once'}
+          <!-- The pass sells on exactly this: nothing to cancel because there
+               is nothing that renews. -->
+          <li>
+            {$_('checkout.trust_tax_once', {
+              values: { price: price.toLocaleString($locale ?? undefined) }
+            })}
+          </li>
+          <li>{$_('checkout.trust_card')}</li>
+          <li>{$_('checkout.trust_once')}</li>
+        {:else}
+          <li>{$_('checkout.trust_tax')}</li>
+          <li>{$_('checkout.trust_card')}</li>
+          <li>{$_('checkout.trust_cancel')}</li>
+        {/if}
       </ul>
 
       {#if error}

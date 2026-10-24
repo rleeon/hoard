@@ -1,0 +1,22 @@
+Your year of Pro ends in {{days}}
+
+You paid for one year of Pro, once. It ends on {{end}}, and since it is
+not a subscription nothing renews and your card is never charged again.
+
+And you do not lose Pro that day. We are giving you an extra month on us,
+until {{until}}, so you can think it over calmly and decide without any rush.
+If you stay, your new year simply picks up from {{end}}.
+In other words: you can wait until the end of this month to pay, and waiting
+costs you nothing. Just remember to come back and renew before {{until}}:
+otherwise you go back to Free, with 2 GB, and you will have to delete whatever
+goes over.
+
+  Year ends:        {{end}}
+  Your extra month: until {{until}}, on us
+
+If you do not renew, after {{until}} the account goes back to Free: 2 GB of
+storage and 1 GB per game. Every device you paired stays paired. If your saves
+need more than 2 GB, nothing is deleted for another 30 days; after that the
+oldest versions go first.
+
+Another year of Pro, 19.99 EUR once: https://hoard.services/checkout?plan=pro&cycle=once

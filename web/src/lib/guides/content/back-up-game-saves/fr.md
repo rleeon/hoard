@@ -9,7 +9,7 @@ Perdre une sauvegarde, c'est perdre des heures de progression. Hoard sauvegarde 
 
 ## Ce que Hoard sauvegarde
 
-Hoard détecte les dossiers de sauvegarde des jeux auxquels vous jouez et les copie vers votre propre cloud — Hoard Cloud ou un serveur que vous hébergez vous-même. Chaque sauvegarde est versionnée, les anciennes copies ne sont donc jamais écrasées.
+Hoard détecte les dossiers de sauvegarde des jeux auxquels vous jouez et les copie vers votre propre cloud — Hoard One ou un serveur que vous hébergez vous-même. Chaque sauvegarde est versionnée, les anciennes copies ne sont donc jamais écrasées.
 
 Pour trouver où chaque jeu range ses sauvegardes, Hoard utilise la même base de données communautaire d'emplacements que celle qui alimente Ludusavi : la détection fonctionne donc d'emblée pour des milliers de titres. La différence, c'est ce qui se passe ensuite : au lieu de laisser la sauvegarde sur votre disque, Hoard la versionne automatiquement dans le cloud.
 
@@ -19,7 +19,7 @@ Pour trouver où chaque jeu range ses sauvegardes, Hoard utilise la même base d
 2. Connectez-vous, ou pointez l'application vers votre serveur auto-hébergé.
 3. Ouvrez la **Bibliothèque**. Hoard recherche les jeux installés et liste les sauvegardes trouvées.
 4. Ajoutez les jeux à protéger. Hoard localise chaque dossier de sauvegarde automatiquement ; vous pouvez ajouter un chemin à la main si un jeu n'est pas détecté.
-5. Laissez le **mode automatique** activé. Hoard surveille les dossiers de sauvegarde et les sauvegarde après que vous arrêtez de jouer.
+5. Laissez le **mode automatique** activé. Hoard surveille les dossiers de sauvegarde et les sauvegarde chaque fois qu'un jeu enregistre, puis encore quand vous arrêtez de jouer.
 
 Désormais, chaque session est capturée sans que vous ayez à faire quoi que ce soit.
 
@@ -49,7 +49,9 @@ Un dossier de sauvegarde ne contient presque jamais que des sauvegardes, alors H
 
 ## Quand la sauvegarde a lieu
 
-Hoard surveille le dossier et le capture **après que vous avez arrêté de jouer**, pas pendant qu'un jeu garde des fichiers ouverts. Si la sauvegarde a été écrite il y a quelques secondes, il attend que le calme revienne : un fichier en cours d'écriture ne mérite pas d'être capturé à moitié.
+Hoard surveille le dossier et le capture **chaque fois que le jeu enregistre**, y compris en pleine session, puis une dernière fois quand vous quittez. Il ne capture jamais un fichier à moitié : il attend que le dossier soit calme depuis quelques secondes et, si le jeu garde encore un fichier ouvert, il attend aussi qu'il le libère. Les jeux qui enregistrent sans arrêt ont un intervalle minimum entre deux copies, pour qu'une soirée de jeu ne devienne pas cent versions.
+
+Ce qui arrive de vos autres machines fonctionne dans l'autre sens : il attend que vous fermiez le jeu, pour que votre partie ne change jamais sous vos pieds.
 
 Chaque capture est une version. Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois, et dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20.
 
@@ -73,7 +75,7 @@ Vous utilisez déjà un outil de sauvegarde locale comme Ludusavi ? Vous pouvez 
 
 ### Hoard sauvegarde-t-il pendant que je joue ?
 
-Non. Il attend que vous ayez arrêté et que le dossier se calme, pour qu'une sauvegarde ne soit jamais un fichier à moitié écrit.
+Oui. Chaque fois que le jeu a fini d'écrire une sauvegarde et que le dossier reste calme quelques secondes, Hoard la capture, puis une dernière fois quand vous quittez. Il n'envoie jamais un fichier à moitié écrit, et les sauvegardes de vos autres machines attendent que vous fermiez le jeu.
 
 ### Quelle place prennent mes sauvegardes ?
 

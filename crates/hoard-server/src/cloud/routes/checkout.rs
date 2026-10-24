@@ -25,7 +25,7 @@ use tracing::warn;
 pub struct CheckoutIn {
     /// "pro" (only paid tier today). Free needs no checkout.
     pub plan: String,
-    /// "month" | "year".
+    /// "month" | "year" | "once" (the one-year pass).
     pub interval: String,
     /// Storage tier in GB (Pro x1 = 25, x2 = 50, …). Omitted/`None` buys the
     /// base product. Resolved server-side to the concrete Polar product so

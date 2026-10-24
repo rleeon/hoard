@@ -72,7 +72,7 @@ When you do want the settings to travel, tick **Also restore settings files** wh
 
 Worth being explicit, because it's the part most comparisons get wrong. There are two ways to run this:
 
-- **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
+- **Hoard One** is the managed option, and the one we recommend for everyone: you sign in, and your saves are stored on our servers, in the EU.
 - **Self-hosting is entirely yours.** You run `hoard-server` on your own PC or NAS and your machines sync through it. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. See [how to self-host Hoard](/guides/self-host-hoard).
 
 Same program, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off.

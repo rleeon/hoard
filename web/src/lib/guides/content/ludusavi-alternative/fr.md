@@ -22,7 +22,7 @@ Hoard transforme cela en **synchro cloud gérée** :
 - **Connectez-vous et c'est parti.** Pas de distants Rclone, pas de scripts. Hoard envoie votre sauvegarde après le jeu et télécharge la dernière version avant que vous commenciez, sur chaque PC de votre compte.
 - **Historique versionné dans le cloud.** Chaque sauvegarde est conservée, vous pouvez donc revenir à n'importe quelle sauvegarde antérieure — même après une panne de disque ou une installation neuve.
 - **Gestion des conflits.** Hoard compare les horodatages et conserve une copie locale de tout ce qu'il remplace, donc une synchro ne détruit jamais la progression en silence.
-- **Toujours open source et auto-hébergeable.** Comme Ludusavi, pas de verrouillage — utilisez Hoard Cloud ou hébergez le serveur vous-même.
+- **Toujours open source et auto-hébergeable.** Comme Ludusavi, pas de verrouillage — utilisez Hoard One ou hébergez le serveur vous-même.
 
 ## Face à face
 
@@ -74,14 +74,14 @@ Il n'y a pas d'importateur, et c'est volontaire. Les étapes :
 
 **Les sauvegardes Steam sont un dossier plus bas qu'on ne croit.** Pour les jeux Steam, Hoard suit `<AppID>/remote/` dans `userdata`, pas le dossier au-dessus. Le dossier parent contient aussi `remotecache.vdf` ainsi que des fichiers de succès et de temps de jeu, qui diffèrent légitimement d'une machine à l'autre. Synchronisez le parent et chaque lancement ressemble à un conflit alors qu'aucune sauvegarde n'a bougé. C'est la raison la plus fréquente pour laquelle un montage maison entre Steam Deck et PC de bureau finit par se battre contre lui-même.
 
-**Les versions coûtent peu.** Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois. Dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20, et c'est pourquoi Hoard Cloud peut garder tout l'historique au lieu de l'élaguer.
+**Les versions coûtent peu.** Les instantanés sont stockés par empreinte de contenu : un fichier inchangé n'est stocké qu'une fois. Dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20, et c'est pourquoi Hoard One peut garder tout l'historique au lieu de l'élaguer.
 
 ## Ce que l'auto-hébergement veut vraiment dire
 
 C'est le point sur lequel presque toutes les comparaisons se trompent au sujet de Hoard, autant être précis. Il y a deux façons de l'utiliser, et elles sont réellement différentes :
 
-- **Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
-- **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne pouvons voir ni une sauvegarde, ni un nom de jeu, ni une adresse e-mail, pour la simple raison que rien de tout cela ne nous parvient. Si Hoard Cloud disparaissait demain, une installation auto-hébergée continuerait à l'identique.
+- **Hoard One** est l'option gérée, celle que nous recommandons à tous : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
+- **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne pouvons voir ni une sauvegarde, ni un nom de jeu, ni une adresse e-mail, pour la simple raison que rien de tout cela ne nous parvient. Si Hoard One disparaissait demain, une installation auto-hébergée continuerait à l'identique.
 
 Le même programme, la même détection. Ce qui change, c'est à qui appartient le stockage, plus un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, sauf si vous le désactivez.
 
@@ -106,7 +106,7 @@ Non, et c'est délibéré. Un dossier de sauvegardes est une copie qui change se
 
 ### Hoard est-il gratuit ?
 
-Hoard Cloud a une offre gratuite de 2 Go de stockage et 3 appareils, ce qui couvre la plupart des collections ; Pro augmente les deux. Auto-héberger le serveur est gratuit et sans aucun quota. Tout est open source sous AGPL-3.0.
+Hoard One a une offre gratuite de 2 Go de stockage et 3 appareils, ce qui couvre la plupart des collections ; Pro augmente les deux. Auto-héberger le serveur est gratuit et sans aucun quota. Tout est open source sous AGPL-3.0.
 
 ### Hoard fonctionne-t-il sur Steam Deck ?
 
@@ -114,7 +114,7 @@ Oui, sur Steam Deck et sur n'importe quel bureau Linux, ainsi que sous Windows e
 
 ### Ai-je besoin de Rclone ou d'un compte cloud à moi ?
 
-Non. C'est la principale différence pratique : avec Hoard Cloud, le stockage est déjà en place dès la connexion. Si vous préférez posséder le stockage, faites tourner le serveur vous-même sur un bucket compatible S3 ou un simple dossier de votre machine.
+Non. C'est la principale différence pratique : avec Hoard One, le stockage est déjà en place dès la connexion. Si vous préférez posséder le stockage, faites tourner le serveur vous-même sur un bucket compatible S3 ou un simple dossier de votre machine.
 
 ### L'auto-hébergement envoie-t-il quoi que ce soit à Hoard ?
 

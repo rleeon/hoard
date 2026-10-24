@@ -93,7 +93,7 @@ Hoard treats a play session as the unit. The engine runs as a background service
 - **Version history per session.** Every session is a version you can roll back to, including after a disk failure or a fresh install.
 - **Content-hash deduplication.** Ten versions of a 2 GB save where little changes between sessions cost about 2 GB, not 20 GB. Transfers are zstd-compressed.
 - **SHA-256 on the way up and on the way down.** Corruption is caught before it can overwrite a good save. Nothing is ever silently overwritten — that's the whole design.
-- **Cloud or self-hosted, same code.** Hoard Cloud has a free tier (2 GB, 3 devices, full history). Or run `hoard-server` yourself with Docker Compose against any S3-compatible storage — MinIO, Garage, Backblaze B2 — with no account and no quota. AGPL-3.0.
+- **Cloud or self-hosted, same code.** Hoard One has a free tier (2 GB, 3 devices, full history). Or run `hoard-server` yourself with Docker Compose against any S3-compatible storage — MinIO, Garage, Backblaze B2 — with no account and no quota. AGPL-3.0.
 - **Windows, Linux, macOS**, plus a headless CLI for a Steam Deck or a server.
 - **Emulators in beta:** PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP and others as presets.
 
@@ -111,12 +111,12 @@ Sync the parent folder and you get a permanent conflict between two machines tha
 - **It's young.** Ludusavi and Game Backup Monitor have years of bug reports behind them. Hoard doesn't, and that matters for something guarding a 200-hour save.
 - **It doesn't do co-op sharing.** If you want to hand a world to a friend, SaveSync is built for that and Hoard isn't.
 
-## The Hoard Cloud / self-host distinction
+## The Hoard One / self-host distinction
 
 Comparisons of Hoard almost always collapse these two into one, and the result is wrong, so it's worth stating plainly:
 
-- **Hoard Cloud** is the managed option: you sign in, and your saves are stored on our servers, in the EU.
-- **A self-hosted Hoard is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, because none of it ever reaches us. If Hoard Cloud shut down tomorrow, a self-hosted setup would carry on unchanged.
+- **Hoard One** is the managed option, and the one we recommend for everyone: you sign in, and your saves are stored on our servers, in the EU.
+- **A self-hosted Hoard is entirely yours.** You run `hoard-server` on your own PC or NAS, and your saves go from your machine to your disk. There is **no account with us, no telemetry to us, no quota and no relay** — nothing passes through our servers, because there is nothing of ours in the path. We can't see a save, a game name or an email address, because none of it ever reaches us. If Hoard One shut down tomorrow, a self-hosted setup would carry on unchanged.
 
 Same code, same detection. What changes is who owns the storage, plus one default: a self-hosted server thins out old versions over time unless you switch that off. Being exact about one detail: your own server does have logins of its own — a user and a token per device — but they live in your database, not ours.
 
@@ -124,7 +124,7 @@ Same code, same detection. What changes is who owns the storage, plus one defaul
 
 | Tool | Automatic sync between devices | Where saves live | History | Platforms | Licence |
 |---|---|---|---|---|---|
-| **Hoard** | Yes, per play session | Hoard Cloud or your own server (S3-compatible) | Versioned per session, deduplicated | Win · Linux · macOS · Deck | AGPL-3.0, free tier |
+| **Hoard** | Yes, per play session | Hoard One or your own server (S3-compatible) | Versioned per session, deduplicated | Win · Linux · macOS · Deck | AGPL-3.0, free tier |
 | **Ludusavi** | Manual, or Rclone that you wire up | Local, plus your Rclone remote | Versioned local backups | Win · Linux · macOS | Free, open source |
 | **Syncthing** | Yes, continuous mirror | Your devices only | Per-file versioning | Everything | Free, open source |
 | **OpenSave** | Yes, peer-to-peer | Your devices, optional cloud mirror | Snapshots and branches | Win · Linux · macOS · Deck | MIT |

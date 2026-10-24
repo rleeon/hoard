@@ -71,7 +71,7 @@ Si vous voulez que les réglages voyagent, cochez **Restaurer aussi les fichiers
 
 Autant le dire franchement, car c'est le point sur lequel presque toutes les comparaisons se trompent. Il y a deux façons de l'utiliser :
 
-- **Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
+- **Hoard One** est l'option gérée, celle que nous recommandons à tous : vous vous connectez, et vos sauvegardes sont stockées sur nos serveurs, dans l'UE.
 - **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS et vos machines se synchronisent à travers lui. Il n'y a **aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Voir [comment auto-héberger Hoard](/guides/self-host-hoard).
 
 Le même programme, la même détection. Ce qui change, c'est à qui appartient le stockage, plus un réglage par défaut : un serveur auto-hébergé élague les anciennes versions avec le temps, sauf si vous le désactivez.

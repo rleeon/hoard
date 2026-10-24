@@ -6,13 +6,13 @@ featured: true
 updated: 2026-10-18
 ---
 
-O Hoard é de código aberto e pode ser auto-hospedado. Em vez de usar o Hoard Cloud, você pode rodar o mesmo `hoard-server` na sua própria máquina e apontar todos os dispositivos para ele — sem conta e sem limite de espaço além do disco que você der a ele. Este guia coloca um servidor no ar com Docker em poucos minutos.
+O Hoard é de código aberto e pode ser auto-hospedado. Em vez de usar o Hoard One, você pode rodar o mesmo `hoard-server` na sua própria máquina e apontar todos os dispositivos para ele — sem conta e sem limite de espaço além do disco que você der a ele. Este guia coloca um servidor no ar com Docker em poucos minutos.
 
 ## Por que auto-hospedar o Hoard
 
 - **Controle total.** Seus saves ficam em hardware que você controla, não na nuvem de outra pessoa.
 - **Sem cota.** O espaço é limitado apenas pelo seu próprio disco.
-- **A mesma app, as mesmas funcionalidades.** A sincronização em segundo plano e o histórico versionado funcionam como no Hoard Cloud, com uma predefinição própria: o servidor vai desbastando as versões antigas com o tempo (detalhes mais abaixo).
+- **A mesma app, as mesmas funcionalidades.** A sincronização em segundo plano e o histórico versionado funcionam como no Hoard One, com uma predefinição própria: o servidor vai desbastando as versões antigas com o tempo (detalhes mais abaixo).
 - **Código aberto.** Você pode ler, auditar e modificar o servidor.
 
 Essa é a diferença principal em relação a ferramentas como o [Ludusavi](/guides/ludusavi-alternative): o Ludusavi é ótimo para backups locais e para usar sua própria nuvem via Rclone, mas a sincronização você mesmo monta. O Hoard oferece um servidor de sincronização gerenciado que você sobe uma vez e ao qual cada dispositivo se conecta.
@@ -21,9 +21,9 @@ Essa é a diferença principal em relação a ferramentas como o [Ludusavi](/gui
 
 Vale a pena dizê-lo sem rodeios, porque é o ponto em que quase todas as comparações se enganam sobre o Hoard.
 
-**O Hoard Cloud** é a opção gerida: inicias sessão e os teus saves ficam nos nossos servidores, na UE.
+**O Hoard One** é a opção gerida, a que recomendamos a todos: inicias sessão e os teus saves ficam nos nossos servidores, na UE.
 
-**Um Hoard self-hosted é inteiramente teu.** Os teus dispositivos falam com o teu servidor e com mais nada. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Não conseguimos ver um save, o nome de um jogo ou um endereço de email, pela simples razão de que nada disso nos chega. Se o Hoard Cloud fechasse amanhã, a tua instalação continuaria igual.
+**Um Hoard self-hosted é inteiramente teu.** Os teus dispositivos falam com o teu servidor e com mais nada. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Não conseguimos ver um save, o nome de um jogo ou um endereço de email, pela simples razão de que nada disso nos chega. Se o Hoard One fechasse amanhã, a tua instalação continuaria igual.
 
 E, para ser exato numa coisa: o teu servidor tem sim os seus próprios acessos — o utilizador que crias mais abaixo e um token por dispositivo. São teus, na tua máquina, na tua base de dados. O que não existe é uma conta connosco.
 
@@ -82,7 +82,7 @@ O token é exibido uma única vez e **não pode ser recuperado depois**, então 
 
 ## Conecte o app de desktop
 
-Instale o [app de desktop do Hoard](/download) em cada máquina. No fluxo inicial, escolha **Self-Host** e cole a URL do seu servidor e o token recém-criado. A partir daí ele se comporta exatamente como o Hoard Cloud: detecta seus jogos, faz backup dos saves automaticamente e mantém o histórico versionado. Veja [sincronizar saves entre vários PCs](/guides/sync-game-saves-across-pcs) para o uso no dia a dia.
+Instale o [app de desktop do Hoard](/download) em cada máquina. No fluxo inicial, escolha **Self-Host** e cole a URL do seu servidor e o token recém-criado. A partir daí ele se comporta exatamente como o Hoard One: detecta seus jogos, faz backup dos saves automaticamente e mantém o histórico versionado. Veja [sincronizar saves entre vários PCs](/guides/sync-game-saves-across-pcs) para o uso no dia a dia.
 
 ## Mantenha seu servidor atualizado
 
@@ -105,7 +105,7 @@ Se parar na primeira, o contêiner antigo continua rodando intacto: `/v1/health`
 
 ## Quanto histórico guarda
 
-O Hoard Cloud guarda todas as versões. Um servidor self-hosted, tal como vem, vai desbastando as antigas: o histórico recente fica completo e o antigo mais espaçado. Com a predefinição, guarda as 15 versões mais recentes de cada jogo e, depois, a última de cada uma das 19 horas, dos 11 dias e das 6 semanas mais recentes em que jogaste. As versões mais antigas são removidas, exceto as fixadas e a mais recente de cada jogo, e uma versão removida fica 30 dias no lixo do servidor antes de ser apagada de vez.
+O Hoard One guarda todas as versões. Um servidor self-hosted, tal como vem, vai desbastando as antigas: o histórico recente fica completo e o antigo mais espaçado. Com a predefinição, guarda as 15 versões mais recentes de cada jogo e, depois, a última de cada uma das 19 horas, dos 11 dias e das 6 semanas mais recentes em que jogaste. As versões mais antigas são removidas, exceto as fixadas e a mais recente de cada jogo, e uma versão removida fica 30 dias no lixo do servidor antes de ser apagada de vez.
 
 Para guardar tudo, define `snapshot_pruning = false` na secção `[retention]` do `config.toml` (em `./config/`, ao lado do ficheiro compose) e reinicia o servidor (`docker compose restart` com Docker). Na mesma secção, `data_saving` muda o equilíbrio: `0.0` guarda quase tudo, `1.0` só o essencial.
 
@@ -113,9 +113,9 @@ Para guardar tudo, define `snapshot_pruning = false` na secção `[retention]` d
 
 Para qualquer coisa exposta além da rede local, termine o TLS em um proxy reverso (Caddy, nginx ou Traefik). Prefere bare metal? O repositório também traz um script de instalação `systemd` e um comando `hoard-server upgrade` que troca o binário de forma atômica sem matar uma sincronização em andamento.
 
-## Self-hosted ou Hoard Cloud?
+## Self-hosted ou Hoard One?
 
-Auto-hospedar é ideal se você já tem um servidor e quer controle total sem cota. Se preferir não manter infraestrutura, o [Hoard Cloud](/pricing) oferece a mesma sincronização gerenciada por nós, com um plano gratuito para começar. De qualquer forma, o app e seus saves continuam portáteis — você pode trocar depois.
+Auto-hospedar é ideal se você já tem um servidor e quer controle total sem cota. Para todos os outros, recomendamos o [Hoard One](/pricing): a mesma sincronização, gerenciada por nós, com um plano gratuito para começar. De qualquer forma, o app e seus saves continuam portáteis — você pode trocar depois.
 
 <!-- faq -->
 
@@ -125,7 +125,7 @@ Auto-hospedar é ideal se você já tem um servidor e quer controle total sem co
 
 Não. A aplicação de ambiente de trabalho fala com o endereço de servidor que lhe deres. Os teus saves, os teus utilizadores e os teus registos ficam na tua máquina, e nada disso nos chega.
 
-### O servidor self-hosted é o mesmo código do Hoard Cloud?
+### O servidor self-hosted é o mesmo código do Hoard One?
 
 Sim, o mesmo código do `hoard-server`, sob AGPL-3.0. A versão alojada acrescenta o que só um serviço público precisa, como o registo, os planos e a faturação; tudo o que encontra, sincroniza e versiona os teus saves é comum. Não há uma edição comunitária reduzida.
 
@@ -145,6 +145,6 @@ Na tua própria rede local, não. A partir do momento em que o servidor é acess
 
 O snapshot é tirado localmente, por isso não se perde nada. Sobe sozinho assim que o servidor voltar a responder.
 
-### Posso começar no Hoard Cloud e mudar mais tarde?
+### Posso começar no Hoard One e mudar mais tarde?
 
 Sim, nos dois sentidos. Podes exportar tudo a partir da página da tua conta, e a aplicação pode ser apontada a outro servidor sem reinstalar nada.

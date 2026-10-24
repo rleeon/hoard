@@ -12,7 +12,9 @@ export const NOTICES = [
   'save-too-large',
   'archive-expiring',
   'devices-full',
-  'export-ready'
+  'export-ready',
+  'pass-expiring',
+  'pass-ended'
 ] as const;
 
 export type NoticeSlug = (typeof NOTICES)[number];
@@ -39,5 +41,7 @@ export const NOTICE_CTA: Record<NoticeSlug, { key: string; href: string }> = {
   'save-too-large': { key: 'notices.cta_account', href: '/account' },
   'archive-expiring': { key: 'notices.cta_account', href: '/account' },
   'devices-full': { key: 'notices.cta_devices', href: '/account' },
-  'export-ready': { key: 'notices.cta_account', href: '/account' }
+  'export-ready': { key: 'notices.cta_account', href: '/account' },
+  'pass-expiring': { key: 'notices.cta_pass', href: '/checkout?plan=pro&cycle=once' },
+  'pass-ended': { key: 'notices.cta_pass', href: '/checkout?plan=pro&cycle=once' }
 };

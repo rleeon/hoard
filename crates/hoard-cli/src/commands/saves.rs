@@ -190,7 +190,7 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
             if cloud.is_some() {
                 return Err(output::err(
                     "unsupported",
-                    "Hoard Cloud creates a save with its first backup: track the folder \
+                    "Hoard One creates a save with its first backup: track the folder \
                      with `hoard track` instead",
                 ));
             }
@@ -269,7 +269,7 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                     .find(|s| s.save_id == id)
                     .ok_or_else(|| {
                         anyhow::Error::new(ApiError::NotFound)
-                            .context(format!("no save {id} on Hoard Cloud"))
+                            .context(format!("no save {id} on Hoard One"))
                     })?;
                 let versions = client.cloud_list_versions(&id, false).await?;
                 SaveInfo {

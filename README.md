@@ -29,7 +29,7 @@ Rolls back when things go wrong. That's it. That's Hoard.
 
 | Feature | What it means for you |
 |---------|----------------------|
-| **Versioned** | Every session = new snapshot. Roll back to *any* previous version. Old saves never expire (self-hosted) or until you hit your quota (Cloud). |
+| **Versioned** | Every session = new snapshot. Roll back to *any* previous version. Old saves never expire (self-hosted) or until you hit your quota (Hoard One). |
 | **Verified** | Every file SHA256-hashed on upload, re-verified on restore. Corruption caught before it overwrites your good save. |
 | **Compact** | Content-hash deduplication: 10 versions of a 2 GB save cost ~2 GB, not 20 GB. Transfers are zstd-compressed; restores byte-for-byte (SHA-256 verified). The same dedup applies on upload: a second backup of the same game moves only the files that changed, only megabytes, not the whole folder. After the 1.2.2 this gonna be upgraded. |
 | **Auto-detect** | +20,000 games from the Ludusavi manifest, found through 10 signals: Steam libraries, Epic/GOG/Xbox launchers, running processes, filesystem scan, Windows registry, Steam Cloud stubs, Proton/Wine prefixes, wrappers and +20 emulators. Zero config. |
@@ -42,24 +42,44 @@ Also includes a headless CLI — the sync engine (`hoardd`) runs as a background
 service and the terminal (`hoard`) talks to it. Perfect for servers and Steam
 Decks. No desktop required, just set it and forget it.
 
-## Cloud or Self-Host??
+## Hoard and Hoard One
 
-One codebase, two ways to run it:
+**Hoard** is the program: the app, the terminal and the server, all open
+source. **Hoard One** is that same server, run by me in the EU at
+[hoard.services](https://hoard.services). The app works the same against
+either, and you can switch later.
 
-![Hoard server photo](web/static/cloud.png)
+![Hoard One or your own server, syncing every device](web/static/cloud.png)
 
-- **Self-hosted** Run the same `hoard-server` binary on your own box and
-  point the app at it. No account, no quota — just your cloud. On a NAS it is
-  two boxes to fill in: the [Unraid template](Unraid.md), or the [Docker image](https://github.com/rleeon/hoard/pkgs/container/hoard), `docker pull ghcr.io/rleeon/hoard`, 
-  mirrored to Docker Hub as `rleeon/hoard` (amd64 and arm64, published on every release). 
-  [Self-hosting guide](SELF-HOST_GUIDE.md) for the rest.
+- **Hoard One**, recommended for everyone. Sign in with Google, install the
+  app, done: nothing to set up and nothing to keep running. It starts free,
+  with 2 GB, 3 devices and the full version history, no card needed.
 &nbsp;
-- **Hoard Cloud** The hosted service at [hoard.services](https://hoard.services).
-  Sign in with Google, install the app, done. Free tier: 2 GB, 3 devices,
-  full version history, free forever.
+- **Hoard**, self-hosted, the original. Run the `hoard-server` binary on your
+  own box and point the app at it. No account with us, no telemetry to us, no
+  quota beyond your own disk. On a NAS it is two boxes to fill in: the
+  [Unraid template](Unraid.md), or the [Docker image](https://github.com/rleeon/hoard/pkgs/container/hoard),
+  `docker pull ghcr.io/rleeon/hoard`, mirrored to Docker Hub as `rleeon/hoard`
+  (amd64 and arm64, published on every release).
+  [Self-hosting guide](SELF-HOST_GUIDE.md) for the rest.
 
-I have a Pro feature to all guys wanna help Hoard, gives you 100 GB. Free user
-dont need Pro, is just comodity, only limit is Storage 2GB, if you hit it just [Self-Host](SELF-HOST_GUIDE.md).
+
+## How Hoard is paid for
+
+Hoard takes no donations. I don't want to make money from this, or at least
+not money without giving something back: I made Hoard because I needed it,
+not because I wanted to sell it.
+
+What Hoard One brings in pays for the servers it runs on. Every cost, month by
+month, is in [FUNDING.md](FUNDING.md).
+
+What Hoard doesn't do:
+
+- No ads.
+- No selling your data.
+- No account with us and no telemetry to us when you self-host.
+- No donations.
+- The free plan of Hoard One is not a trial and does not expire.
 
 
 ## One installer, whatever your machine is
@@ -126,3 +146,21 @@ To be clearer, until i have the necessary privileges(hoardd), i doubt there will
 - **[Self-hosting guide](SELF-HOST_GUIDE.md)** Docker, Unraid, bare-metal + systemd, and the headless CLI.
 - **[Contributing](CONTRIBUTING.md)** Building from source, the release flow, and the architecture.
 - **[Funding](FUNDING.md)** Where the money goes.
+
+
+## Thanks
+
+To everyone who took the time to report a bug, ask for a feature or send a
+fix: [doctorase](https://github.com/doctorase),
+[Felitendo](https://github.com/Felitendo),
+[ilbebino08](https://github.com/ilbebino08),
+[mpldr](https://github.com/mpldr),
+[nodiaque](https://github.com/nodiaque),
+[rangoDJ](https://github.com/rangoDJ),
+[Razen1994](https://github.com/Razen1994),
+[shieek1](https://github.com/shieek1),
+[sockenklaus](https://github.com/sockenklaus),
+[SoulJaCKER12](https://github.com/SoulJaCKER12),
+[Trustwbc](https://github.com/Trustwbc) and
+[xDeadGuyx](https://github.com/xDeadGuyx). And to everyone who tests and helps
+on Discord.

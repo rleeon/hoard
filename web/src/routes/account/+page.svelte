@@ -187,6 +187,8 @@
     {@const plan = PLANS[p.plan]}
     {@const days = daysUntil(p.planRenewsAt)}
     {@const planLabel = $_(`plan.${p.plan}`)}
+    {@const onPass = p.planInterval === 'once'}
+    {@const passEnded = onPass && p.planRenewsAt !== null && days !== null && days <= 0}
 
     <Card title={$_('account.plan_section')}>
       {#snippet actions()}
@@ -194,14 +196,21 @@
           {$_('account.change_plan')}
         </Button>
         <Button variant="ghost" size="sm" onclick={gotoBilling}>
-          {$_('account.manage_billing')}
+          <!-- A pass has nothing to manage, only receipts. -->
+          {onPass ? $_('account.view_invoices') : $_('account.manage_billing')}
           <ExternalLink class="h-3.5 w-3.5" />
         </Button>
       {/snippet}
 
       <div class="flex flex-wrap items-baseline gap-3">
         <span class="font-display text-3xl font-semibold text-ink">{planLabel}</span>
-        {#if p.plan !== 'free'}
+        {#if onPass}
+          <span class="text-sm text-ink-soft">
+            {$_('checkout.price_once', {
+              values: { price: plan.priceOnce.toLocaleString($locale ?? undefined) }
+            })}
+          </span>
+        {:else if p.plan !== 'free'}
           <span class="text-sm text-ink-soft">
             {$_('account.price_per_month', {
               values: { price: plan.priceMonthly.toLocaleString($locale ?? undefined) }
@@ -210,7 +219,27 @@
         {/if}
       </div>
 
-      {#if p.planCancelAt}
+      {#if onPass && p.planRenewsAt}
+        <!-- A pass renews nothing: "renews in N days" would promise a charge
+             that never comes. Its date is where the year ends, and after it
+             the month of Pro on us. -->
+        <p class="mt-3 text-sm {passEnded ? 'text-amber-400' : 'text-ink-soft'}">
+          {#if passEnded && p.proUntil}
+            {$_('account.pass_grace', {
+              values: { date: new Date(p.proUntil).toLocaleDateString($locale ?? undefined) }
+            })}
+          {:else}
+            {$_('account.pass_ends_on', {
+              values: { date: new Date(p.planRenewsAt).toLocaleDateString($locale ?? undefined) }
+            })}
+          {/if}
+        </p>
+        <div class="mt-4">
+          <Button size="sm" onclick={() => goto('/checkout?plan=pro&cycle=once')}>
+            {$_('account.buy_another_year')}
+          </Button>
+        </div>
+      {:else if p.planCancelAt}
         <p class="mt-3 text-sm text-amber-400">
           {$_('account.cancels_on', {
             values: { date: new Date(p.planCancelAt).toLocaleDateString() }

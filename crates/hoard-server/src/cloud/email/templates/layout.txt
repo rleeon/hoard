@@ -3,8 +3,8 @@
 --
 You are getting this because it affects the saves in your Hoard account.
 {{#offer}}
-This notice includes an offer for Hoard Pro. Stop the offers, keep the
-notices: {{offers_url}}
+This notice includes an offer for the Pro plan. Stop the offers, keep
+the notices: {{offers_url}}
 {{/offer}}
 
 This mailbox is not monitored. Questions go to Discord

@@ -13,14 +13,18 @@ export const prerender = true;
  * English only on purpose. The localized pages are reachable through hreflang
  * from every URL below, and a model asking in another language still lands on
  * the right page.
+ *
+ * "(formerly Hoard Cloud)" is a bridge for models and search engines that
+ * learned the old name of the hosted server. It comes out on 2026-11-15.
  */
 const INTRO = `# Hoard
 
 > Automatic, versioned game save sync across devices. Hoard watches the folders
 > your games save into, snapshots every change, and syncs those snapshots
 > between your machines. Steam, GOG, Epic, itch, emulators and 20,000+ games
-> from the community save-location manifest. Use the hosted Hoard Cloud, or run
-> the same open-source server yourself with no account and no quota.
+> from the community save-location manifest. Use Hoard One, our hosted server
+> (formerly Hoard Cloud), or run the same open-source server yourself with no
+> account and no quota.
 
 Free and open source under AGPL-3.0. Windows, Linux, macOS and Steam Deck.
 Every session becomes a new version you can roll back to, deduplicated by

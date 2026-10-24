@@ -351,6 +351,21 @@ pub fn spawn_daily(state: CloudState) {
             if let Err(e) = warn_expiring_archives(&state).await {
                 tracing::warn!(error = %e, "archive expiry warning sweep failed");
             }
+            // Lapse before the reminders, so nobody is told they still have
+            // Pro on the day it was taken away.
+            let storage_grace_days = state
+                .config
+                .cloud
+                .as_ref()
+                .map_or(30, |c| c.storage_downgrade_grace_days as i64);
+            match crate::cloud::lapse::sweep(&state.pool, storage_grace_days).await {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(accounts = n, "lapsed plans moved to Free"),
+                Err(e) => tracing::warn!(error = %e, "lapse sweep failed"),
+            }
+            if let Err(e) = warn_passes(&state).await {
+                tracing::warn!(error = %e, "pass reminder sweep failed");
+            }
             tick.tick().await;
         }
     });
@@ -501,6 +516,107 @@ async fn warn_expiring_archives(state: &CloudState) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+// ---- pass reminders
+
+/// The days around the end of a pass on which its owner hears from us, counted
+/// from the day its year ends: four before, then one a week through the grace
+/// month, the last a week before Pro is gone.
+const PASS_REMINDERS: [i64; 8] = [-25, -14, -7, -1, 3, 10, 17, 24];
+
+/// The reminder due at `now` for a pass whose year ends at `end`: the latest
+/// whose day has come, or `None` before the first. Only the latest, so a sweep
+/// that missed a day sends one message instead of a backlog, and a reminder
+/// already claimed keeps being the answer until the next one is due.
+fn due_pass_reminder(end: time::OffsetDateTime, now: time::OffsetDateTime) -> Option<i64> {
+    PASS_REMINDERS
+        .into_iter()
+        .filter(|d| end + time::Duration::days(*d) <= now)
+        .max()
+}
+
+/// Whole days from `now` to `t`, rounded up and never below one: "ends in 0
+/// days" helps nobody.
+fn days_until(t: time::OffsetDateTime, now: time::OffsetDateTime) -> i64 {
+    ((t - now).whole_hours() as f64 / 24.0).ceil().max(1.0) as i64
+}
+
+/// Email every pass owner whose reminder day has come. One claim per pass and
+/// day, so the daily cadence and a restart in between cannot send one twice.
+async fn warn_passes(state: &CloudState) -> Result<(), sqlx::Error> {
+    use crate::cloud::polar::PASS_GRACE_DAYS;
+    let due: Vec<(Uuid, String, time::OffsetDateTime)> = sqlx::query_as(
+        r#"SELECT user_id, ls_subscription_id, renews_at FROM subscriptions
+            WHERE "interval" = 'once' AND status IN ('active','grace')
+              AND renews_at <= now() + make_interval(days => $1)
+              AND renews_at + make_interval(days => $2) > now()"#,
+    )
+    .bind(-PASS_REMINDERS[0] as i32)
+    .bind(PASS_GRACE_DAYS as i32)
+    .fetch_all(&state.pool)
+    .await?;
+
+    let now = time::OffsetDateTime::now_utc();
+    for (user_id, pass_id, end) in due {
+        let Some(day) = due_pass_reminder(end, now) else {
+            continue;
+        };
+        pass_reminder(state, user_id, format!("{pass_id}:{day}"), day, end);
+    }
+    Ok(())
+}
+
+/// Like [`prepare`], without the two checks that make no sense here: these go
+/// to accounts that are Pro by definition, and they carry no pitch, so there
+/// is no offers token to look up either.
+async fn prepare_pass(state: &CloudState, user_id: Uuid) -> Option<(EmailConfig, String)> {
+    let cfg = state.config.cloud.as_ref().map(|c| c.email.clone())?;
+    if !email::is_configured(&cfg) {
+        return None;
+    }
+    let to: String = sqlx::query_scalar("SELECT email FROM profiles WHERE user_id = $1")
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten()?;
+    (!to.is_empty()).then_some((cfg, to))
+}
+
+/// One reminder about one pass. `day` is its place in [`PASS_REMINDERS`]:
+/// negative before the year ends, positive inside the grace month.
+fn pass_reminder(
+    state: &CloudState,
+    user_id: Uuid,
+    scope: String,
+    day: i64,
+    end: time::OffsetDateTime,
+) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        let Some((cfg, to)) = prepare_pass(&state, user_id).await else {
+            return;
+        };
+        let kind = if day < 0 {
+            Kind::PassExpiring
+        } else {
+            Kind::PassEnded
+        };
+        if !claimed(&state, user_id, kind, &scope).await {
+            return;
+        }
+        let until = end + time::Duration::days(crate::cloud::polar::PASS_GRACE_DAYS);
+        let now = time::OffsetDateTime::now_utc();
+        let r = if day < 0 {
+            email::send_pass_expiring(&cfg, &to, days_until(end, now), &fmt_day(end), &fmt_day(until))
+                .await
+        } else {
+            email::send_pass_ended(&cfg, &to, days_until(until, now), &fmt_day(end), &fmt_day(until))
+                .await
+        };
+        settle(&state, user_id, kind, &scope, r).await;
+    });
+}
+
 /// "18 September". Long enough to be unambiguous in a message that crosses
 /// date formats, short enough to sit in a table cell.
 fn fmt_day(t: time::OffsetDateTime) -> String {
@@ -519,4 +635,38 @@ fn fmt_day(t: time::OffsetDateTime) -> String {
         "December",
     ];
     format!("{} {}", t.day(), MONTHS[t.month() as usize - 1])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn pass_reminders_fall_on_their_days() {
+        let end = datetime!(2027-10-22 10:00 UTC);
+        let at = |d: i64, h: i64| end + time::Duration::days(d) + time::Duration::hours(h);
+
+        assert_eq!(due_pass_reminder(end, at(-26, 0)), None);
+        assert_eq!(due_pass_reminder(end, at(-25, 0)), Some(-25));
+        assert_eq!(due_pass_reminder(end, at(-20, 0)), Some(-25));
+        assert_eq!(due_pass_reminder(end, at(-14, 1)), Some(-14));
+        assert_eq!(due_pass_reminder(end, at(-1, 3)), Some(-1));
+        // The year is over but Pro is not: the grace month starts quietly.
+        assert_eq!(due_pass_reminder(end, at(1, 0)), Some(-1));
+        assert_eq!(due_pass_reminder(end, at(3, 0)), Some(3));
+        assert_eq!(due_pass_reminder(end, at(10, 5)), Some(10));
+        assert_eq!(due_pass_reminder(end, at(17, 0)), Some(17));
+        assert_eq!(due_pass_reminder(end, at(29, 0)), Some(24));
+        // A sweep that missed a week sends the one due now, not the backlog.
+        assert_eq!(due_pass_reminder(end, at(18, 0)), Some(17));
+    }
+
+    #[test]
+    fn days_left_round_up_and_never_reach_zero() {
+        let now = datetime!(2027-10-21 22:00 UTC);
+        assert_eq!(days_until(datetime!(2027-10-22 10:00 UTC), now), 1);
+        assert_eq!(days_until(datetime!(2027-11-04 10:00 UTC), now), 14);
+        assert_eq!(days_until(now, now), 1);
+    }
 }

@@ -107,7 +107,7 @@
       >
         <Download data-anim="pop" class="h-4 w-4" aria-hidden="true" />
         {$_('press.zip_cta')}
-        <span class="font-mono text-xs text-pine/70">.zip · {formatBytes(zipBytes)}</span>
+        <span class="font-mono text-xs text-white">.zip · {formatBytes(zipBytes)}</span>
       </a>
       {#if latest}
         <Button href="#latest-release" variant="secondary" size="lg">

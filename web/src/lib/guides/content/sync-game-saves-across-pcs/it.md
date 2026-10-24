@@ -71,7 +71,7 @@ Se invece vuoi che le impostazioni viaggino, spunta **Ripristina anche i file di
 
 Vale la pena dirlo chiaramente, perché è il punto su cui quasi tutti i confronti sbagliano. Ci sono due modi di usarlo:
 
-- **Hoard Cloud** è l'opzione gestita: accedi e i salvataggi stanno sui nostri server, nell'UE.
+- **Hoard One** è l'opzione gestita, quella che consigliamo a tutti: accedi e i salvataggi stanno sui nostri server, nell'UE.
 - **Il self-hosting è interamente tuo.** Fai girare `hoard-server` sul tuo PC o sul tuo NAS e le tue macchine si sincronizzano attraverso quello. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Vedi [come ospitare Hoard da solo](/guides/self-host-hoard).
 
 Stesso programma, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, più un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, a meno che tu non lo disattivi.

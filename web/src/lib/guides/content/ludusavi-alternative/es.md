@@ -22,7 +22,7 @@ Hoard convierte eso en **sincronización gestionada en la nube**:
 - **Inicia sesión y listo.** Sin remotos de Rclone, sin scripts. Hoard sube tu partida cuando terminas de jugar y descarga la última antes de empezar, en todos los PC de tu cuenta.
 - **Historial versionado en la nube.** Se conserva cada copia, así que puedes volver a cualquier partida anterior, incluso tras un fallo de disco o una instalación limpia.
 - **Tiene en cuenta los conflictos.** Hoard compara fechas y guarda una copia local de lo que reemplaza, así que una sincronización nunca destruye progreso en silencio.
-- **Sigue siendo open source y autoalojable.** Como Ludusavi, no hay bloqueo: usa Hoard Cloud o aloja el servidor tú mismo.
+- **Sigue siendo open source y autoalojable.** Como Ludusavi, no hay bloqueo: usa Hoard One o aloja el servidor tú mismo.
 
 ## Cara a cara
 
@@ -74,14 +74,14 @@ No hay importador, y es a propósito. Los pasos:
 
 **Las partidas de Steam viven una carpeta más adentro de lo que parece.** En los juegos de Steam, Hoard rastrea `<AppID>/remote/` dentro de `userdata`, no la carpeta de encima. La carpeta padre guarda además `remotecache.vdf` y ficheros de logros y de tiempo jugado, y ésos son legítimamente distintos en cada máquina. Si sincronizas la padre, cada arranque parece un conflicto aunque no se haya movido ninguna partida. Es el motivo más común de que un montaje casero entre Steam Deck y sobremesa acabe peleándose consigo mismo.
 
-**Las versiones salen baratas.** Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez. Diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB, no 20, y por eso Hoard Cloud puede conservar el historial entero en vez de ir podándolo.
+**Las versiones salen baratas.** Las instantáneas se guardan por hash de contenido, así que un fichero que no cambia se almacena una sola vez. Diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB, no 20, y por eso Hoard One puede conservar el historial entero en vez de ir podándolo.
 
 ## Qué significa realmente autoalojarse
 
 Es el punto donde casi todas las comparativas se equivocan con Hoard, así que conviene ser exacto. Hay dos formas de usarlo, y son genuinamente distintas:
 
-- **Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
-- **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS, y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, por la sencilla razón de que nada de eso nos llega. Si Hoard Cloud desapareciera mañana, un montaje autoalojado seguiría funcionando igual.
+- **Hoard One** es la opción gestionada, la que recomendamos a todos: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
+- **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS, y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, por la sencilla razón de que nada de eso nos llega. Si Hoard One desapareciera mañana, un montaje autoalojado seguiría funcionando igual.
 
 El mismo programa, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives.
 
@@ -106,7 +106,7 @@ No, y es deliberado. Una carpeta de copias es un duplicado que cambia según su 
 
 ### ¿Hoard es gratis?
 
-Hoard Cloud tiene un plan gratuito con 2 GB de almacenamiento y 3 dispositivos, que cubre la mayoría de colecciones de partidas; Pro sube ambos. Autoalojar el servidor es gratis y no tiene cupo ninguno. Todo es open source bajo AGPL-3.0.
+Hoard One tiene un plan gratuito con 2 GB de almacenamiento y 3 dispositivos, que cubre la mayoría de colecciones de partidas; Pro sube ambos. Autoalojar el servidor es gratis y no tiene cupo ninguno. Todo es open source bajo AGPL-3.0.
 
 ### ¿Funciona en Steam Deck?
 
@@ -114,7 +114,7 @@ Sí, en Steam Deck y en cualquier escritorio Linux, además de Windows y macOS. 
 
 ### ¿Necesito Rclone o una cuenta de nube propia?
 
-No. Ésa es la diferencia práctica principal: con Hoard Cloud el almacenamiento ya está listo al iniciar sesión. Si prefieres ser dueño del almacenamiento, levanta el servidor tú mismo contra un bucket compatible con S3 o una carpeta normal de tu máquina.
+No. Ésa es la diferencia práctica principal: con Hoard One el almacenamiento ya está listo al iniciar sesión. Si prefieres ser dueño del almacenamiento, levanta el servidor tú mismo contra un bucket compatible con S3 o una carpeta normal de tu máquina.
 
 ### ¿Autoalojarse envía algo a Hoard?
 

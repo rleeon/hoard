@@ -34,6 +34,11 @@ pub enum Kind {
     ArchiveExpiring,
     /// Every device slot on the plan is taken.
     DevicesFull,
+    /// A pass's year is about to end. Scoped to `<pass>:<day>`, one per
+    /// reminder day, so each of them goes out once.
+    PassExpiring,
+    /// A pass's year ended and its grace month is running. Same scoping.
+    PassEnded,
 }
 
 impl Kind {
@@ -44,6 +49,8 @@ impl Kind {
             Kind::SaveTooLarge => "save_too_large",
             Kind::ArchiveExpiring => "archive_expiring",
             Kind::DevicesFull => "devices_full",
+            Kind::PassExpiring => "pass_expiring",
+            Kind::PassEnded => "pass_ended",
         }
     }
 }

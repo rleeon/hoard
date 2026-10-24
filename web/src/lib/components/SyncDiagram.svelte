@@ -20,7 +20,7 @@
   //   the balls and the badge are white now; what lights up when is unchanged.
   //
   // SCENE (always the same five nodes):
-  //   - Two hubs on top: hoard-Cloud (badge "login") and hoard-server (badge
+  //   - Two hubs on top: Hoard One (badge "login") and hoard-server (badge
   //     "self-host"), left and right.
   //   - Three devices below: the desktop, the laptop, the second desktop.
   //
@@ -282,7 +282,7 @@
 
     <g bind:this={cloudChip} aria-hidden="true">
       <rect class="hub-chip" x="27" y="18" width="96" height="34" rx="8" />
-      <text class="l-chip" x="75" y="31">hoard-Cloud</text>
+      <text class="l-chip" x="75" y="31">Hoard One</text>
       <text class="l-chip-sub" x="75" y="42">login</text>
     </g>
     <g bind:this={serverChip} aria-hidden="true">

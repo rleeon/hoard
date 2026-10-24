@@ -8,7 +8,7 @@ Every € goes to keeping it running and improving.
 ## Costs (Monthly / Total)
 
 Last change **14/10/2026**.
-- Hoard-Cloud: **427 Users**
+- Hoard One: **427 Users**
 
 THis is incorrect give me a moment to fix it, looks like a month get deleted.
 | Service | 07/2026 | 08/2026 | 09/2026 | 10/2026 |
@@ -30,7 +30,7 @@ This really dont are a monthly lost, is a yearly payments like domain.
 
 Im gonna calculate this in 6-12 months.
 
-## Pro (Hoard Pro Users)
+## Pro
 
 At the moment we have **4** Pro users.
 Here is what happend when you buy 1 month.

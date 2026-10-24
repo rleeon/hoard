@@ -11,7 +11,7 @@ Las dos herramientas resuelven el mismo problema y discrepan en la arquitectura,
 
 **OpenSave** es punto a punto. Tus máquinas hablan entre ellas directamente y no hay nada en medio. No hay cuenta ni almacenamiento que pagar, y opcionalmente puede espejar una copia en una nube que ya tengas.
 
-**Hoard** sincroniza a través de un servidor. Ese servidor es Hoard Cloud, gestionado por nosotros, o `hoard-server` corriendo en tu propio PC o NAS. Tu partida sube cuando dejas de jugar y baja cuando otra máquina la pide.
+**Hoard** sincroniza a través de un servidor. Ese servidor es Hoard One, gestionado por nosotros, o `hoard-server` corriendo en tu propio PC o NAS. Tu partida sube cuando dejas de jugar y baja cuando otra máquina la pide.
 
 Todo lo demás sale de esa única decisión.
 
@@ -26,7 +26,7 @@ Todo lo demás sale de esa única decisión.
 
 Siendo justos con el otro lado:
 
-- **Ningún almacenamiento que pagar, nunca.** No hay cupo que agotar porque no hay depósito. El plan gratuito de Hoard son 2 GB, y por encima pagas o te autoalojas.
+- **Ningún almacenamiento que pagar, nunca.** No hay cupo que agotar porque no hay depósito. El plan gratuito de Hoard One son 2 GB, y por encima pagas o te autoalojas.
 - **Nada en medio por diseño.** Si el objetivo es que un fichero no toque nunca el disco de un tercero, la transferencia directa es la respuesta más corta posible.
 - **Nada que mantener.** Ningún servidor en pie, ni siquiera el tuyo.
 
@@ -36,8 +36,8 @@ Si juegas en dos sobremesas que están los dos encendidos, nunca quieres volver 
 
 Aquí es donde las comparativas de Hoard suelen equivocarse, así que conviene ser exacto. Hay dos formas de usar Hoard, y son genuinamente distintas:
 
-- **Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
-- **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, porque nada de eso nos llega. Si Hoard Cloud cerrara mañana, un montaje autoalojado seguiría igual.
+- **Hoard One** es la opción gestionada, la que recomendamos a todos: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
+- **Autoalojarse es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, porque nada de eso nos llega. Si Hoard One cerrara mañana, un montaje autoalojado seguiría igual.
 
 O sea que «servidor» no significa «el ordenador de otro» salvo que tú lo elijas. Un Hoard autoalojado mantiene tus partidas en hardware tuyo, exactamente igual que una transferencia directa, y encima te da el historial y el caso de la máquina apagada.
 
@@ -58,7 +58,7 @@ Hay una [comparativa de todas las herramientas de sincronización](/guides/game-
 
 ### ¿Hoard necesita cuenta?
 
-Para Hoard Cloud sí, porque es a lo que está atada la sincronización. Autoalojado no hay ninguna cuenta con nosotros: tu servidor tiene sus propios usuarios y un token por dispositivo, y no salen de tu máquina.
+Para Hoard One sí, porque es a lo que está atada la sincronización. Autoalojado no hay ninguna cuenta con nosotros: tu servidor tiene sus propios usuarios y un token por dispositivo, y no salen de tu máquina.
 
 ### ¿Puede funcionar Hoard sin ninguna nube?
 

@@ -71,7 +71,7 @@ Quando quiseres mesmo que as definições viajem, marca **Restaurar também os f
 
 Vale a pena dizê-lo de forma explícita, porque é o ponto em que quase todas as comparações se enganam. Há duas formas de o usar:
 
-- **O Hoard Cloud** é a opção gerida: inicias sessão e os teus saves ficam nos nossos servidores, na UE.
+- **O Hoard One** é a opção gerida, a que recomendamos a todos: inicias sessão e os teus saves ficam nos nossos servidores, na UE.
 - **O self-hosting é inteiramente teu.** Corres o `hoard-server` no teu PC ou no teu NAS e as tuas máquinas sincronizam através dele. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Vê [como alojar o Hoard tu mesmo](/guides/self-host-hoard).
 
 O mesmo programa, a mesma deteção. O que muda é de quem é o armazenamento, e uma predefinição: um servidor self-hosted vai desbastando as versões antigas com o tempo, a não ser que o desligues.

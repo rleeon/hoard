@@ -55,7 +55,7 @@ Only after your current save has been captured as a new version. If you restore 
 
 ### How far back does the history go?
 
-On Hoard Cloud, all the way: no plan has a version limit. The only cap is one you set yourself, **Max versions per game** in the Dashboard, and even that never removes pinned versions or a game's newest one. A self-hosted server thins out old versions by default, keeping recent history complete and older history sparser; you can switch that off in its config to keep everything.
+On Hoard One, all the way: no plan has a version limit. The only cap is one you set yourself, **Max versions per game** in the Dashboard, and even that never removes pinned versions or a game's newest one. A self-hosted server thins out old versions by default, keeping recent history complete and older history sparser; you can switch that off in its config to keep everything.
 
 ### Can I restore to a PC where the game isn't installed yet?
 

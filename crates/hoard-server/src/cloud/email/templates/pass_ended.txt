@@ -1,0 +1,18 @@
+Your Pro year has ended: enjoy {{days}} more on us
+
+Your year of Pro ended on {{end}}. We did not want it to stop abruptly,
+so this month is our gift: you keep Pro until {{until}}, with everything
+syncing exactly as before, while you think it over calmly.
+
+If you stay, buy another year before {{until}} and it picks up from {{end}},
+with no gap in your Pro.
+
+  Year ended:       {{end}}
+  Your extra month: until {{until}}, on us
+
+If you do not renew, after {{until}} the account goes back to Free: 2 GB of
+storage and 1 GB per game. Every device you paired stays paired. If your saves
+need more than 2 GB, nothing is deleted for another 30 days; after that the
+oldest versions go first.
+
+Another year of Pro, 19.99 EUR once: https://hoard.services/checkout?plan=pro&cycle=once

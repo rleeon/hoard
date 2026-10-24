@@ -777,7 +777,7 @@ pub enum IpcError {
     /// in again. Before Slice 4c each frontend made that distinction by
     /// downcasting its own `RefreshTokenStale`; now it travels on the wire,
     /// because the daemon is what discovers it.
-    #[error("the Hoard Cloud session is gone: {reason}")]
+    #[error("the Hoard One session is gone: {reason}")]
     CloudSessionExpired { reason: String },
     /// There is no self-hosted session on this machine. The twin of
     /// [`IpcError::CloudSessionExpired`] for someone's own server, and a separate

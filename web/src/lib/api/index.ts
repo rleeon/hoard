@@ -96,6 +96,8 @@ export const api = {
       subscriptionStatus: j.subscription_status ?? null,
       planRenewsAt: j.renews_at ?? null,
       planCancelAt: j.cancel_at ?? null,
+      planInterval: j.subscription_interval ?? null,
+      proUntil: j.pro_until ?? null,
       storageBytes: j.storage_used_bytes ?? 0,
       storageLimitBytes: j.storage_limit_bytes ?? 0,
       devicesCount: j.devices_used ?? 0,
@@ -109,7 +111,7 @@ export const api = {
    * subscription back, and returns the hosted checkout URL to redirect to.
    */
   async createCheckout(plan: Exclude<PlanId, 'free'>, cycle: BillingCycle): Promise<string> {
-    const interval = cycle === 'yearly' ? 'year' : 'month';
+    const interval = cycle === 'once' ? 'once' : cycle === 'yearly' ? 'year' : 'month';
     const res = await request('/v1/cloud/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

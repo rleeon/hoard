@@ -54,7 +54,7 @@ Erst nachdem dein aktueller Stand als neue Version gesichert wurde. Hast du die 
 
 ### Wie weit reicht die Historie zurück?
 
-Bei Hoard Cloud bis ganz zum Anfang: Kein Tarif hat ein Versionslimit. Die einzige Grenze ist eine, die du selbst setzt, **Max. Versionen pro Spiel** in der Übersicht, und selbst die entfernt nie angeheftete Versionen oder die neueste eines Spiels. Ein selbst gehosteter Server dünnt alte Versionen standardmäßig aus: Die jüngere Historie bleibt vollständig, die ältere wird lückenhafter. In seiner Konfiguration kannst du das abschalten und alles behalten.
+Bei Hoard One bis ganz zum Anfang: Kein Tarif hat ein Versionslimit. Die einzige Grenze ist eine, die du selbst setzt, **Max. Versionen pro Spiel** in der Übersicht, und selbst die entfernt nie angeheftete Versionen oder die neueste eines Spiels. Ein selbst gehosteter Server dünnt alte Versionen standardmäßig aus: Die jüngere Historie bleibt vollständig, die ältere wird lückenhafter. In seiner Konfiguration kannst du das abschalten und alles behalten.
 
 ### Kann ich auf einen PC wiederherstellen, auf dem das Spiel noch nicht installiert ist?
 

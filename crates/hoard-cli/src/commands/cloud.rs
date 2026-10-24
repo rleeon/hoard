@@ -46,7 +46,7 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
     // expired the error says so, with the hint that `hoard sync` is what renews.
     let active = link::resolve_session().await?;
     let Some(sess) = active.cloud else {
-        bail!("this command needs a Hoard Cloud session; sign in with `hoard login`");
+        bail!("this command needs a Hoard One session; sign in with `hoard login`");
     };
     let base = sess.server_url.as_str();
     let token = sess.access.as_str();

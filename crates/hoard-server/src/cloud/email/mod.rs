@@ -78,6 +78,8 @@ const STORAGE_FULL: Template = template!("storage_full", "/notices/storage-full"
 const SAVE_TOO_LARGE: Template = template!("save_too_large", "/notices/save-too-large");
 const ARCHIVE_EXPIRING: Template = template!("archive_expiring", "/notices/archive-expiring");
 const DEVICES_FULL: Template = template!("devices_full", "/notices/devices-full");
+const PASS_EXPIRING: Template = template!("pass_expiring", "/notices/pass-expiring");
+const PASS_ENDED: Template = template!("pass_ended", "/notices/pass-ended");
 
 /// True when the config has enough to actually send (key + from address).
 pub fn is_configured(cfg: &EmailConfig) -> bool {
@@ -250,6 +252,55 @@ pub async fn send_devices_full(
         ],
     )
     .await
+}
+
+/// "Your year of Pro ends in N days." Four of them before the end of a pass.
+///
+/// No `offers` parameter: the reader is Pro, and the link to buy another year
+/// is the content of the message, not a pitch stuck onto a notice.
+pub async fn send_pass_expiring(
+    cfg: &EmailConfig,
+    to: &str,
+    days: i64,
+    end: &str,
+    until: &str,
+) -> Result<bool> {
+    send(
+        cfg,
+        to,
+        None,
+        PASS_EXPIRING,
+        &[("days", &fmt_days(days)), ("end", end), ("until", until)],
+    )
+    .await
+}
+
+/// "Your year ended; Pro until {until}." Weekly through the grace month.
+pub async fn send_pass_ended(
+    cfg: &EmailConfig,
+    to: &str,
+    days: i64,
+    end: &str,
+    until: &str,
+) -> Result<bool> {
+    send(
+        cfg,
+        to,
+        None,
+        PASS_ENDED,
+        &[("days", &fmt_days(days)), ("end", end), ("until", until)],
+    )
+    .await
+}
+
+/// "1 day", "14 days". The last reminder before a pass ends lands with a day
+/// to go, and a subject reading "1 days" is the kind of thing people notice.
+fn fmt_days(n: i64) -> String {
+    if n == 1 {
+        "1 day".to_string()
+    } else {
+        format!("{n} days")
+    }
 }
 
 /// Bytes the way the app writes them, so an email and the storage screen agree.
@@ -680,7 +731,7 @@ mod tests {
             for part in [&r.text, &r.html] {
                 assert!(!part.contains("{{"), "leftover marker: {part}");
                 assert!(!part.contains("pricing"), "offer left in: {part}");
-                assert!(!part.contains("HOARD PRO"), "offer left in: {part}");
+                assert!(!part.contains(">PRO<") && !part.contains("PRO - "), "offer left in: {part}");
                 assert!(!part.contains("no-offers"), "opt-out link left in");
                 // The service half is intact.
                 assert!(part.contains("/notices/"), "lost the notice link");
@@ -741,6 +792,39 @@ mod tests {
         assert_eq!(offer_sections("a {{#offer}}b{{/offer}} c", false), "a  c");
         assert_eq!(offer_sections("a {{#offer}}b{{/offer}} c", true), "a b c");
         assert_eq!(offer_sections("a {{#offer}}b c", false), "a ");
+    }
+
+    /// The pass reminders go to Pro accounts and are rendered the way their
+    /// callers send them, with no offers token: whole, no pitch, and the link
+    /// to buy another year intact in both parts.
+    #[test]
+    fn pass_reminders_render_whole() {
+        for (tpl, notice) in [
+            (PASS_EXPIRING, "/notices/pass-expiring"),
+            (PASS_ENDED, "/notices/pass-ended"),
+        ] {
+            let vars = [
+                ("days", fmt_days(1)),
+                ("end", "22 October".to_string()),
+                ("until", "21 November".to_string()),
+            ];
+            let vars: Vec<(&str, &str)> = vars.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            let r = render(tpl, &vars, None);
+            assert!(r.subject.contains("1 day"), "{}", r.subject);
+            assert!(!r.subject.contains("1 days"));
+            for part in [&r.text, &r.html] {
+                assert!(!part.contains("{{"), "unfilled placeholder: {part}");
+                assert!(part.contains("checkout?plan=pro"), "no way to buy: {part}");
+                assert!(part.contains(notice), "lost the notice link");
+                assert!(part.contains("21 November"));
+                assert!(!part.contains("no-offers"), "opt-out for an offer it lacks");
+            }
+            assert_eq!(
+                r.html.matches("<tr>").count(),
+                r.html.matches("</tr>").count()
+            );
+        }
+        assert_eq!(fmt_days(14), "14 days");
     }
 
     #[test]

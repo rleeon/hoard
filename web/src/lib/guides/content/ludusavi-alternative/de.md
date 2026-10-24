@@ -22,7 +22,7 @@ Hoard macht daraus **verwaltete Cloud-Synchronisierung**:
 - **Anmelden und loslegen.** Keine Rclone-Remotes, keine Skripte. Hoard lädt deinen Stand nach dem Spielen hoch und vor dem Start die neueste Version herunter, auf jedem PC deines Kontos.
 - **Versionierte Historie in der Cloud.** Jedes Backup bleibt erhalten, du kannst also zu jedem früheren Stand zurück — sogar nach einem Festplattenausfall oder einer Neuinstallation.
 - **Konfliktbewusst.** Hoard vergleicht Zeitstempel und behält eine lokale Kopie von allem, was es ersetzt, sodass eine Synchronisierung nie stillschweigend Fortschritt zerstört.
-- **Weiterhin Open Source und selbst hostbar.** Wie bei Ludusavi gibt es keine Bindung — nutze Hoard Cloud oder hoste den Server selbst.
+- **Weiterhin Open Source und selbst hostbar.** Wie bei Ludusavi gibt es keine Bindung — nutze Hoard One oder hoste den Server selbst.
 
 ## Direkter Vergleich
 
@@ -74,14 +74,14 @@ Es gibt keinen Import, und das ist Absicht. Die Schritte:
 
 **Steam-Spielstände liegen einen Ordner tiefer als gedacht.** Bei Steam-Spielen verfolgt Hoard `<AppID>/remote/` innerhalb von `userdata`, nicht den Ordner darüber. Der übergeordnete Ordner enthält auch `remotecache.vdf` sowie Dateien für Erfolge und Spielzeit, und die unterscheiden sich zu Recht von Rechner zu Rechner. Synchronisierst du den übergeordneten Ordner, sieht jeder Start nach einem Konflikt aus, obwohl sich kein einziger Spielstand bewegt hat. Das ist der häufigste Grund, warum ein selbstgebautes Setup zwischen Steam Deck und Desktop gegen sich selbst arbeitet.
 
-**Versionen sind billig.** Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal. Zehn Versionen eines 2 GB großen Spielstands, an dem sich zwischen den Sitzungen wenig ändert, kosten etwa 2 GB, nicht 20, und deshalb kann Hoard Cloud die komplette Historie behalten, statt sie auszudünnen.
+**Versionen sind billig.** Snapshots werden per Inhalts-Hash gespeichert, unveränderte Dateien also nur einmal. Zehn Versionen eines 2 GB großen Spielstands, an dem sich zwischen den Sitzungen wenig ändert, kosten etwa 2 GB, nicht 20, und deshalb kann Hoard One die komplette Historie behalten, statt sie auszudünnen.
 
 ## Was Selbsthosten wirklich bedeutet
 
 Genau hier liegen die meisten Vergleiche bei Hoard falsch, deshalb der Punkt im Detail. Es gibt zwei Betriebsarten, und sie unterscheiden sich wirklich:
 
-- **Hoard Cloud** ist die verwaltete Variante: du meldest dich an, und deine Spielstände liegen auf unseren Servern in der EU.
-- **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem eigenen PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir können weder einen Spielstand noch einen Spieltitel noch eine E-Mail-Adresse sehen, schlicht weil davon nichts bei uns ankommt. Verschwände Hoard Cloud morgen, liefe ein selbst gehostetes Setup unverändert weiter.
+- **Hoard One** ist die verwaltete Variante, die wir allen empfehlen: du meldest dich an, und deine Spielstände liegen auf unseren Servern in der EU.
+- **Selbsthosten gehört vollständig dir.** Du betreibst `hoard-server` auf deinem eigenen PC oder NAS, und deine Stände gehen von deiner Maschine auf deine Platte. Es gibt **kein Konto bei uns, keine Telemetrie zu uns, kein Limit und kein Relay** — nichts läuft über unsere Server, weil nichts von uns im Weg steht. Wir können weder einen Spielstand noch einen Spieltitel noch eine E-Mail-Adresse sehen, schlicht weil davon nichts bei uns ankommt. Verschwände Hoard One morgen, liefe ein selbst gehostetes Setup unverändert weiter.
 
 Dasselbe Programm, dieselbe Erkennung. Es ändert sich, wem der Speicher gehört, und eine Voreinstellung: Ein selbst gehosteter Server dünnt alte Versionen mit der Zeit aus, solange du das nicht abschaltest.
 
@@ -106,7 +106,7 @@ Nein, und das ist Absicht. Ein Backup-Ordner ist eine Kopie, die sich nach eigen
 
 ### Ist Hoard kostenlos?
 
-Hoard Cloud hat einen kostenlosen Tarif mit 2 GB Speicher und 3 Geräten, was für die meisten Sammlungen reicht; Pro hebt beides an. Den Server selbst zu hosten ist kostenlos und hat überhaupt kein Limit. Alles ist Open Source unter AGPL-3.0.
+Hoard One hat einen kostenlosen Tarif mit 2 GB Speicher und 3 Geräten, was für die meisten Sammlungen reicht; Pro hebt beides an. Den Server selbst zu hosten ist kostenlos und hat überhaupt kein Limit. Alles ist Open Source unter AGPL-3.0.
 
 ### Funktioniert Hoard auf dem Steam Deck?
 
@@ -114,7 +114,7 @@ Ja, auf dem Steam Deck und jedem Linux-Desktop, ebenso unter Windows und macOS. 
 
 ### Brauche ich Rclone oder ein eigenes Cloud-Konto?
 
-Nein. Das ist der wesentliche praktische Unterschied: Bei Hoard Cloud ist der Speicher schon eingerichtet, sobald du dich anmeldest. Wenn dir der Speicher lieber selbst gehört, betreibe den Server selbst gegen einen S3-kompatiblen Bucket oder einen gewöhnlichen Ordner auf deiner eigenen Maschine.
+Nein. Das ist der wesentliche praktische Unterschied: Bei Hoard One ist der Speicher schon eingerichtet, sobald du dich anmeldest. Wenn dir der Speicher lieber selbst gehört, betreibe den Server selbst gegen einen S3-kompatiblen Bucket oder einen gewöhnlichen Ordner auf deiner eigenen Maschine.
 
 ### Sendet Selbsthosten irgendetwas an Hoard?
 

@@ -100,7 +100,7 @@ enum Commands {
         #[command(subcommand)]
         action: commands::config::ConfigCommand,
     },
-    /// Sign in. With no flags it asks whether you want Hoard Cloud or a
+    /// Sign in. With no flags it asks whether you want Hoard One or a
     /// self-hosted server. `--token` goes straight to self-host; `--email`
     /// forces the Cloud email/code path.
     Login {
@@ -135,7 +135,7 @@ enum Commands {
         #[command(subcommand)]
         action: commands::games::GameCommand,
     },
-    /// Hoard Cloud account: export, storage, entitlements, playtime
+    /// Hoard One account: export, storage, entitlements, playtime
     Cloud {
         #[command(subcommand)]
         action: commands::cloud::CloudCommand,
@@ -226,7 +226,7 @@ enum SnapshotCommand {
         all: bool,
     },
     /// Soft-delete a snapshot (moves it to trash; recover with `undelete`).
-    /// Hoard Cloud has no trash: there the version is deleted for good, and the
+    /// Hoard One has no trash: there the version is deleted for good, and the
     /// whole save with it if it was the last one.
     Delete {
         save_id: String,
@@ -451,7 +451,7 @@ async fn snapshots_dispatch(cmd: SnapshotCommand) -> Result<()> {
             let (question, done) = if is_cloud {
                 (
                     format!(
-                        "permanently delete v{version} of save {save_id}? Hoard Cloud has no \
+                        "permanently delete v{version} of save {save_id}? Hoard One has no \
                          trash, and if it is the last version the save goes with it."
                     ),
                     format!("deleted v{version} of save {save_id} (permanent)"),

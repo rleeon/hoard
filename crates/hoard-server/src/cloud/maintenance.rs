@@ -44,7 +44,7 @@ pub async fn guard(req: Request, next: Next) -> Response {
     let mut res = (
         StatusCode::TOO_MANY_REQUESTS,
         Json(serde_json::json!({
-            "error": "Hoard Cloud is under maintenance, back in a few minutes",
+            "error": "Hoard One is under maintenance, back in a few minutes",
             "code": "maintenance",
             "retry_after_seconds": RETRY_AFTER_SECS,
         })),

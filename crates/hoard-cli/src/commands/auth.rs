@@ -48,7 +48,7 @@ enum Kind {
 /// Interactive top-level choice: Hoard Cloud or a self-hosted server.
 fn choose_kind() -> Result<Kind> {
     println!("Where do you want to sign in?");
-    println!("   1) Hoard Cloud          (managed, no browser)");
+    println!("   1) Hoard One            (managed, no browser)");
     println!("   2) Self-hosted server   (your own Hoard server + access token)");
     println!();
     loop {
@@ -131,7 +131,7 @@ async fn login_selfhost_interactive() -> Result<()> {
 /// where the desktop keeps it (keyring plus `cloud.toml`) to share the login.
 async fn login_cloud(force_email: bool) -> Result<()> {
     let base = cloud_auth::cloud_base_url();
-    println!("Sign in to Hoard Cloud ({base})");
+    println!("Sign in to Hoard One ({base})");
 
     // `--email`: skip phone pairing (which just re-approves whatever account the
     // phone browser already has) and let the user type the address to sign in as.
@@ -158,7 +158,7 @@ async fn login_cloud_device(base: &str, start: cloud_auth::DeviceStart) -> Resul
         .as_deref()
         .unwrap_or(&start.verification_uri);
     println!();
-    println!("  Open this on your phone (signed in to Hoard Cloud):");
+    println!("  Open this on your phone (signed in to Hoard One):");
     println!("    {link}");
     println!("  and confirm the code:  {}", start.user_code);
     println!();
@@ -276,7 +276,7 @@ async fn finish_cloud_login(base: &str, tokens: &cloud_auth::Tokens) -> Result<(
         link::notify_session_changed().await;
     }
     println!(
-        "connected to Hoard Cloud as {} · plan {}",
+        "connected to Hoard One as {} · plan {}",
         me.email, me.plan
     );
     Ok(())
@@ -401,7 +401,7 @@ pub async fn whoami() -> Result<()> {
             storage_used_bytes,
             storage_limit_bytes,
         } => println!(
-            "Hoard Cloud\n  email:   {}\n  user_id: {}\n  plan:    {}\n  usage:   {} / {}",
+            "Hoard One\n  email:   {}\n  user_id: {}\n  plan:    {}\n  usage:   {} / {}",
             email,
             user_id,
             plan,

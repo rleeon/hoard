@@ -1,5 +1,6 @@
 export type PlanId = 'free' | 'pro';
-export type BillingCycle = 'monthly' | 'yearly';
+/** `once` is the one-year pass: paid a single time, never renewed. */
+export type BillingCycle = 'monthly' | 'yearly' | 'once';
 
 export interface PlanLimits {
   id: PlanId;
@@ -21,6 +22,7 @@ export interface PlanLimits {
   bandwidthWindowSecs: number;
   priceMonthly: number;
   priceYearly: number;
+  priceOnce: number;
 }
 
 export interface AccountSession {
@@ -40,6 +42,11 @@ export interface AccountProfile {
   subscriptionStatus: string | null;
   planRenewsAt: string | null;
   planCancelAt: string | null;
+  /** 'month' | 'year' | 'once'. A 'once' plan is the one-year pass:
+   *  `planRenewsAt` is then the day its year ends, and nothing renews. */
+  planInterval: string | null;
+  /** For a pass, the end of the month of Pro after its year. */
+  proUntil: string | null;
   storageBytes: number;
   /** Plan storage cap in bytes; -1 = unlimited. Server is the source of truth. */
   storageLimitBytes: number;

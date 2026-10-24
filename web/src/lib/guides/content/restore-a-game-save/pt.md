@@ -54,7 +54,7 @@ Só depois de o teu save atual ter sido capturado como uma nova versão. Se rest
 
 ### Até onde vai o histórico?
 
-No Hoard Cloud, até ao início: nenhum plano tem limite de versões. O único limite é o que tu definires, **Máx. de versões por jogo** no Painel, e nem esse apaga alguma vez as versões fixadas ou a mais recente de cada jogo. Um servidor self-hosted, por predefinição, vai desbastando as versões antigas: o histórico recente fica completo e o antigo mais espaçado. Podes desligar isso na configuração dele para guardar tudo.
+No Hoard One, até ao início: nenhum plano tem limite de versões. O único limite é o que tu definires, **Máx. de versões por jogo** no Painel, e nem esse apaga alguma vez as versões fixadas ou a mais recente de cada jogo. Um servidor self-hosted, por predefinição, vai desbastando as versões antigas: o histórico recente fica completo e o antigo mais espaçado. Podes desligar isso na configuração dele para guardar tudo.
 
 ### Posso restaurar num PC onde o jogo ainda não está instalado?
 

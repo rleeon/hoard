@@ -116,7 +116,7 @@ fn embed(status: &str, errors: &Errors) -> serde_json::Value {
             { "name": "Errors (24h) · server", "value": server_errors_text(&errors.server, errors.since_boot), "inline": false },
             { "name": "Errors (24h) · apps", "value": app_errors_text(errors.apps.as_ref()), "inline": false },
         ],
-        "footer": { "text": format!("Hoard Cloud Status · updated {now} UTC") },
+        "footer": { "text": format!("Hoard One Status · updated {now} UTC") },
     })
 }
 
@@ -624,7 +624,7 @@ mod tests {
         // no reader's Discord translates it.
         assert!(e.get("timestamp").is_none());
         let footer = e["footer"]["text"].as_str().unwrap();
-        assert!(footer.starts_with("Hoard Cloud Status · updated 20"));
+        assert!(footer.starts_with("Hoard One Status · updated 20"));
         assert!(footer.ends_with(" UTC"));
     }
 

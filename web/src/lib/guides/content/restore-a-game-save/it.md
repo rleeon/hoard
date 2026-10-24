@@ -54,7 +54,7 @@ Solo dopo che il salvataggio attuale è stato catturato come nuova versione. Se 
 
 ### Fin dove arriva la cronologia?
 
-Su Hoard Cloud, fino all'inizio: nessun piano ha un limite di versioni. L'unico tetto è quello che imposti tu, **Max versioni per gioco** nel Riepilogo, e nemmeno quello elimina mai le versioni fissate o la più recente di un gioco. Un server self-hosted, per impostazione predefinita, sfoltisce le versioni vecchie: la cronologia recente resta completa e quella più vecchia si dirada. Puoi disattivarlo nella sua configurazione per tenere tutto.
+Su Hoard One, fino all'inizio: nessun piano ha un limite di versioni. L'unico tetto è quello che imposti tu, **Max versioni per gioco** nel Riepilogo, e nemmeno quello elimina mai le versioni fissate o la più recente di un gioco. Un server self-hosted, per impostazione predefinita, sfoltisce le versioni vecchie: la cronologia recente resta completa e quella più vecchia si dirada. Puoi disattivarlo nella sua configurazione per tenere tutto.
 
 ### Posso ripristinare su un PC dove il gioco non è ancora installato?
 

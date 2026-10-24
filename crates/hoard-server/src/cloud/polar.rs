@@ -68,8 +68,8 @@ pub struct PolarEvent {
 /// pieces we route on.
 #[derive(Debug, Deserialize)]
 pub struct PolarData {
-    /// Subscription id (subscription.* events). Used as the upsert conflict
-    /// key, stored in `ls_subscription_id`.
+    /// Subscription id for subscription.* events, order id for a pass. Used as
+    /// the upsert conflict key, stored in `ls_subscription_id`.
     pub id: String,
     #[serde(default)]
     pub status: Option<String>,
@@ -82,6 +82,16 @@ pub struct PolarData {
     pub current_period_end: Option<String>,
     #[serde(default)]
     pub ends_at: Option<String>,
+    /// Present on the orders a subscription bills; absent on the outright
+    /// purchase of a pass. It is how a renewal is told from a sale.
+    #[serde(default)]
+    pub subscription_id: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    /// On an order: `purchase`, `subscription_create` (the first month or
+    /// year), `subscription_cycle` (a renewal) or `subscription_update`.
+    #[serde(default)]
+    pub billing_reason: Option<String>,
     /// Custom metadata set at checkout creation. We carry our user_id here,
     /// the same way Lemon Squeezy uses custom_data.user_id.
     #[serde(default)]
@@ -204,6 +214,206 @@ pub fn resolve_product<'a>(
         .iter()
         .find(|x| x.product_id == product_id)
         .map(|x| (x.plan.as_str(), x.interval.as_str()))
+}
+
+/// The `interval` a product sold outright carries in config. A card that can
+/// be charged again is exactly what stops some people from paying at all, so
+/// this one runs out instead of renewing.
+pub const PASS_INTERVAL: &str = "once";
+
+const PASS_DAYS: i64 = 365;
+
+/// Pro outlives a pass by this much. The year ends on `renews_at`, the account
+/// stays Pro for another month, and only then goes back to Free; the reminders
+/// in `cloud::notify` run through that month.
+pub const PASS_GRACE_DAYS: i64 = 30;
+
+/// Whether this delivery is the outright purchase of a pass rather than the
+/// order a subscription bills: Polar sends `order.paid` for both, and only the
+/// renewal carries a subscription id. The product still has to be configured
+/// as a pass; that check needs config and happens in [`handle`].
+fn is_pass_order(event_type: &str, subscription_id: Option<&str>) -> bool {
+    event_type == "order.paid" && subscription_id.is_none()
+}
+
+/// When a pass paid at `paid` runs out, given the end of the pass the account
+/// already has.
+///
+/// Bought while that one still grants Pro, in its year or in the month after,
+/// the new year follows straight on from the old one. Someone who renews 25
+/// days into the grace month has had those 25 days of Pro already, and they are
+/// not handed out a second time. Bought after Pro ran out, it starts the day it
+/// was paid.
+pub fn chained_pass_end(
+    paid: time::OffsetDateTime,
+    previous_end: Option<time::OffsetDateTime>,
+) -> time::OffsetDateTime {
+    match previous_end {
+        Some(end) if paid < end + time::Duration::days(PASS_GRACE_DAYS) => {
+            end + time::Duration::days(PASS_DAYS)
+        }
+        _ => paid + time::Duration::days(PASS_DAYS),
+    }
+}
+
+/// When the pass bought by `order_id` runs out.
+///
+/// A retry of an order already written keeps the date it got the first time.
+/// Recomputing would go wrong: the pass it continued is superseded by then and
+/// no longer found, so the year would restart from the payment date.
+///
+/// `paid` is the order's own `created_at`, not now, for the same reason: Polar
+/// retries a delivery it thinks failed, hours later sometimes.
+pub async fn pass_end_for(
+    pool: &PgPool,
+    user_id: Uuid,
+    order_id: &str,
+    paid: time::OffsetDateTime,
+) -> Result<time::OffsetDateTime, sqlx::Error> {
+    let written: Option<Option<time::OffsetDateTime>> =
+        sqlx::query_scalar("SELECT renews_at FROM subscriptions WHERE ls_subscription_id = $1")
+            .bind(order_id)
+            .fetch_optional(pool)
+            .await?;
+    if let Some(Some(end)) = written {
+        return Ok(end);
+    }
+    let previous: Option<time::OffsetDateTime> = sqlx::query_scalar(
+        r#"SELECT max(renews_at) FROM subscriptions
+            WHERE user_id = $1 AND "interval" = 'once'
+              AND status IN ('active','grace') AND ls_subscription_id <> $2"#,
+    )
+    .bind(user_id)
+    .bind(order_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(chained_pass_end(paid, previous))
+}
+
+/// Retire every other pass of the account once a new one is written. The new
+/// row already carries their remaining time, so they have nothing left to
+/// grant, and leaving them active is what would drop the account to Free the
+/// day the old one lapsed.
+pub async fn supersede_passes(
+    pool: &PgPool,
+    user_id: Uuid,
+    order_id: &str,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        r#"UPDATE subscriptions
+              SET status = 'expired', last_event = 'superseded',
+                  last_event_at = now(), updated_at = now()
+            WHERE user_id = $1 AND "interval" = 'once'
+              AND status IN ('active','grace') AND ls_subscription_id <> $2"#,
+    )
+    .bind(user_id)
+    .bind(order_id)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+/// A refunded order takes Pro away, whatever it paid for. The row is found by
+/// what the order bought: a pass is stored under its own order id, and the
+/// orders of a subscription point at the subscription.
+///
+/// A partial refund is left alone. It is a gesture on a payment that still
+/// stands, not the payment going back.
+async fn refund(
+    state: &CloudState,
+    storage_grace_days: i64,
+    event: &PolarEvent,
+) -> axum::response::Response {
+    if event.data.status.as_deref() != Some("refunded") {
+        info!(
+            order = %event.data.id,
+            status = ?event.data.status,
+            "polar webhook: partial refund, Pro left in place"
+        );
+        return (StatusCode::OK, "ignored").into_response();
+    }
+    let row_id = event
+        .data
+        .subscription_id
+        .as_deref()
+        .unwrap_or(&event.data.id);
+    // Whether the money going back may be all this row ever took: a pass, or
+    // the first payment of a subscription. A refunded renewal leaves earlier
+    // months paid, and with them the devices kept for life.
+    let first_payment = event.data.subscription_id.is_none()
+        || event.data.billing_reason.as_deref() == Some("subscription_create");
+    match crate::cloud::lapse::revoke_refunded(
+        &state.pool,
+        row_id,
+        storage_grace_days,
+        first_payment,
+    )
+    .await
+    {
+        Ok(Some(r)) => {
+            let user_id = r.user_id;
+            info!(
+                %user_id, row_id, dropped = r.dropped, devices_revoked = r.devices_revoked,
+                "polar webhook: refund revoked Pro"
+            );
+            Event::new(user_id, ProductEvent::SubscriptionEnded)
+                .scope(row_id)
+                .props(serde_json::json!({ "reason": "refund" }))
+                .record(&state.pool)
+                .await;
+            (StatusCode::OK, "revoked").into_response()
+        }
+        Ok(None) => {
+            warn!(row_id, "polar webhook: refund of something never granted");
+            (StatusCode::OK, "ignored").into_response()
+        }
+        Err(e) => {
+            warn!(error = %e, "polar webhook: refund revocation failed");
+            CloudError::Db(e).into_response()
+        }
+    }
+}
+
+/// Whether a refund on this subscription still stands against an incoming
+/// event that would set it to `status`, ending at `renews_at`.
+///
+/// It stands against everything but a new paid period, `active` with an end
+/// past the refunded one. Cancelling in Polar sends `subscription.updated`
+/// still `active` until the period ends, and letting that through would give
+/// back the Pro the refund took. A new period is a new payment: the mark is
+/// cleared and the event goes through.
+pub async fn refund_holds(
+    pool: &PgPool,
+    row_id: &str,
+    status: &str,
+    renews_at: Option<&str>,
+) -> Result<bool, sqlx::Error> {
+    use time::format_description::well_known::Rfc3339;
+    let row: Option<(Option<time::OffsetDateTime>, Option<time::OffsetDateTime>)> =
+        sqlx::query_as(
+            "SELECT refunded_at, renews_at FROM subscriptions WHERE ls_subscription_id = $1",
+        )
+        .bind(row_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some((Some(_), refunded_end)) = row else {
+        return Ok(false);
+    };
+    let new_end = renews_at.and_then(|s| time::OffsetDateTime::parse(s, &Rfc3339).ok());
+    let new_period = status == "active"
+        && match (new_end, refunded_end) {
+            (Some(new), Some(old)) => new > old,
+            (Some(_), None) => true,
+            _ => false,
+        };
+    if !new_period {
+        return Ok(true);
+    }
+    sqlx::query("UPDATE subscriptions SET refunded_at = NULL WHERE ls_subscription_id = $1")
+        .bind(row_id)
+        .execute(pool)
+        .await?;
+    Ok(false)
 }
 
 /// The account a Polar payload is about: the metadata we stamp at checkout
@@ -364,8 +574,20 @@ pub async fn handle(
         return (StatusCode::OK, "recorded").into_response();
     }
 
+    if event.event_type == "order.refunded" {
+        return refund(&state, cloud.storage_downgrade_grace_days as i64, &event).await;
+    }
+
+    // A pass is paid once and arrives as `order.paid`, an event no
+    // subscription state can be read off. Polar sends that same event for
+    // every renewal of a real subscription, hence the two guards: an order
+    // that belongs to no subscription, and (below, once config has spoken) a
+    // product actually sold as a pass.
+    let paid_order = is_pass_order(&event.event_type, event.data.subscription_id.as_deref());
+
     let status = match status_for_event(&event.event_type, event.data.status.as_deref()) {
         Some(s) => s,
+        None if paid_order => "active",
         None => {
             info!(event = %event.event_type, "ignored polar event");
             return (StatusCode::OK, "ignored").into_response();
@@ -397,11 +619,54 @@ pub async fn handle(
         }
     };
 
-    let renews_at = event
-        .data
-        .current_period_end
+    if paid_order && interval != PASS_INTERVAL {
+        info!(
+            product_id,
+            "polar webhook: order for a subscription product, left to its subscription events"
+        );
+        return (StatusCode::OK, "ignored").into_response();
+    }
+
+    let pass_end = if paid_order {
+        use time::format_description::well_known::Rfc3339;
+        let paid = event
+            .data
+            .created_at
+            .as_deref()
+            .and_then(|s| time::OffsetDateTime::parse(s, &Rfc3339).ok())
+            .unwrap_or_else(time::OffsetDateTime::now_utc);
+        match pass_end_for(&state.pool, user_id, &event.data.id, paid).await {
+            Ok(end) => Some(end.format(&Rfc3339).unwrap_or_default()),
+            Err(e) => {
+                warn!(error = %e, "polar webhook: couldn't date the pass");
+                return CloudError::Db(e).into_response();
+            }
+        }
+    } else {
+        None
+    };
+    let renews_at = pass_end
         .as_deref()
+        .or(event.data.current_period_end.as_deref())
         .or(event.data.ends_at.as_deref());
+
+    if !paid_order {
+        match refund_holds(&state.pool, &event.data.id, status, renews_at).await {
+            Ok(false) => {}
+            Ok(true) => {
+                info!(
+                    subscription = %event.data.id,
+                    event = %event.event_type,
+                    "polar webhook: refunded subscription, ignored until a new period is paid"
+                );
+                return (StatusCode::OK, "refunded").into_response();
+            }
+            Err(e) => {
+                warn!(error = %e, "polar webhook: couldn't check for a refund");
+                return CloudError::Db(e).into_response();
+            }
+        }
+    }
 
     if let Err(e) = upsert_subscription(
         &state.pool,
@@ -420,6 +685,12 @@ pub async fn handle(
     {
         warn!(error = %e, "polar webhook: db upsert failed");
         return CloudError::Db(e).into_response();
+    }
+    if paid_order {
+        if let Err(e) = supersede_passes(&state.pool, user_id, &event.data.id).await {
+            warn!(error = %e, "polar webhook: couldn't retire the previous pass");
+            return CloudError::Db(e).into_response();
+        }
     }
     record_subscription_event(
         &state.pool,
@@ -691,6 +962,50 @@ mod tests {
         );
         assert_eq!(status_for_event("order.paid", None), None);
         assert_eq!(status_for_event("product.updated", None), None);
+    }
+
+    #[test]
+    fn a_renewal_order_is_not_a_pass() {
+        assert!(is_pass_order("order.paid", None));
+        assert!(!is_pass_order("order.paid", Some("sub_123")));
+        assert!(!is_pass_order("subscription.active", None));
+
+        // Polar sends the field as an explicit null on an outright purchase.
+        let order: PolarEvent = serde_json::from_str(
+            r#"{"type":"order.paid","data":{"id":"ord_1","status":"paid",
+                 "subscription_id":null,"created_at":"2026-10-21T10:00:00.123456Z"}}"#,
+        )
+        .unwrap();
+        assert!(is_pass_order(
+            &order.event_type,
+            order.data.subscription_id.as_deref()
+        ));
+    }
+
+    #[test]
+    fn a_renewed_pass_continues_the_old_year() {
+        use time::macros::datetime;
+        let bought = datetime!(2026-10-22 10:00 UTC);
+        let ends = datetime!(2027-10-22 10:00 UTC);
+
+        // The first pass: a year from the payment.
+        assert_eq!(chained_pass_end(bought, None), ends);
+        // Renewed early, the year is added on top, nothing is lost.
+        assert_eq!(
+            chained_pass_end(datetime!(2027-09-01 10:00 UTC), Some(ends)),
+            datetime!(2028-10-21 10:00 UTC)
+        );
+        // Renewed 25 days into the grace month: same end, those 25 days were
+        // already Pro.
+        assert_eq!(
+            chained_pass_end(datetime!(2027-11-16 10:00 UTC), Some(ends)),
+            datetime!(2028-10-21 10:00 UTC)
+        );
+        // Bought after Pro ran out: a fresh year from the payment.
+        assert_eq!(
+            chained_pass_end(datetime!(2027-12-01 10:00 UTC), Some(ends)),
+            datetime!(2028-11-30 10:00 UTC)
+        );
     }
 
     #[test]

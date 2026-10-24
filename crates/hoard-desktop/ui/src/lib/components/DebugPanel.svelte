@@ -129,6 +129,22 @@
     );
   }
 
+  /** A Pro account on a pass whose year ends `daysFromEnd` days from now
+   *  (negative: still running). The month of Pro after it comes with it, as
+   *  the server would send it. */
+  function applyPass(daysFromEnd: number) {
+    const DAY = 24 * 60 * 60 * 1000;
+    const end = Date.now() - daysFromEnd * DAY;
+    applyPlan("pro");
+    setOverrides({
+      subscription_status: "active",
+      subscription_interval: "once",
+      renews_at: new Date(end).toISOString(),
+      pro_until: new Date(end + 30 * DAY).toISOString(),
+      cancel_at: null,
+    });
+  }
+
   function applyQuota(next: number) {
     pct = next;
     const limit = limitGb * GB;
@@ -250,6 +266,21 @@
                 })}
             >
               {st}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <span class="mb-1 block">one-year pass (days from the end of its year)</span>
+        <div class="grid grid-cols-4 gap-1">
+          {#each [-60, -20, -1, 3, 24] as d (d)}
+            <button
+              type="button"
+              class="rounded border border-zinc-700 px-1 py-0.5 hover:border-violet-500"
+              onclick={() => applyPass(d)}
+            >
+              {d > 0 ? `+${d}` : d}
             </button>
           {/each}
         </div>

@@ -12,7 +12,7 @@ you pinned. Your saves stay restorable, but the history behind them is going,
 one pass at a time, and it does not come back.
 
 {{#offer}}
-HOARD PRO - 100 GB, fifty times the room you have now
+PRO - 100 GB, fifty times the room you have now
 Stop losing history. Pro keeps five versions of every game before it ever
 considers deleting one, and only starts at 90% of a limit you will not reach.
 Per-game cap goes to 10 GB, devices become unlimited, for life, even if you

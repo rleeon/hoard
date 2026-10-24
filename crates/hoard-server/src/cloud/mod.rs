@@ -36,6 +36,7 @@ pub mod export;
 pub mod feedback;
 pub mod incidents;
 pub mod integrity;
+pub mod lapse;
 pub mod loopguard;
 pub mod maintenance;
 pub mod memwatch;

@@ -11,7 +11,7 @@ As duas ferramentas resolvem o mesmo problema e discordam quanto à arquitetura,
 
 **O OpenSave** é ponto a ponto. As tuas máquinas falam diretamente umas com as outras e no meio não há nada. Sem conta e sem armazenamento a pagar, e opcionalmente pode espelhar uma cópia para uma nuvem que já tenhas.
 
-**O Hoard** sincroniza através de um servidor. Esse servidor é o Hoard Cloud, gerido por nós, ou o `hoard-server` a correr no teu PC ou no teu NAS. O teu save sobe quando paras de jogar e desce quando outra máquina o pede.
+**O Hoard** sincroniza através de um servidor. Esse servidor é o Hoard One, gerido por nós, ou o `hoard-server` a correr no teu PC ou no teu NAS. O teu save sobe quando paras de jogar e desce quando outra máquina o pede.
 
 Tudo o resto sai dessa única escolha.
 
@@ -26,7 +26,7 @@ Tudo o resto sai dessa única escolha.
 
 Sendo justos com o outro lado:
 
-- **Nunca há armazenamento a pagar.** Não há quota para esgotar porque não há depósito. O plano gratuito do Hoard são 2 GB; acima disso pagas ou alojas tu.
+- **Nunca há armazenamento a pagar.** Não há quota para esgotar porque não há depósito. O plano gratuito do Hoard One são 2 GB; acima disso pagas ou alojas tu.
 - **Nada pelo meio, por desenho.** Se o objetivo é que um ficheiro nunca toque no disco de terceiros, a transferência direta é a resposta mais curta possível.
 - **Nada para manter.** Nenhum servidor de pé, nem sequer o teu.
 
@@ -36,8 +36,8 @@ Se jogas em dois fixos ambos ligados, nunca queres voltar atrás e preferes não
 
 É aqui que as comparações ao Hoard costumam falhar, por isso sejamos exatos: há duas formas de o usar e são genuinamente diferentes.
 
-- **O Hoard Cloud** é a opção gerida: inicias sessão e os saves ficam nos nossos servidores, na UE.
-- **O self-hosting é inteiramente teu.** Corres o `hoard-server` no teu PC ou NAS e os saves vão da tua máquina para o teu disco. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Não vemos um save, o nome de um jogo ou um email, porque nada disso nos chega. Se o Hoard Cloud fechasse amanhã, uma instalação self-hosted continuaria igual.
+- **O Hoard One** é a opção gerida, a que recomendamos a todos: inicias sessão e os saves ficam nos nossos servidores, na UE.
+- **O self-hosting é inteiramente teu.** Corres o `hoard-server` no teu PC ou NAS e os saves vão da tua máquina para o teu disco. **Não há conta connosco, nem telemetria para nós, nem quota, nem retransmissão**: não passa nada pelos nossos servidores, porque não há nada nosso no caminho. Não vemos um save, o nome de um jogo ou um email, porque nada disso nos chega. Se o Hoard One fechasse amanhã, uma instalação self-hosted continuaria igual.
 
 Ou seja, "servidor" não significa "o computador de outra pessoa" a não ser que o escolhas. Um Hoard self-hosted mantém os saves em hardware teu, tal como uma transferência direta, e ainda te dá o histórico e o caso da máquina desligada.
 
@@ -58,7 +58,7 @@ Há uma [comparação de todas as ferramentas de sincronização](/guides/game-s
 
 ### O Hoard precisa de conta?
 
-Para o Hoard Cloud sim, é a isso que a sincronização está ligada. Em self-hosted não há conta nenhuma connosco: o teu servidor tem os seus utilizadores e um token por dispositivo, e não saem da tua máquina.
+Para o Hoard One sim, é a isso que a sincronização está ligada. Em self-hosted não há conta nenhuma connosco: o teu servidor tem os seus utilizadores e um token por dispositivo, e não saem da tua máquina.
 
 ### O Hoard funciona sem nuvem nenhuma?
 

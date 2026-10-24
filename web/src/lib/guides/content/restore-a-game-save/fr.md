@@ -54,7 +54,7 @@ Seulement après que votre sauvegarde actuelle a été capturée comme nouvelle 
 
 ### Jusqu'où remonte l'historique ?
 
-Sur Hoard Cloud, jusqu'au début : aucune offre n'a de limite de versions. La seule limite est celle que vous fixez vous-même, **Max. de versions par jeu** dans le Tableau de bord, et même elle ne supprime jamais les versions épinglées ni la plus récente d'un jeu. Un serveur auto-hébergé élague par défaut les anciennes versions : l'historique récent reste complet et l'ancien devient plus clairsemé. Vous pouvez le désactiver dans sa configuration pour tout garder.
+Sur Hoard One, jusqu'au début : aucune offre n'a de limite de versions. La seule limite est celle que vous fixez vous-même, **Max. de versions par jeu** dans le Tableau de bord, et même elle ne supprime jamais les versions épinglées ni la plus récente d'un jeu. Un serveur auto-hébergé élague par défaut les anciennes versions : l'historique récent reste complet et l'ancien devient plus clairsemé. Vous pouvez le désactiver dans sa configuration pour tout garder.
 
 ### Puis-je restaurer sur un PC où le jeu n'est pas encore installé ?
 

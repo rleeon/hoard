@@ -92,7 +92,7 @@ Hoard toma la sesión de juego como unidad. El motor corre como servicio en segu
 - **Historial versionado por sesión.** Cada sesión es una versión a la que puedes volver, incluso después de un fallo de disco o una instalación limpia.
 - **Deduplicación por hash de contenido.** Diez versiones de una partida de 2 GB en la que cambia poco entre sesiones ocupan unos 2 GB, no 20 GB. Las transferencias van comprimidas con zstd.
 - **SHA-256 al subir y al bajar.** La corrupción se detecta antes de que pueda sobrescribir una partida buena. Nada se sobrescribe en silencio: ese es todo el diseño.
-- **Nube o autoalojado, el mismo código.** Hoard Cloud tiene plan gratuito (2 GB, 3 dispositivos, historial completo). O levantas `hoard-server` tú mismo con Docker Compose contra cualquier almacenamiento compatible con S3 — MinIO, Garage, Backblaze B2 — sin cuenta y sin cuota. AGPL-3.0.
+- **Nube o autoalojado, el mismo código.** Hoard One tiene plan gratuito (2 GB, 3 dispositivos, historial completo). O levantas `hoard-server` tú mismo con Docker Compose contra cualquier almacenamiento compatible con S3 — MinIO, Garage, Backblaze B2 — sin cuenta y sin cuota. AGPL-3.0.
 - **Windows, Linux y macOS**, más una CLI sin interfaz para una Steam Deck o un servidor.
 - **Emuladores en beta:** PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP y otros como preajustes.
 
@@ -110,12 +110,12 @@ Sincroniza la carpeta padre y tendrás un conflicto permanente entre dos máquin
 - **Es joven.** Ludusavi y Game Backup Monitor llevan años de informes de fallos a la espalda. Hoard no, y eso importa en algo que custodia una partida de 200 horas.
 - **No hace cooperativo.** Si quieres pasarle un mundo a un amigo, SaveSync está hecho para eso y Hoard no.
 
-## La distinción entre Hoard Cloud y autoalojarse
+## La distinción entre Hoard One y autoalojarse
 
 Las comparativas sobre Hoard casi siempre funden las dos en una, y el resultado sale mal, así que conviene decirlo claro:
 
-- **Hoard Cloud** es la opción gestionada: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
-- **Un Hoard autoalojado es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, porque nada de eso nos llega. Si Hoard Cloud cerrara mañana, un montaje autoalojado seguiría igual.
+- **Hoard One** es la opción gestionada, la que recomendamos a todos: inicias sesión y tus partidas se guardan en nuestros servidores, en la UE.
+- **Un Hoard autoalojado es tuyo por completo.** Levantas `hoard-server` en tu PC o en tu NAS y tus partidas van de tu máquina a tu disco. **No hay cuenta con nosotros, ni telemetría hacia nosotros, ni cupo, ni relé**: no pasa nada por nuestros servidores, porque no hay nada nuestro en el camino. No podemos ver una partida, ni el nombre de un juego, ni un correo, porque nada de eso nos llega. Si Hoard One cerrara mañana, un montaje autoalojado seguiría igual.
 
 El mismo código, la misma detección. Lo que cambia es de quién es el almacenamiento, y un ajuste por defecto: un servidor autoalojado va podando las versiones antiguas con el tiempo, salvo que lo desactives. Y siendo exactos en un detalle: tu servidor sí tiene sus propios accesos — un usuario y un token por dispositivo — pero viven en tu base de datos, no en la nuestra.
 
@@ -123,7 +123,7 @@ El mismo código, la misma detección. Lo que cambia es de quién es el almacena
 
 | Herramienta | Sincronización automática entre dispositivos | Dónde viven las partidas | Historial | Plataformas | Licencia |
 |---|---|---|---|---|---|
-| **Hoard** | Sí, por sesión de juego | Hoard Cloud o tu propio servidor (compatible con S3) | Versionado por sesión, deduplicado | Win · Linux · macOS · Deck | AGPL-3.0, plan gratuito |
+| **Hoard** | Sí, por sesión de juego | Hoard One o tu propio servidor (compatible con S3) | Versionado por sesión, deduplicado | Win · Linux · macOS · Deck | AGPL-3.0, plan gratuito |
 | **Ludusavi** | Manual, o Rclone que montas tú | Local, más tu remoto de Rclone | Copias locales versionadas | Win · Linux · macOS | Gratis, open source |
 | **Syncthing** | Sí, espejo continuo | Solo tus dispositivos | Versionado por fichero | Todo | Gratis, open source |
 | **OpenSave** | Sí, peer-to-peer | Tus dispositivos, réplica opcional en nube | Instantáneas y ramas | Win · Linux · macOS · Deck | MIT |

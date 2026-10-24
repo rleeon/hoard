@@ -11,7 +11,7 @@ Les deux outils résolvent le même problème et divergent sur l'architecture, e
 
 **OpenSave** est pair-à-pair. Vos machines se parlent directement, sans rien entre elles. Pas de compte, pas de stockage à payer, et la possibilité de refléter une copie vers un cloud que vous avez déjà.
 
-**Hoard** synchronise via un serveur. Ce serveur est soit Hoard Cloud, géré par nous, soit `hoard-server` sur votre propre PC ou NAS. Votre sauvegarde monte quand vous arrêtez de jouer et redescend quand une autre machine la demande.
+**Hoard** synchronise via un serveur. Ce serveur est soit Hoard One, géré par nous, soit `hoard-server` sur votre propre PC ou NAS. Votre sauvegarde monte quand vous arrêtez de jouer et redescend quand une autre machine la demande.
 
 Tout le reste découle de ce seul choix.
 
@@ -26,7 +26,7 @@ Tout le reste découle de ce seul choix.
 
 Pour être juste avec l'autre camp :
 
-- **Jamais de stockage à payer.** Aucun quota à atteindre, puisqu'il n'y a pas d'espace de stockage. L'offre gratuite de Hoard, c'est 2 Go ; au-delà, vous payez ou vous auto-hébergez.
+- **Jamais de stockage à payer.** Aucun quota à atteindre, puisqu'il n'y a pas d'espace de stockage. L'offre gratuite de Hoard One, c'est 2 Go ; au-delà, vous payez ou vous auto-hébergez.
 - **Rien au milieu, par construction.** Si l'objectif est qu'un fichier ne touche jamais le disque d'un tiers, le transfert direct est la réponse la plus courte possible.
 - **Rien à faire tourner.** Aucun serveur à maintenir, pas même le vôtre.
 
@@ -36,8 +36,8 @@ Si vous jouez sur deux fixes allumés tous les deux, que vous ne voulez jamais r
 
 C'est là que les comparaisons de Hoard se trompent d'habitude, alors soyons exacts : il y a deux façons de faire tourner Hoard, et elles sont réellement différentes.
 
-- **Hoard Cloud** est l'option gérée : vous vous connectez, et vos sauvegardes sont sur nos serveurs, dans l'UE.
-- **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. **Aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne voyons ni sauvegarde, ni nom de jeu, ni adresse e-mail, car rien de tout cela ne nous parvient. Si Hoard Cloud fermait demain, une installation auto-hébergée continuerait à l'identique.
+- **Hoard One** est l'option gérée, celle que nous recommandons à tous : vous vous connectez, et vos sauvegardes sont sur nos serveurs, dans l'UE.
+- **L'auto-hébergement est entièrement le vôtre.** Vous faites tourner `hoard-server` sur votre PC ou votre NAS, et vos sauvegardes vont de votre machine à votre disque. **Aucun compte chez nous, aucune télémétrie vers nous, aucun quota et aucun relais** : rien ne passe par nos serveurs, puisque rien de chez nous n'est sur le chemin. Nous ne voyons ni sauvegarde, ni nom de jeu, ni adresse e-mail, car rien de tout cela ne nous parvient. Si Hoard One fermait demain, une installation auto-hébergée continuerait à l'identique.
 
 Donc « serveur » ne veut pas dire « l'ordinateur de quelqu'un d'autre », sauf si vous le choisissez. Un Hoard auto-hébergé garde vos sauvegardes sur du matériel qui vous appartient, exactement comme un transfert direct, et vous donne en plus l'historique et le cas de la machine éteinte.
 
@@ -58,7 +58,7 @@ Il existe une [comparaison de tous les outils de synchro](/guides/game-save-sync
 
 ### Hoard exige-t-il un compte ?
 
-Pour Hoard Cloud, oui : la synchro y est rattachée. En auto-hébergé, aucun compte chez nous ; votre serveur a ses propres utilisateurs et un jeton par appareil, et ils ne quittent jamais votre machine.
+Pour Hoard One, oui : la synchro y est rattachée. En auto-hébergé, aucun compte chez nous ; votre serveur a ses propres utilisateurs et un jeton par appareil, et ils ne quittent jamais votre machine.
 
 ### Hoard peut-il fonctionner sans aucun cloud ?
 

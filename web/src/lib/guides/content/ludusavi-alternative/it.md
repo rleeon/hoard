@@ -22,7 +22,7 @@ Hoard la trasforma in **sincronizzazione cloud gestita**:
 - **Accedi e via.** Niente remoti Rclone, niente script. Hoard carica il salvataggio dopo che giochi e scarica l'ultima versione prima che inizi, su ogni PC del tuo account.
 - **Cronologia versionata nel cloud.** Ogni backup viene conservato, quindi puoi tornare a qualsiasi salvataggio precedente — anche dopo un guasto del disco o un'installazione pulita.
 - **Consapevole dei conflitti.** Hoard confronta i timestamp e conserva una copia locale di tutto ciò che sostituisce, così una sincronizzazione non distrugge mai i progressi in silenzio.
-- **Sempre open source e self-hostable.** Come Ludusavi, nessun vincolo — usa Hoard Cloud o ospita il server tu stesso.
+- **Sempre open source e self-hostable.** Come Ludusavi, nessun vincolo — usa Hoard One o ospita il server tu stesso.
 
 ## Testa a testa
 
@@ -74,14 +74,14 @@ Non c'è un importatore, ed è voluto. I passaggi:
 
 **I salvataggi di Steam stanno una cartella più in profondità di quanto sembri.** Per i giochi Steam, Hoard traccia `<AppID>/remote/` dentro `userdata`, non la cartella superiore. Quella superiore contiene anche `remotecache.vdf` e i file di obiettivi e tempo di gioco, che legittimamente cambiano da macchina a macchina. Se sincronizzi la cartella superiore, ogni avvio sembra un conflitto anche se nessun salvataggio si è mosso. È il motivo più comune per cui un setup artigianale tra Steam Deck e desktop finisce per combattere contro sé stesso.
 
-**Le versioni costano poco.** Gli snapshot sono archiviati per hash del contenuto, quindi un file che non cambia viene salvato una volta sola. Dieci versioni di un salvataggio da 2 GB che cambia poco tra una sessione e l'altra occupano circa 2 GB, non 20, ed è per questo che Hoard Cloud può conservare tutta la cronologia invece di potarla.
+**Le versioni costano poco.** Gli snapshot sono archiviati per hash del contenuto, quindi un file che non cambia viene salvato una volta sola. Dieci versioni di un salvataggio da 2 GB che cambia poco tra una sessione e l'altra occupano circa 2 GB, non 20, ed è per questo che Hoard One può conservare tutta la cronologia invece di potarla.
 
 ## Cosa significa davvero il self-hosting
 
 È il punto su cui quasi tutti i confronti sbagliano riguardo a Hoard, quindi vale la pena essere precisi. Ci sono due modi di usarlo, e sono davvero diversi:
 
-- **Hoard Cloud** è l'opzione gestita: accedi e i tuoi salvataggi stanno sui nostri server, nell'UE.
-- **Il self-hosting è interamente tuo.** Fai girare `hoard-server` sul tuo PC o sul tuo NAS, e i salvataggi vanno dalla tua macchina al tuo disco. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Non possiamo vedere un salvataggio, il nome di un gioco o un indirizzo email, per il semplice motivo che niente di tutto ciò ci arriva. Se Hoard Cloud sparisse domani, un'installazione self-hosted continuerebbe uguale.
+- **Hoard One** è l'opzione gestita, quella che consigliamo a tutti: accedi e i tuoi salvataggi stanno sui nostri server, nell'UE.
+- **Il self-hosting è interamente tuo.** Fai girare `hoard-server` sul tuo PC o sul tuo NAS, e i salvataggi vanno dalla tua macchina al tuo disco. **Nessun account con noi, nessuna telemetria verso di noi, nessuna quota e nessun relay**: non passa nulla dai nostri server, perché sul percorso non c'è niente di nostro. Non possiamo vedere un salvataggio, il nome di un gioco o un indirizzo email, per il semplice motivo che niente di tutto ciò ci arriva. Se Hoard One sparisse domani, un'installazione self-hosted continuerebbe uguale.
 
 Stesso programma, stesso rilevamento. Cambia di chi è lo spazio di archiviazione, più un'impostazione predefinita: un server self-hosted sfoltisce le versioni vecchie col tempo, a meno che tu non lo disattivi.
 
@@ -106,7 +106,7 @@ No, ed è deliberato. Una cartella di backup è una copia che cambia secondo il 
 
 ### Hoard è gratuito?
 
-Hoard Cloud ha un piano gratuito con 2 GB di spazio e 3 dispositivi, che copre la maggior parte delle collezioni; Pro alza entrambi. Ospitare il server per conto proprio è gratis e non ha alcuna quota. Tutto è open source sotto AGPL-3.0.
+Hoard One ha un piano gratuito con 2 GB di spazio e 3 dispositivi, che copre la maggior parte delle collezioni; Pro alza entrambi. Ospitare il server per conto proprio è gratis e non ha alcuna quota. Tutto è open source sotto AGPL-3.0.
 
 ### Hoard funziona su Steam Deck?
 
@@ -114,7 +114,7 @@ Sì, su Steam Deck e su qualsiasi desktop Linux, oltre che su Windows e macOS. I
 
 ### Mi serve Rclone o un account cloud mio?
 
-No. È la differenza pratica principale: con Hoard Cloud lo spazio è già pronto quando accedi. Se preferisci essere padrone dello spazio, fai girare il server tu stesso su un bucket compatibile con S3 o una normale cartella della tua macchina.
+No. È la differenza pratica principale: con Hoard One lo spazio è già pronto quando accedi. Se preferisci essere padrone dello spazio, fai girare il server tu stesso su un bucket compatibile con S3 o una normale cartella della tua macchina.
 
 ### Il self-hosting manda qualcosa a Hoard?
 
