@@ -65,13 +65,16 @@ function trace(message: string): void {
  *  change that arrives with no reason stands out in the log. */
 let reason: string | null = null;
 
-// Seed `init` synchronously with a best-effort initial locale (navigator),
-// then asynchronously override with the persisted preference once disk I/O
-// resolves. This keeps the first paint localized correctly for users whose
-// browser language matches their pref, which is the common case.
+// The system's language starts loading here, and nothing else may be set until
+// that load is over: svelte-i18n keeps whichever load finishes last, so a stored
+// language set alongside it lost whenever its dictionary came in first. On
+// 23-10-2026 a Spanish system turned `?lang=en` into Spanish in the Hoard-help
+// preview, a built bundle, so not a dev quirk; it is the same race as the reload
+// on 14-09, where `en -> es` came with no reason. Leaving `initialLocale` out
+// doesn't avoid it: `init` then loads the fallback instead.
 const fromSystem = getLocaleFromNavigator();
 const initialLocale = pickSupported(fromSystem) ?? "en";
-init({ fallbackLocale: "en", initialLocale });
+const initialLoad = Promise.resolve(init({ fallbackLocale: "en", initialLocale }));
 trace(`start: the system says ${fromSystem ?? "nothing"}, starting in ${initialLocale}`);
 
 let active = get(locale);
@@ -144,6 +147,7 @@ async function applyPersisted(code: string | null, why: string): Promise<void> {
  *  remounted). */
 export const i18nReady: Promise<void> = (async () => {
   const stored = await withBudget(persistedLocale, PREFS_LOCALE_BUDGET_MS);
+  await initialLoad;
   if (stored === LATE) {
     trace(`stored preference took over ${PREFS_LOCALE_BUDGET_MS} ms, starting without it`);
   } else {
