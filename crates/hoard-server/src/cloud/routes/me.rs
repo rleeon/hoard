@@ -216,19 +216,7 @@ pub async fn get_me(
             .fetch_one(&state.pool)
             .await?;
 
-    let sub: Option<(
-        String,
-        Option<time::OffsetDateTime>,
-        Option<time::OffsetDateTime>,
-        String,
-    )> = sqlx::query_as(
-        r#"SELECT status, renews_at, cancel_at, "interval" FROM subscriptions
-              WHERE user_id = $1 AND status IN ('active','grace')
-              ORDER BY updated_at DESC LIMIT 1"#,
-    )
-    .bind(user.user_id)
-    .fetch_optional(&state.pool)
-    .await?;
+    let sub = crate::cloud::lapse::standing(&state.pool, user.user_id).await?;
 
     // Saves count comes from a separate query, which keeps profile reads cheap
     // for endpoints that don't need this and avoids a join when the saves
@@ -1007,7 +995,9 @@ pub async fn heartbeat(
         .scope(fp.as_str())
         .device(
             Some(&fp),
-            headers.get("x-hoard-app-version").and_then(|v| v.to_str().ok()),
+            headers
+                .get("x-hoard-app-version")
+                .and_then(|v| v.to_str().ok()),
         )
         .spawn(&state.pool);
 

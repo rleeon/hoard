@@ -255,7 +255,10 @@ mod tests {
     #[test]
     fn a_frontend_can_only_name_app_events() {
         assert!(super::app_event("pricing.opened", serde_json::json!({})));
-        assert!(!super::app_event("subscription.started", serde_json::json!({})));
+        assert!(!super::app_event(
+            "subscription.started",
+            serde_json::json!({})
+        ));
         assert!(!super::app_event("pricing.Opened", serde_json::json!({})));
     }
 

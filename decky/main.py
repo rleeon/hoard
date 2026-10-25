@@ -120,6 +120,26 @@ def plain_error(error: str) -> str:
     return error if len(error) <= 90 else error[:87] + "..."
 
 
+def engine_problem(engine: dict) -> str:
+    """Why the engine is down, in a line for the panel. The service answering
+    says nothing about the engine: between boot and the first login a locked
+    keyring keeps it down while the socket is up and well."""
+    if engine.get("running"):
+        return ""
+    reason = engine.get("reason") or "unknown"
+    if reason == "no_session":
+        return "Signed out, open Hoard to sign in"
+    if reason == "session_expired":
+        return "The session expired, open Hoard to sign in again"
+    if reason == "keyring_unreadable":
+        if engine.get("keyring") in ("missing", "locked"):
+            return "Waiting for the system keyring. If it stays like this, sign in again from Hoard in Desktop Mode"
+        return "The system keyring won't hand over the session, open Hoard to sign in again"
+    if engine.get("last_error"):
+        return plain_error(engine["last_error"])
+    return "Starting"
+
+
 def size(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if n < 1024 or unit == "GB":
@@ -132,6 +152,8 @@ class Plugin:
     def __init__(self):
         self.connected = False
         self.error = ""
+        self.running = False
+        self.problem = ""
         self.daemon_version = ""
         self.server = ""
         self.watched = 0
@@ -262,6 +284,8 @@ class Plugin:
         reply = await request({"op": "status"})
         engine = reply.get("engine") or {}
         self.daemon_version = reply.get("daemon_version", "")
+        self.running = bool(engine.get("running"))
+        self.problem = engine_problem(engine)
         self.server = engine.get("server") or ""
         self.watched = engine.get("watched", 0)
         self.slots = [
@@ -312,7 +336,12 @@ class Plugin:
                                 await self.handle(entry, quiet=entry.get("seq", 0) <= replay_until)
                             cursor = reply.get("cursor", cursor)
                         elif kind == "resync":
-                            cursor = frame.get("cursor")
+                            # The push dropped rows. Asked again from our own cursor,
+                            # the journal hands them over; from the daemon's (the
+                            # frame's) they would be skipped. Shown, not toasted: it
+                            # takes hundreds of rows in a burst to get here.
+                            decky.logger.warning(f"hoardd: {frame.get('dropped')} events behind, re-reading the journal")
+                            replay_until = frame.get("cursor") or 0
                             await write_frame(writer, {"frame": "request", "id": 2,
                                                        "request": {"op": "subscribe", "since": cursor}})
                         elif kind == "goodbye":
@@ -338,13 +367,13 @@ class Plugin:
             await asyncio.sleep(STATUS_POLL_SECS)
             if not self.connected:
                 continue
-            before = (self.watched, self.server, self.slots)
+            before = (self.watched, self.server, self.slots, self.running, self.problem)
             try:
                 await self.refresh_status()
             except Exception as e:
                 decky.logger.warning(f"status: {e}")
                 continue
-            if (self.watched, self.server, self.slots) != before:
+            if (self.watched, self.server, self.slots, self.running, self.problem) != before:
                 await self.emit_state()
 
     # ---- callables
@@ -353,6 +382,8 @@ class Plugin:
         return {
             "connected": self.connected,
             "error": self.error,
+            "running": self.running,
+            "problem": self.problem,
             "daemon_version": self.daemon_version,
             "server": self.server,
             "watched": self.watched,

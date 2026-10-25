@@ -1014,9 +1014,7 @@ enum MeError {
 impl MeError {
     fn into_message(self) -> String {
         match self {
-            MeError::Unauthorized => {
-                "Your Hoard One session expired. Please sign in again.".into()
-            }
+            MeError::Unauthorized => "Your Hoard One session expired. Please sign in again.".into(),
             MeError::Other(m) => m,
         }
     }

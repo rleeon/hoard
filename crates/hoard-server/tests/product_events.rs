@@ -79,16 +79,8 @@ async fn once_daily_and_always_keep_their_promises() {
     let Some(pool) = pool().await else { return };
     let u = user(&pool).await;
 
-    assert!(
-        Event::new(u, ProductEvent::UploadFirst)
-            .record(&pool)
-            .await
-    );
-    assert!(
-        !Event::new(u, ProductEvent::UploadFirst)
-            .record(&pool)
-            .await
-    );
+    assert!(Event::new(u, ProductEvent::UploadFirst).record(&pool).await);
+    assert!(!Event::new(u, ProductEvent::UploadFirst).record(&pool).await);
     assert_eq!(count(&pool, u, "upload.first").await, 1);
 
     // Daily, narrowed by save: two saves are two rows, the same save again is not.
@@ -134,7 +126,10 @@ async fn the_app_writes_its_own_events_and_nothing_else() {
     let u = user(&pool).await;
     let lines = vec![
         app_line("pricing.opened", json!({ "from": "sidebar" })),
-        app_line("pricing.opened", json!({ "from": "storage", "nested": { "x": 1 } })),
+        app_line(
+            "pricing.opened",
+            json!({ "from": "storage", "nested": { "x": 1 } }),
+        ),
         app_line("app.opened", json!({})),
         app_line("app.opened", json!({})),
         app_line("subscription.started", json!({ "plan": "pro" })),
@@ -148,10 +143,17 @@ async fn the_app_writes_its_own_events_and_nothing_else() {
         },
     ];
     let taken = ingest_app_events(&pool, u, Some("fp-1"), Some("1.2.3"), &lines).await;
-    assert_eq!(taken, 6, "every event line leaves the batch, the log line stays");
+    assert_eq!(
+        taken, 6,
+        "every event line leaves the batch, the log line stays"
+    );
 
     assert_eq!(count(&pool, u, "pricing.opened").await, 2);
-    assert_eq!(count(&pool, u, "app.opened").await, 1, "once a day per machine");
+    assert_eq!(
+        count(&pool, u, "app.opened").await,
+        1,
+        "once a day per machine"
+    );
     assert_eq!(count(&pool, u, "subscription.started").await, 0);
     assert_eq!(count(&pool, u, "made.up").await, 0);
 
@@ -202,7 +204,10 @@ async fn the_backfill_reads_the_old_tables() {
         .nth(1)
         .and_then(|rest| rest.split("-- ---- the admin panel").next())
         .expect("the migration has a backfill section");
-    sqlx::raw_sql(backfill).execute(&pool).await.expect("backfill");
+    sqlx::raw_sql(backfill)
+        .execute(&pool)
+        .await
+        .expect("backfill");
 
     assert_eq!(count(&pool, u, "account.created").await, 1);
     assert_eq!(count(&pool, u, "device.registered").await, 2);
@@ -241,7 +246,10 @@ async fn the_backfill_reads_the_old_tables() {
     assert_eq!(checkout, json!({ "interval": "year" }));
 
     // A second run adds nothing to what is keyed.
-    sqlx::raw_sql(backfill).execute(&pool).await.expect("backfill again");
+    sqlx::raw_sql(backfill)
+        .execute(&pool)
+        .await
+        .expect("backfill again");
     assert_eq!(count(&pool, u, "upload.first").await, 1);
     assert_eq!(count(&pool, u, "quota.blocked").await, 2);
 }
@@ -250,7 +258,9 @@ async fn the_backfill_reads_the_old_tables() {
 async fn the_admin_function_answers_the_admin_and_nobody_else() {
     let Some(pool) = pool().await else { return };
     let u = user(&pool).await;
-    Event::new(u, ProductEvent::AccountCreated).record(&pool).await;
+    Event::new(u, ProductEvent::AccountCreated)
+        .record(&pool)
+        .await;
     Event::new(u, ProductEvent::PricingOpened)
         .props(json!({ "from": "sidebar" }))
         .record(&pool)
@@ -300,12 +310,16 @@ async fn the_admin_function_answers_the_admin_and_nobody_else() {
     .execute(&mut *tx)
     .await
     .unwrap();
-    let refused = sqlx::query_scalar::<_, serde_json::Value>("SELECT public.admin_product_events()")
-        .fetch_one(&mut *tx)
-        .await
-        .unwrap_err();
+    let refused =
+        sqlx::query_scalar::<_, serde_json::Value>("SELECT public.admin_product_events()")
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap_err();
     assert_eq!(
-        refused.as_database_error().and_then(|d| d.code()).as_deref(),
+        refused
+            .as_database_error()
+            .and_then(|d| d.code())
+            .as_deref(),
         Some("42501")
     );
 }

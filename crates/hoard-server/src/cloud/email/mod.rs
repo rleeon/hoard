@@ -731,7 +731,10 @@ mod tests {
             for part in [&r.text, &r.html] {
                 assert!(!part.contains("{{"), "leftover marker: {part}");
                 assert!(!part.contains("pricing"), "offer left in: {part}");
-                assert!(!part.contains(">PRO<") && !part.contains("PRO - "), "offer left in: {part}");
+                assert!(
+                    !part.contains(">PRO<") && !part.contains("PRO - "),
+                    "offer left in: {part}"
+                );
                 assert!(!part.contains("no-offers"), "opt-out link left in");
                 // The service half is intact.
                 assert!(part.contains("/notices/"), "lost the notice link");

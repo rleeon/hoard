@@ -164,11 +164,16 @@ fn classify_platform(text: &str) -> KeyringFault {
     {
         return KeyringFault::Missing;
     }
-    // There, and mute. Same shape as our own cap running out.
+    // There, and mute. Same shape as our own cap running out. A locked GNOME
+    // keyring with nobody logged in has no prompter, so the unlock prompt it
+    // raises is dismissed at once: a lingering box that booted at 09:40 on
+    // 25-10-2026 read that as a refusal and retried every 5 minutes for 9 hours,
+    // with the login that would have unlocked it never waking the engine.
     if lower.contains("did not receive a reply")
         || lower.contains("timed out")
         || lower.contains("timeout")
         || lower.contains("is locked")
+        || lower.contains("prompt was dismissed")
     {
         return KeyringFault::Locked;
     }
@@ -350,6 +355,17 @@ mod tests {
             after: KEYRING_TIMEOUT,
         });
         assert_eq!(fault(&capped), Some(KeyringFault::Locked));
+    }
+
+    /// The text a locked GNOME keyring gives a lingering service before anyone
+    /// logs in, word for word from the journal. `Locked` is what lets the login
+    /// wake the engine at once instead of on its next 5-minute retry.
+    #[test]
+    fn a_dismissed_unlock_prompt_is_a_locked_keyring() {
+        let err = anyhow::Error::new(keyring::Error::PlatformFailure(
+            "Secret Service: unlock prompt was dismissed".into(),
+        ));
+        assert_eq!(fault(&err), Some(KeyringFault::Locked));
     }
 
     /// The reason has to survive the wrapping every caller does on the way up,

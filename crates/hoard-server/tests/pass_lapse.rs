@@ -165,7 +165,9 @@ async fn a_pass_keeps_pro_through_its_grace_month() {
     add_row(&pool, user, &order, "once", now - Duration::days(10)).await;
 
     // Ten days past the end of its year: still inside the month.
-    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS).await.unwrap());
+    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
     assert_eq!(plan(&pool, user).await, "pro");
     assert_eq!(status(&pool, &order).await, "active");
 
@@ -176,7 +178,9 @@ async fn a_pass_keeps_pro_through_its_grace_month() {
         .execute(&pool)
         .await
         .unwrap();
-    assert!(lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS).await.unwrap());
+    assert!(lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
     assert_eq!(plan(&pool, user).await, "free");
     assert_eq!(status(&pool, &order).await, "expired");
 
@@ -192,12 +196,26 @@ async fn a_lapsed_subscription_does_not_drop_a_paid_pass() {
     let user = seed_pro(&pool).await;
     let now = OffsetDateTime::now_utc();
     let monthly = format!("sub_{user}");
-    add_row(&pool, user, &monthly, "month", now - Duration::days(1)).await;
-    add_row(&pool, user, &format!("ord_{user}"), "once", now + Duration::days(200)).await;
+    let late = Duration::days(lapse::RENEWAL_LATE_DAYS as i64 + 1);
+    add_row(&pool, user, &monthly, "month", now - late).await;
+    add_row(
+        &pool,
+        user,
+        &format!("ord_{user}"),
+        "once",
+        now + Duration::days(200),
+    )
+    .await;
 
-    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS).await.unwrap());
+    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
     assert_eq!(status(&pool, &monthly).await, "expired");
-    assert_eq!(plan(&pool, user).await, "pro", "the pass still pays for Pro");
+    assert_eq!(
+        plan(&pool, user).await,
+        "pro",
+        "the pass still pays for Pro"
+    );
 
     // The daily sweep agrees and has nothing left to do for this account.
     lapse::sweep(&pool, STORAGE_GRACE_DAYS).await.unwrap();
@@ -222,12 +240,17 @@ async fn renewing_in_the_grace_month_continues_the_old_year() {
     let year_end = now - Duration::days(25);
     add_row(&pool, user, &first, "once", year_end).await;
 
-    let end = polar::pass_end_for(&pool, user, &second, now).await.unwrap();
+    let end = polar::pass_end_for(&pool, user, &second, now)
+        .await
+        .unwrap();
     assert_eq!(end, year_end + Duration::days(365));
 
     // What the webhook does next: write the new pass, retire the old one.
     add_row(&pool, user, &second, "once", end).await;
-    assert_eq!(polar::supersede_passes(&pool, user, &second).await.unwrap(), 1);
+    assert_eq!(
+        polar::supersede_passes(&pool, user, &second).await.unwrap(),
+        1
+    );
     assert_eq!(status(&pool, &first).await, "expired");
     assert_eq!(status(&pool, &second).await, "active");
 
@@ -238,7 +261,9 @@ async fn renewing_in_the_grace_month_continues_the_old_year() {
         .unwrap();
     assert_eq!(retried, end);
 
-    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS).await.unwrap());
+    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
     assert_eq!(plan(&pool, user).await, "pro");
 
     cleanup(&pool, user).await;
@@ -253,7 +278,14 @@ async fn a_refund_takes_pro_away_from_a_pass() {
     let user = seed_pro(&pool).await;
     mark_ever_pro(&pool, user).await;
     let order = format!("ord_{user}");
-    add_row(&pool, user, &order, "once", OffsetDateTime::now_utc() + Duration::days(300)).await;
+    add_row(
+        &pool,
+        user,
+        &order,
+        "once",
+        OffsetDateTime::now_utc() + Duration::days(300),
+    )
+    .await;
 
     let revoked = lapse::revoke_refunded(&pool, &order, STORAGE_GRACE_DAYS, true)
         .await
@@ -313,12 +345,18 @@ async fn a_refunded_subscription_stays_refunded_until_a_new_period() {
     // Cancelling in Polar sends the same period back as `active`, then as
     // `grace`: neither may undo the refund.
     let same = period_end.format(&Rfc3339).unwrap();
-    assert!(polar::refund_holds(&pool, &sub, "active", Some(&same)).await.unwrap());
-    assert!(polar::refund_holds(&pool, &sub, "grace", Some(&same)).await.unwrap());
+    assert!(polar::refund_holds(&pool, &sub, "active", Some(&same))
+        .await
+        .unwrap());
+    assert!(polar::refund_holds(&pool, &sub, "grace", Some(&same))
+        .await
+        .unwrap());
 
     // A new month paid is a new payment.
     let next = (period_end + Duration::days(30)).format(&Rfc3339).unwrap();
-    assert!(!polar::refund_holds(&pool, &sub, "active", Some(&next)).await.unwrap());
+    assert!(!polar::refund_holds(&pool, &sub, "active", Some(&next))
+        .await
+        .unwrap());
     let cleared: Option<OffsetDateTime> =
         sqlx::query_scalar("SELECT refunded_at FROM subscriptions WHERE ls_subscription_id = $1")
             .bind(&sub)
@@ -359,4 +397,237 @@ async fn a_refund_keeps_the_devices_of_an_account_that_paid_before() {
     assert!(ever_pro(&pool, user).await);
 
     cleanup(&pool, user).await;
+}
+
+#[tokio::test]
+async fn a_subscription_is_not_dropped_on_its_renewal_date() {
+    let Some(pool) = pool().await else {
+        eprintln!("HOARD_PG_TEST_URL unset — skipping");
+        return;
+    };
+    let user = seed_pro(&pool).await;
+    let sub = format!("sub_{user}");
+    let now = OffsetDateTime::now_utc();
+    // The period ended a minute ago and Polar's webhook with the next one has
+    // not landed yet: the account is still paying.
+    add_row(&pool, user, &sub, "month", now - Duration::minutes(1)).await;
+    assert!(!lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
+    assert_eq!(status(&pool, &sub).await, "active");
+    assert_eq!(plan(&pool, user).await, "pro");
+
+    // A week on with no word from Polar, it is over.
+    sqlx::query("UPDATE subscriptions SET renews_at = $1 WHERE ls_subscription_id = $2")
+        .bind(now - Duration::days(lapse::RENEWAL_LATE_DAYS as i64 + 1))
+        .bind(&sub)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(lapse::expire_lapsed(&pool, user, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
+    assert_eq!(plan(&pool, user).await, "free");
+
+    // A cancelled one ends on its date, no week added.
+    let cancelled = seed_pro(&pool).await;
+    let sub = format!("sub_{cancelled}");
+    add_row(&pool, cancelled, &sub, "month", now - Duration::minutes(1)).await;
+    sqlx::query("UPDATE subscriptions SET cancel_at = renews_at WHERE ls_subscription_id = $1")
+        .bind(&sub)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(lapse::expire_lapsed(&pool, cancelled, STORAGE_GRACE_DAYS)
+        .await
+        .unwrap());
+
+    cleanup(&pool, user).await;
+    cleanup(&pool, cancelled).await;
+}
+
+/// A pass and the one bought before it ran out, as the webhook leaves them: the
+/// new one ends a year after the old one, and the old one is retired.
+async fn chained_passes(pool: &PgPool, user: Uuid, now: OffsetDateTime) -> (String, String) {
+    let first = format!("ord1_{user}");
+    let second = format!("ord2_{user}");
+    add_row(pool, user, &first, "once", now + Duration::days(60)).await;
+    let end = polar::pass_end_for(pool, user, &second, now).await.unwrap();
+    add_row(pool, user, &second, "once", end).await;
+    polar::supersede_passes(pool, user, &second).await.unwrap();
+    (first, second)
+}
+
+async fn renews_at(pool: &PgPool, id: &str) -> OffsetDateTime {
+    sqlx::query_scalar("SELECT renews_at FROM subscriptions WHERE ls_subscription_id = $1")
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn refunding_an_early_renewal_gives_the_paid_year_back() {
+    let Some(pool) = pool().await else {
+        eprintln!("HOARD_PG_TEST_URL unset — skipping");
+        return;
+    };
+    use time::format_description::well_known::Rfc3339;
+    let user = seed_pro(&pool).await;
+    mark_ever_pro(&pool, user).await;
+    let now = OffsetDateTime::now_utc();
+    let now = now.replace_microsecond(now.microsecond()).unwrap();
+    let (first, second) = chained_passes(&pool, user, now).await;
+    assert_eq!(status(&pool, &first).await, "expired");
+
+    let revoked = lapse::revoke_refunded(&pool, &second, STORAGE_GRACE_DAYS, true)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !revoked.dropped,
+        "the first year still has two months to run"
+    );
+    assert!(!revoked.devices_revoked);
+    assert_eq!(status(&pool, &first).await, "active");
+    assert_eq!(renews_at(&pool, &first).await, now + Duration::days(60));
+    assert_eq!(plan(&pool, user).await, "pro");
+    assert_eq!(
+        lapse::standing(&pool, user).await.unwrap().map(|s| s.1),
+        Some(Some(now + Duration::days(60)))
+    );
+
+    // A late retry of the refunded order's `order.paid` doesn't bring it back.
+    let end = polar::pass_end_for(&pool, user, &second, now)
+        .await
+        .unwrap();
+    let end = end.format(&Rfc3339).unwrap();
+    assert!(polar::refund_holds(&pool, &second, "active", Some(&end))
+        .await
+        .unwrap());
+
+    cleanup(&pool, user).await;
+}
+
+#[tokio::test]
+async fn refunding_the_older_pass_takes_its_time_off_the_newer() {
+    let Some(pool) = pool().await else {
+        eprintln!("HOARD_PG_TEST_URL unset — skipping");
+        return;
+    };
+    let user = seed_pro(&pool).await;
+    let now = OffsetDateTime::now_utc();
+    let now = now.replace_microsecond(now.microsecond()).unwrap();
+    let (first, second) = chained_passes(&pool, user, now).await;
+    assert_eq!(
+        renews_at(&pool, &second).await,
+        now + Duration::days(60 + 365)
+    );
+
+    assert!(
+        !lapse::revoke_refunded(&pool, &first, STORAGE_GRACE_DAYS, true)
+            .await
+            .unwrap()
+            .unwrap()
+            .dropped
+    );
+    // A year from its own payment, the two months it carried over are gone.
+    let bought: OffsetDateTime =
+        sqlx::query_scalar("SELECT created_at FROM subscriptions WHERE ls_subscription_id = $1")
+            .bind(&second)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        renews_at(&pool, &second).await,
+        bought + Duration::days(365)
+    );
+    assert_eq!(status(&pool, &second).await, "active");
+    assert_eq!(plan(&pool, user).await, "pro");
+
+    cleanup(&pool, user).await;
+}
+
+#[tokio::test]
+async fn the_account_shows_the_row_that_goes_on_paying() {
+    let Some(pool) = pool().await else {
+        eprintln!("HOARD_PG_TEST_URL unset — skipping");
+        return;
+    };
+    let user = seed_pro(&pool).await;
+    let now = OffsetDateTime::now_utc();
+    // A pass bought, then the monthly plan cancelled: the cancellation is the
+    // newest write, and the pass is still what the account is on.
+    add_row(
+        &pool,
+        user,
+        &format!("ord_{user}"),
+        "once",
+        now + Duration::days(365),
+    )
+    .await;
+    let monthly = format!("sub_{user}");
+    add_row(&pool, user, &monthly, "month", now + Duration::days(12)).await;
+    sqlx::query(
+        "UPDATE subscriptions SET status = 'grace', cancel_at = renews_at, updated_at = now() + interval '1 second'
+          WHERE ls_subscription_id = $1",
+    )
+    .bind(&monthly)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let shown = lapse::standing(&pool, user).await.unwrap().unwrap();
+    assert_eq!(shown.3, "once");
+    assert_eq!(shown.2, None);
+
+    cleanup(&pool, user).await;
+}
+
+#[tokio::test]
+async fn one_paid_plan_at_a_time() {
+    let Some(pool) = pool().await else {
+        eprintln!("HOARD_PG_TEST_URL unset — skipping");
+        return;
+    };
+    let user = seed_pro(&pool).await;
+    let now = OffsetDateTime::now_utc();
+    let monthly = format!("sub_{user}");
+    add_row(&pool, user, &monthly, "month", now + Duration::days(12)).await;
+    for interval in ["month", "year", "once"] {
+        assert!(
+            polar::already_paying(&pool, user, interval).await.unwrap(),
+            "{interval}"
+        );
+    }
+    // Cancelled, it bills no more: anything may follow it.
+    sqlx::query("UPDATE subscriptions SET cancel_at = renews_at WHERE ls_subscription_id = $1")
+        .bind(&monthly)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(!polar::already_paying(&pool, user, "once").await.unwrap());
+
+    // On a pass, only the next pass, until its year is over.
+    let on_pass = seed_pro(&pool).await;
+    let order = format!("ord_{on_pass}");
+    add_row(&pool, on_pass, &order, "once", now + Duration::days(100)).await;
+    assert!(!polar::already_paying(&pool, on_pass, "once").await.unwrap());
+    assert!(polar::already_paying(&pool, on_pass, "month")
+        .await
+        .unwrap());
+    sqlx::query("UPDATE subscriptions SET renews_at = $1 WHERE ls_subscription_id = $2")
+        .bind(now - Duration::days(3))
+        .bind(&order)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        !polar::already_paying(&pool, on_pass, "month")
+            .await
+            .unwrap(),
+        "in its grace month"
+    );
+
+    cleanup(&pool, user).await;
+    cleanup(&pool, on_pass).await;
 }

@@ -187,7 +187,9 @@ mod tests {
         assert!(!is_protocol_error(
             "Error 32 (Broken pipe) dispatching to Wayland display."
         ));
-        assert!(!is_protocol_error("Error 71 (Protocol error) something else"));
+        assert!(!is_protocol_error(
+            "Error 71 (Protocol error) something else"
+        ));
     }
 
     /// The exact call GDK makes before `_exit(1)`, through the real GLib: if a

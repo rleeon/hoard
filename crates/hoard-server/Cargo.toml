@@ -86,7 +86,15 @@ async-trait = { workspace = true }
 minisign-verify = "0.2"
 
 # Cloud-only optional dependencies. Pull in only when --features cloud.
-aws-sdk-s3 = { version = "1", optional = true }
+# Without `rustls` (the legacy hyper 0.14 client, which brings rustls 0.21 and
+# its webpki) and `sigv4a` (multi-region access points, whose p256 brings an
+# old crypto-bigint): neither R2 nor any S3-compatible backend signs with
+# SigV4a, and `default-https-client` is the client the SDK uses either way.
+aws-sdk-s3 = { version = "1", optional = true, default-features = false, features = [
+    "http-1x",
+    "default-https-client",
+    "rt-tokio",
+] }
 aws-config = { version = "1", optional = true }
 aws-credential-types = { version = "1", optional = true }
 aws-smithy-runtime-api = { version = "1", optional = true }

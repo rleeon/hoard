@@ -313,6 +313,28 @@ pub async fn supersede_passes(
     Ok(res.rows_affected())
 }
 
+/// One paid plan at a time. The app only offers what an account can buy, but the
+/// web's `/checkout` takes any plan from its URL, and a second subscription bills
+/// on top of the first without either one saying so. A pass may follow a pass
+/// (the new year starts where the old one ends), and anything may follow a
+/// cancelled plan or a pass in its grace month.
+pub async fn already_paying(
+    pool: &PgPool,
+    user_id: Uuid,
+    interval: &str,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"SELECT EXISTS (SELECT 1 FROM subscriptions
+             WHERE user_id = $1 AND status IN ('active','grace')
+               AND (("interval" <> 'once' AND cancel_at IS NULL)
+                    OR ("interval" = 'once' AND $2 <> 'once' AND renews_at > now())))"#,
+    )
+    .bind(user_id)
+    .bind(interval)
+    .fetch_one(pool)
+    .await
+}
+
 /// A refunded order takes Pro away, whatever it paid for. The row is found by
 /// what the order bought: a pass is stored under its own order id, and the
 /// orders of a subscription point at the subscription.
@@ -382,6 +404,10 @@ async fn refund(
 /// still `active` until the period ends, and letting that through would give
 /// back the Pro the refund took. A new period is a new payment: the mark is
 /// cleared and the event goes through.
+///
+/// A pass has no new period, its row is its order: a late retry of the
+/// `order.paid` that bought it (Polar redelivers what we failed to take, hours
+/// on) comes back with the end it already had and is held off too.
 pub async fn refund_holds(
     pool: &PgPool,
     row_id: &str,
@@ -389,13 +415,12 @@ pub async fn refund_holds(
     renews_at: Option<&str>,
 ) -> Result<bool, sqlx::Error> {
     use time::format_description::well_known::Rfc3339;
-    let row: Option<(Option<time::OffsetDateTime>, Option<time::OffsetDateTime>)> =
-        sqlx::query_as(
-            "SELECT refunded_at, renews_at FROM subscriptions WHERE ls_subscription_id = $1",
-        )
-        .bind(row_id)
-        .fetch_optional(pool)
-        .await?;
+    let row: Option<(Option<time::OffsetDateTime>, Option<time::OffsetDateTime>)> = sqlx::query_as(
+        "SELECT refunded_at, renews_at FROM subscriptions WHERE ls_subscription_id = $1",
+    )
+    .bind(row_id)
+    .fetch_optional(pool)
+    .await?;
     let Some((Some(_), refunded_end)) = row else {
         return Ok(false);
     };
@@ -650,21 +675,19 @@ pub async fn handle(
         .or(event.data.current_period_end.as_deref())
         .or(event.data.ends_at.as_deref());
 
-    if !paid_order {
-        match refund_holds(&state.pool, &event.data.id, status, renews_at).await {
-            Ok(false) => {}
-            Ok(true) => {
-                info!(
-                    subscription = %event.data.id,
-                    event = %event.event_type,
-                    "polar webhook: refunded subscription, ignored until a new period is paid"
-                );
-                return (StatusCode::OK, "refunded").into_response();
-            }
-            Err(e) => {
-                warn!(error = %e, "polar webhook: couldn't check for a refund");
-                return CloudError::Db(e).into_response();
-            }
+    match refund_holds(&state.pool, &event.data.id, status, renews_at).await {
+        Ok(false) => {}
+        Ok(true) => {
+            info!(
+                subscription = %event.data.id,
+                event = %event.event_type,
+                "polar webhook: refunded, ignored until a new period is paid"
+            );
+            return (StatusCode::OK, "refunded").into_response();
+        }
+        Err(e) => {
+            warn!(error = %e, "polar webhook: couldn't check for a refund");
+            return CloudError::Db(e).into_response();
         }
     }
 

@@ -736,7 +736,8 @@ mod tests {
 
     fn batch_for(cloud: bool) -> Vec<String> {
         let (tx, rx) = sync_channel::<LogEntry>(8);
-        tx.send(entry("info", hoard_core::wire::EVENT_TARGET)).unwrap();
+        tx.send(entry("info", hoard_core::wire::EVENT_TARGET))
+            .unwrap();
         tx.send(entry("warn", "hoard_agent::agent")).unwrap();
         tx.send(entry("info", "hoard_agent::agent")).unwrap();
         let policy = Policy {
@@ -756,7 +757,8 @@ mod tests {
         let t0 = std::time::Instant::now();
         let fill = |held: &mut Held, keep: bool, at| {
             let (tx, rx) = sync_channel::<LogEntry>(8);
-            tx.send(entry("info", hoard_core::wire::EVENT_TARGET)).unwrap();
+            tx.send(entry("info", hoard_core::wire::EVENT_TARGET))
+                .unwrap();
             tx.send(entry("warn", "hoard_agent::agent")).unwrap();
             held.drain_from(&rx, keep, at);
             assert!(rx.try_recv().is_err(), "the channel is always emptied");

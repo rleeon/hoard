@@ -41,7 +41,13 @@ pub fn appender(data_dir: &Path) -> Option<RollingFileAppender> {
 
 /// The last `max` bytes across the daily files, oldest first, starting on a
 /// whole line. Empty when there are none yet.
+///
+/// Each file is read from where its share of the budget starts, never whole: a
+/// day of a busy server or one stuck in a loop runs to hundreds of megabytes,
+/// and reading all of it to return 2 MiB cost that much memory per request.
 pub async fn tail(data_dir: &Path, max: u64) -> std::io::Result<String> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
     let files = log_files(&data_dir.join(LOG_DIR))?;
     // Newest first, so the budget goes to the most recent lines.
     let mut parts: Vec<Vec<u8>> = Vec::new();
@@ -50,25 +56,29 @@ pub async fn tail(data_dir: &Path, max: u64) -> std::io::Result<String> {
         if left == 0 {
             break;
         }
-        let bytes = tokio::fs::read(path).await?;
-        let len = bytes.len() as u64;
+        let mut file = tokio::fs::File::open(path).await?;
+        let len = file.metadata().await?.len();
         if len <= left {
-            left -= len;
+            let mut bytes = Vec::with_capacity(len as usize);
+            file.take(len).read_to_end(&mut bytes).await?;
+            left -= bytes.len() as u64;
             parts.push(bytes);
-        } else {
-            let start = (len - left) as usize;
-            let cut = &bytes[start..];
-            let cut = if bytes[start - 1] == b'\n' {
-                cut
-            } else {
-                match cut.iter().position(|b| *b == b'\n') {
-                    Some(i) => &cut[i + 1..],
-                    None => &[],
-                }
-            };
-            parts.push(cut.to_vec());
-            left = 0;
+            continue;
         }
+        // One byte early, to tell whether the cut falls on a line start.
+        file.seek(std::io::SeekFrom::Start(len - left - 1)).await?;
+        let mut bytes = Vec::with_capacity(left as usize + 1);
+        file.take(left + 1).read_to_end(&mut bytes).await?;
+        let cut: &[u8] = match bytes.split_first() {
+            Some((b'\n', rest)) => rest,
+            Some((_, rest)) => match rest.iter().position(|b| *b == b'\n') {
+                Some(i) => &rest[i + 1..],
+                None => &[],
+            },
+            None => &[],
+        };
+        parts.push(cut.to_vec());
+        left = 0;
     }
     let mut out = String::new();
     for part in parts.iter().rev() {
@@ -127,6 +137,17 @@ mod tests {
         // A budget that ends exactly on a line start keeps that line.
         assert_eq!(tail(dir.path(), 6).await.unwrap(), "third\n");
         assert_eq!(tail(dir.path(), 0).await.unwrap(), "");
+    }
+
+    #[tokio::test]
+    async fn a_day_bigger_than_the_budget_gives_its_last_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let day: String = (0..20_000).map(|i| format!("line {i}\n")).collect();
+        write(dir.path(), "2026-10-22", &day);
+        let got = tail(dir.path(), 64).await.unwrap();
+        assert!(got.ends_with("line 19999\n"), "{got}");
+        assert!(got.starts_with("line "), "{got}");
+        assert!(got.len() <= 64);
     }
 
     #[tokio::test]

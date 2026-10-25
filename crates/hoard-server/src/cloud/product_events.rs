@@ -235,9 +235,9 @@ pub async fn after_upload(state: &CloudState, user_id: Uuid) {
         .record(&state.pool)
         .await;
 
-    let all_seen = STORAGE_THRESHOLDS.iter().all(|pct| {
-        already_written(&(user_id, ProductEvent::StorageThreshold, pct.to_string()))
-    });
+    let all_seen = STORAGE_THRESHOLDS
+        .iter()
+        .all(|pct| already_written(&(user_id, ProductEvent::StorageThreshold, pct.to_string())));
     if all_seen {
         return;
     }
@@ -412,7 +412,10 @@ mod tests {
     #[test]
     fn thresholds_cross_on_the_percentage() {
         let gib = 1u64 << 30;
-        assert_eq!(crossed(gib - 1, 2 * gib).collect::<Vec<_>>(), Vec::<u64>::new());
+        assert_eq!(
+            crossed(gib - 1, 2 * gib).collect::<Vec<_>>(),
+            Vec::<u64>::new()
+        );
         assert_eq!(crossed(gib, 2 * gib).collect::<Vec<_>>(), vec![50]);
         assert_eq!(
             crossed(2 * gib + 1, 2 * gib).collect::<Vec<_>>(),

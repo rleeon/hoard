@@ -607,11 +607,23 @@ fn pass_reminder(
         let until = end + time::Duration::days(crate::cloud::polar::PASS_GRACE_DAYS);
         let now = time::OffsetDateTime::now_utc();
         let r = if day < 0 {
-            email::send_pass_expiring(&cfg, &to, days_until(end, now), &fmt_day(end), &fmt_day(until))
-                .await
+            email::send_pass_expiring(
+                &cfg,
+                &to,
+                days_until(end, now),
+                &fmt_day(end),
+                &fmt_day(until),
+            )
+            .await
         } else {
-            email::send_pass_ended(&cfg, &to, days_until(until, now), &fmt_day(end), &fmt_day(until))
-                .await
+            email::send_pass_ended(
+                &cfg,
+                &to,
+                days_until(until, now),
+                &fmt_day(end),
+                &fmt_day(until),
+            )
+            .await
         };
         settle(&state, user_id, kind, &scope, r).await;
     });

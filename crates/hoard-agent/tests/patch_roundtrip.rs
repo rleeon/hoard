@@ -7,10 +7,12 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use hoard_agent::api::ApiClient;
 use hoard_agent::backup::upload_directory;
+use hoard_agent::config::CliConfig;
 use hoard_agent::restore::{download_snapshot, RestoreOptions};
 use hoard_core::kernel::fileclass::RestoreGate;
 use hoard_core::wire::VersionOrigin;
@@ -416,14 +418,54 @@ fn options(tmp: &std::path::Path) -> RestoreOptions {
     }
 }
 
-/// The env is per process: both tests run under one lock, each with its own home.
+/// The env is per process: the tests run under one lock, each with its own home.
 static ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-fn isolate(home: &std::path::Path) {
+/// Only Linux reads the XDG variables. On Windows and macOS the folders come
+/// from the system and land in the real AppData or Library, so the profile is
+/// what keeps one test's cached bases out of the next, and the guard takes it
+/// away afterwards.
+fn isolate(home: &std::path::Path) -> Profile {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     std::env::set_var("XDG_CACHE_HOME", home.join("cache"));
     std::env::set_var("XDG_DATA_HOME", home.join("data"));
     std::env::set_var("XDG_CONFIG_HOME", home.join("config"));
-    std::env::set_var("HOARD_PROFILE", format!("patch-{}", std::process::id()));
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    std::env::set_var("HOARD_PROFILE", format!("patch-{}-{n}", std::process::id()));
+    Profile
+}
+
+struct Profile;
+
+impl Drop for Profile {
+    fn drop(&mut self) {
+        let Ok(pd) = CliConfig::project_dirs() else {
+            return;
+        };
+        for dir in [
+            pd.cache_dir(),
+            pd.config_dir(),
+            pd.data_dir(),
+            pd.data_local_dir(),
+        ] {
+            let _ = std::fs::remove_dir_all(dir);
+            // `hoard\hoard-patch-*` on Windows, empty by now.
+            #[cfg(windows)]
+            if let Some(parent) = dir.parent() {
+                let _ = std::fs::remove_dir(parent);
+            }
+        }
+    }
+}
+
+/// What another machine looks like: none of the bases this one kept.
+fn forget_bases() {
+    let dir = CliConfig::cache_dir().unwrap();
+    match std::fs::remove_dir_all(&dir) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => panic!("{}: {e}", dir.display()),
+    }
 }
 
 async fn backup(
@@ -450,7 +492,7 @@ async fn backup(
 async fn a_changed_big_save_goes_up_as_a_patch_and_comes_back() {
     let _env = ENV.lock().await;
     let home = tempfile::tempdir().unwrap();
-    isolate(home.path());
+    let _profile = isolate(home.path());
 
     let (base, cloud) = spawn_cloud();
     let client = ApiClient::new(&base, "token").unwrap();
@@ -499,7 +541,7 @@ async fn a_changed_big_save_goes_up_as_a_patch_and_comes_back() {
     assert_eq!(std::fs::read(here.join("slot.fos")).unwrap(), v2);
 
     // Another machine doesn't: it fetches the base and checks it.
-    std::fs::remove_dir_all(home.path().join("cache")).unwrap();
+    forget_bases();
     let there = home.path().join("restore-there");
     std::fs::create_dir_all(&there).unwrap();
     download_snapshot(&client, SAVE, 2, &there, options(home.path()), |_, _| {})
@@ -508,7 +550,7 @@ async fn a_changed_big_save_goes_up_as_a_patch_and_comes_back() {
     assert_eq!(std::fs::read(there.join("slot.fos")).unwrap(), v2);
 
     // A base that comes back damaged fails the restore instead of landing junk.
-    std::fs::remove_dir_all(home.path().join("cache")).unwrap();
+    forget_bases();
     cloud
         .lock()
         .unwrap()
@@ -527,7 +569,7 @@ async fn a_changed_big_save_goes_up_as_a_patch_and_comes_back() {
 async fn self_hosted_rebuilds_the_patch_and_a_lost_base_goes_whole() {
     let _env = ENV.lock().await;
     let home = tempfile::tempdir().unwrap();
-    isolate(home.path());
+    let _profile = isolate(home.path());
 
     let (base, server) = spawn(|_| SelfHosted::default(), handle_self_hosted);
     let client = ApiClient::new(&base, "token").unwrap();
@@ -580,7 +622,7 @@ async fn self_hosted_rebuilds_the_patch_and_a_lost_base_goes_whole() {
 async fn a_zip_save_goes_up_inflated_and_comes_back() {
     let _env = ENV.lock().await;
     let home = tempfile::tempdir().unwrap();
-    isolate(home.path());
+    let _profile = isolate(home.path());
 
     let (base, cloud) = spawn_cloud();
     let client = ApiClient::new(&base, "token").unwrap();
@@ -616,7 +658,7 @@ async fn a_zip_save_goes_up_inflated_and_comes_back() {
 
     for (name, keep_cache) in [("here", true), ("there", false)] {
         if !keep_cache {
-            std::fs::remove_dir_all(home.path().join("cache")).unwrap();
+            forget_bases();
         }
         let dest = home.path().join(name);
         std::fs::create_dir_all(&dest).unwrap();
@@ -644,7 +686,7 @@ async fn a_zip_save_goes_up_inflated_and_comes_back() {
 async fn self_hosted_rebuilds_an_inflated_patch() {
     let _env = ENV.lock().await;
     let home = tempfile::tempdir().unwrap();
-    isolate(home.path());
+    let _profile = isolate(home.path());
 
     let (base, server) = spawn(|_| SelfHosted::default(), handle_self_hosted);
     let client = ApiClient::new(&base, "token").unwrap();

@@ -275,10 +275,7 @@ async fn finish_cloud_login(base: &str, tokens: &cloud_auth::Tokens) -> Result<(
         // it in case it started in between.
         link::notify_session_changed().await;
     }
-    println!(
-        "connected to Hoard One as {} · plan {}",
-        me.email, me.plan
-    );
+    println!("connected to Hoard One as {} · plan {}", me.email, me.plan);
     Ok(())
 }
 

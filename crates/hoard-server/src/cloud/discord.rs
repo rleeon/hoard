@@ -806,7 +806,12 @@ mod tests {
             }
             out.push(lit);
         }
-        out.retain(|l| !matches!(l.as_str(), "error" | "warn" | "ERROR" | "WARN" | "" | "24 hours"));
+        out.retain(|l| {
+            !matches!(
+                l.as_str(),
+                "error" | "warn" | "ERROR" | "WARN" | "" | "24 hours"
+            )
+        });
         out
     }
 }

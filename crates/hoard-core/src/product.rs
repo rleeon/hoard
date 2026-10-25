@@ -307,7 +307,10 @@ mod tests {
             "": "x",
             "nothing": null,
         }));
-        assert_eq!(cleaned, json!({ "from": "sidebar", "gb": 25, "yearly": true }));
+        assert_eq!(
+            cleaned,
+            json!({ "from": "sidebar", "gb": 25, "yearly": true })
+        );
         assert_eq!(clean_props(&json!("not an object")), json!({}));
 
         let many: Map<String, Value> = (0..40).map(|i| (format!("k{i}"), json!(i))).collect();

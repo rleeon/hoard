@@ -82,6 +82,13 @@ pub async fn create_checkout(
         CloudError::BadRequest("unknown plan/interval/tier".into())
     })?;
 
+    if crate::cloud::polar::already_paying(&state.pool, user.user_id, &body.interval).await? {
+        warn!(user_id = %user.user_id, interval = %body.interval, "checkout: account already pays for Pro");
+        return Err(CloudError::Conflict(
+            "this account already has Pro; manage it from your account page",
+        ));
+    }
+
     // Polar metadata values must be strings/numbers/bools; user_id as string.
     let mut metadata: HashMap<&str, String> = HashMap::new();
     metadata.insert("user_id", user.user_id.to_string());

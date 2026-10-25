@@ -612,7 +612,8 @@ pub fn manual_backup(state: &mut State, now: OffsetDateTime) -> ManualBackup {
     if !braked && !stalled {
         return ManualBackup::NotBraked;
     }
-    let ours = state.failure_backoff_until.is_some() && state.next_backup_at == state.failure_backoff_until;
+    let ours = state.failure_backoff_until.is_some()
+        && state.next_backup_at == state.failure_backoff_until;
     if braked && !ours && !stalled {
         return ManualBackup::ServerBrake;
     }
@@ -1776,11 +1777,17 @@ mod tests {
         for i in 0..MANUAL_LIFT_BUDGET {
             state.next_backup_at = Some(at(BACKUP_FAILURE_BACKOFF_SECS));
             state.failure_backoff_until = state.next_backup_at;
-            assert_eq!(manual_backup(&mut state, at(i64::from(i))), ManualBackup::Lifted);
+            assert_eq!(
+                manual_backup(&mut state, at(i64::from(i))),
+                ManualBackup::Lifted
+            );
         }
         state.next_backup_at = Some(at(BACKUP_FAILURE_BACKOFF_SECS));
         state.failure_backoff_until = state.next_backup_at;
-        assert_eq!(manual_backup(&mut state, at(100)), ManualBackup::BudgetSpent);
+        assert_eq!(
+            manual_backup(&mut state, at(100)),
+            ManualBackup::BudgetSpent
+        );
         assert!(state.next_backup_at.is_some(), "the brake stays");
 
         let later = MANUAL_LIFT_WINDOW_SECS + 1;

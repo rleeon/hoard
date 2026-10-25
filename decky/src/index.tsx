@@ -38,6 +38,8 @@ interface Slot {
 interface State {
   connected: boolean;
   error: string;
+  running: boolean;
+  problem: string;
   daemon_version: string;
   server: string;
   watched: number;
@@ -104,11 +106,13 @@ function Content() {
       <PanelSection>
         <PanelSectionRow>
           <Field
-            label={state.connected ? "Syncing" : "Sleeping"}
+            label={!state.connected ? "Sleeping" : state.running ? "Syncing" : "Paused"}
             description={
-              state.connected
-                ? [saves, host(state.server)].filter(Boolean).join(" to ")
-                : state.error
+              !state.connected
+                ? state.error
+                : state.running
+                  ? [saves, host(state.server)].filter(Boolean).join(" to ")
+                  : state.problem
             }
           />
         </PanelSectionRow>
@@ -126,7 +130,7 @@ function Content() {
         <PanelSectionRow>
           <ButtonItem
             layout="below"
-            disabled={!state.connected || busy}
+            disabled={!state.connected || !state.running || busy}
             onClick={async () => {
               setBusy(true);
               const error = await syncNow();

@@ -1015,7 +1015,10 @@ impl ApiClient {
                 "/v1/cloud/saves/{save_id}/versions/{version}/download"
             )))
             .header("authorization", self.auth_header())
-            .header("x-hoard-device-fp", crate::logship::device_identity().fingerprint)
+            .header(
+                "x-hoard-device-fp",
+                crate::logship::device_identity().fingerprint,
+            )
             .send()
             .await?;
         let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
@@ -1321,7 +1324,10 @@ impl ApiClient {
             .header("authorization", self.auth_header())
             // Which machine is restoring, so the server can tell the first time
             // a copy made on one reached another.
-            .header("x-hoard-device-fp", crate::logship::device_identity().fingerprint)
+            .header(
+                "x-hoard-device-fp",
+                crate::logship::device_identity().fingerprint,
+            )
             .send()
             .await?;
         let resp = Self::ok_or_err(resp).await.map_err(|e| anyhow!(e))?;
