@@ -155,7 +155,7 @@
   "pricing.note_cancel_title": "いつでも解約可能",
   "pricing.note_cancel_body": "契約期間の縛りなし。解約しても期間終了までProのまま、その後Freeへ。データはそのまま残ります。",
   "pricing.note_mor_title": "Merchant of Record",
-  "pricing.note_mor_body": "VATと請求はMerchant of RecordであるPolarが処理します。価格はEUR、税込み。",
+  "pricing.note_mor_body": "VATと請求はMerchant of RecordであるPolarが処理します。価格はEUR、税別（お住まいの国の税金が加わります）。",
   "pricing.note_lockin_title": "ロックインなし",
   "pricing.note_lockin_body": "各セーブをゲームの元のフォーマットでエクスポート。同じバイナリをいつでもセルフホストできます。",
   "pricing.compare_title": "項目ごとに比較",

@@ -155,7 +155,7 @@
   "pricing.note_cancel_title": "Cancel anytime",
   "pricing.note_cancel_body": "No contracts. Cancel and stay on Pro until the period ends, then drop to Free. Your data stays.",
   "pricing.note_mor_title": "Merchant of Record",
-  "pricing.note_mor_body": "VAT and invoicing handled by Polar as Merchant of Record. Prices in EUR, taxes included.",
+  "pricing.note_mor_body": "VAT and invoicing handled by Polar as Merchant of Record. Prices in EUR, plus your country's taxes.",
   "pricing.note_lockin_title": "No lock-in",
   "pricing.note_lockin_body": "Export every save in the game's original format. Self-host the same binary anytime.",
   "pricing.compare_title": "Compare row by row",

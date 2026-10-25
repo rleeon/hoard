@@ -155,7 +155,7 @@
   "pricing.note_cancel_title": "Annulla quando vuoi",
   "pricing.note_cancel_body": "Nessun contratto. Annulla e resta su Pro fino alla fine del periodo, poi torni a Free. I tuoi dati restano.",
   "pricing.note_mor_title": "Merchant of Record",
-  "pricing.note_mor_body": "IVA e fatturazione gestite da Polar come Merchant of Record. Prezzi in EUR, tasse incluse.",
+  "pricing.note_mor_body": "IVA e fatturazione gestite da Polar come Merchant of Record. Prezzi in EUR, più le tasse del tuo paese.",
   "pricing.note_lockin_title": "Nessun vincolo",
   "pricing.note_lockin_body": "Esporta ogni salvataggio nel formato originale del gioco. Self-host dello stesso binario quando vuoi.",
   "pricing.compare_title": "Confronta riga per riga",

@@ -110,7 +110,7 @@ here is the [installer](https://hoard.services/cli).
 
 ## Steam Deck plugin
 
-This come in 1.2.3, we all need wait.
+This come in 1.3.0, we all need wait.
 Game Mode doesn't show notifications, so Hoard has a plugin for
 [Decky Loader](https://decky.xyz): it tells you when a save is uploaded, fails
 or is restored, and has a Manual Upload button. Install Decky first, then run
@@ -150,6 +150,8 @@ To be clearer, until i have the necessary privileges(hoardd), i doubt there will
 
 ## Thanks
 
+To every pro user who helps maintaining hoard.
+
 To everyone who took the time to report a bug, ask for a feature or send a
 fix: [doctorase](https://github.com/doctorase),
 [Felitendo](https://github.com/Felitendo),
@@ -161,6 +163,13 @@ fix: [doctorase](https://github.com/doctorase),
 [shieek1](https://github.com/shieek1),
 [sockenklaus](https://github.com/sockenklaus),
 [SoulJaCKER12](https://github.com/SoulJaCKER12),
-[Trustwbc](https://github.com/Trustwbc) and
-[xDeadGuyx](https://github.com/xDeadGuyx). And to everyone who tests and helps
-on Discord.
+[Trustwbc](https://github.com/Trustwbc),
+[xDeadGuyx](https://github.com/xDeadGuyx)... 
+
+And to everyone who tests and helps on Discord like quentingeo, milldor, soul_jackerz, Vyzer...
+
+Im think im missing alot of people, just thx to all this people and thx if you are contributing now.
+
+<a href="https://github.com/rleeon/hoard/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=rleeon/hoard" alt="Contributors to Hoard" />
+</a>

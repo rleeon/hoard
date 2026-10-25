@@ -155,7 +155,7 @@
   "pricing.note_cancel_title": "Jederzeit kündbar",
   "pricing.note_cancel_body": "Keine Verträge. Kündige und bleib bis zum Periodenende auf Pro, dann zurück auf Free. Deine Daten bleiben.",
   "pricing.note_mor_title": "Merchant of Record",
-  "pricing.note_mor_body": "MwSt. und Rechnungsstellung werden von Polar als Merchant of Record abgewickelt. Preise in EUR, Steuern inklusive.",
+  "pricing.note_mor_body": "MwSt. und Rechnungsstellung werden von Polar als Merchant of Record abgewickelt. Preise in EUR, zuzüglich der Steuern deines Landes.",
   "pricing.note_lockin_title": "Keine Bindung",
   "pricing.note_lockin_body": "Exportiere jeden Spielstand im Originalformat des Spiels. Hoste dieselbe Binärdatei jederzeit selbst.",
   "pricing.compare_title": "Zeile für Zeile vergleichen",

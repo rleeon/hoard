@@ -155,7 +155,7 @@
   "pricing.note_cancel_title": "随时取消",
   "pricing.note_cancel_body": "没有合约。取消后在本期结束前仍是 Pro，之后降为 Free。你的数据保留。",
   "pricing.note_mor_title": "记录商户",
-  "pricing.note_mor_body": "增值税和开票由作为记录商户的 Polar 处理。价格以欧元计，含税。",
+  "pricing.note_mor_body": "增值税和开票由作为记录商户的 Polar 处理。价格以欧元计，另加你所在国家/地区的税费。",
   "pricing.note_lockin_title": "无锁定",
   "pricing.note_lockin_body": "按游戏的原始格式导出每个存档。随时自托管同一个二进制文件。",
   "pricing.compare_title": "逐行对比",

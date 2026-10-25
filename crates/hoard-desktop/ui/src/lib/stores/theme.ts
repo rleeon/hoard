@@ -165,11 +165,11 @@ type SpecialMode = {
   inSeason: (d: Date) => boolean;
 };
 
-/** 24 October to 1 November, by the computer's own clock and time zone, so it
+/** 24 October to 3 November, by the computer's own clock and time zone, so it
  *  is Halloween when it is Halloween where the user lives. */
 export function isHalloweenSeason(d: Date = new Date()): boolean {
   const day = d.getDate();
-  return (d.getMonth() === 9 && day >= 24) || (d.getMonth() === 10 && day === 1);
+  return (d.getMonth() === 9 && day >= 24) || (d.getMonth() === 10 && day <= 3);
 }
 
 export const specialModes: SpecialMode[] = [
