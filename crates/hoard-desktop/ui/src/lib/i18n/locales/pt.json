@@ -1,5 +1,7 @@
 {
   "common.cancel": "Cancelar",
+  "common.yes": "Sim",
+  "common.no": "Não",
   "common.save": "Guardar",
   "common.loading": "A carregar…",
   "common.back": "Voltar",
@@ -578,8 +580,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "Restaurar também os ficheiros de definições",
   "history.allow_config_hint": "Ficheiros como graphics.ini ou settings.cfg guardam a resolução e o hardware DESTA máquina. São sempre copiados, mas só são escritos se o pedires.",
-  "history.allow_config_game_on": "Restaurar também as definições",
-  "history.allow_config_game_off": "Não restaurar as definições",
+  "history.restore_settings": "Restaurar definições",
   "history.allow_config_game_hint_off": "Os ficheiros de definições deste jogo são copiados, mas não são escritos ao restaurar. Vale para todas as suas pastas.",
   "history.allow_config_game_hint_on": "Os ficheiros de definições deste jogo são escritos em cada restauro, incluindo os automáticos. Vale para todas as suas pastas.",
   "history.allow_config_game_orphan": "Este jogo não está a ser seguido nesta máquina: só existe na nuvem, por isso não há onde guardar a decisão. Associa primeiro uma pasta local.",

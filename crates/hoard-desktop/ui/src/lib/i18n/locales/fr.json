@@ -1,5 +1,7 @@
 {
   "common.cancel": "Annuler",
+  "common.yes": "Oui",
+  "common.no": "Non",
   "common.save": "Enregistrer",
   "common.loading": "Chargement…",
   "common.back": "Retour",
@@ -578,8 +580,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "Restaurer aussi les fichiers de réglages",
   "history.allow_config_hint": "Des fichiers comme graphics.ini ou settings.cfg contiennent la résolution et le matériel de CETTE machine. Ils sont toujours sauvegardés, mais ne sont réécrits que sur demande.",
-  "history.allow_config_game_on": "Restaurer aussi les réglages",
-  "history.allow_config_game_off": "Ne pas restaurer les réglages",
+  "history.restore_settings": "Restaurer les réglages",
   "history.allow_config_game_hint_off": "Les fichiers de réglages de ce jeu sont sauvegardés, mais pas réécrits lors d'une restauration. Vaut pour tous ses dossiers.",
   "history.allow_config_game_hint_on": "Les fichiers de réglages de ce jeu sont écrits à chaque restauration, y compris les automatiques. Vaut pour tous ses dossiers.",
   "history.allow_config_game_orphan": "Ce jeu n'est pas suivi sur cette machine : il n'existe que dans le cloud, il n'y a donc nulle part où enregistrer ce choix. Associez d'abord un dossier local.",

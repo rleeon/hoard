@@ -604,3 +604,61 @@ fn a_game_with_no_save_folder_says_so() {
         }
     });
 }
+
+/// `shortcuts.vdf` with one shortcut: Steam's binary KeyValues, the appid
+/// stored signed.
+fn shortcuts_vdf(app_id: u32, name: &str) -> Vec<u8> {
+    let mut out = b"\x00shortcuts\x00\x000\x00".to_vec();
+    out.extend_from_slice(b"\x02appid\x00");
+    out.extend_from_slice(&(app_id as i32).to_le_bytes());
+    out.extend_from_slice(b"\x01AppName\x00");
+    out.extend_from_slice(name.as_bytes());
+    out.extend_from_slice(b"\x00\x08\x08\x08");
+    out
+}
+
+/// A game Steam only knows as a non-Steam shortcut (Unifideck, or added by
+/// hand) runs in its own `compatdata/<shortcut appid>` prefix. The catalog
+/// finds its save there either way, but only the shortcut says the prefix is
+/// that game's, and with it the save is `High` like a Steam game's: enough for
+/// automatic mode to track it, or to join the copy another machine uploaded.
+#[test]
+fn a_non_steam_shortcut_vouches_for_the_save_in_its_prefix() {
+    with_isolated_linux_env(|home| {
+        let steamapps = build_steam_install(home, &[]);
+        let pfx = build_compatdata_prefix(&steamapps, 3_000_000_000);
+        let save_dir = pfx.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves");
+        std::fs::create_dir_all(save_dir.join("Farm_1")).unwrap();
+        std::fs::write(save_dir.join("Farm_1/Farm_1"), b"<SaveGame/>").unwrap();
+
+        let state = CliState::default();
+        let stardew = |report: &hoard_agent::detection::DetectionReport| {
+            report
+                .games
+                .iter()
+                .find(|g| g.slug == "stardew-valley")
+                .cloned()
+                .expect("stardew-valley should appear in the report")
+        };
+
+        let alone = stardew(&block_on_detect(Os::Linux, &state));
+        assert_ne!(alone.confidence, Confidence::High);
+
+        let config = steamapps.parent().unwrap().join("userdata/12345/config");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(
+            config.join("shortcuts.vdf"),
+            shortcuts_vdf(3_000_000_000, "Stardew Valley"),
+        )
+        .unwrap();
+
+        let vouched = stardew(&block_on_detect(Os::Linux, &state));
+        assert_eq!(vouched.confidence, Confidence::High);
+        assert_eq!(vouched.source, DetectionSource::Both);
+        assert!(
+            vouched.found_paths.iter().any(|p| p == &save_dir),
+            "found_paths should contain {save_dir:?}; got {:?}",
+            vouched.found_paths,
+        );
+    });
+}

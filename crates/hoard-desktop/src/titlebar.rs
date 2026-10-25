@@ -144,12 +144,8 @@ fn forced_system() -> Option<&'static str> {
     // Under gamescope (the Deck's game mode) there is no desktop to drag a window
     // around, and a close button on a bar of ours would be the only way out of a
     // session that isn't ours to end.
-    if cfg!(target_os = "linux")
-        && (std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some()
-            || std::env::var("XDG_CURRENT_DESKTOP")
-                .map(|d| d.to_ascii_lowercase().contains("gamescope"))
-                .unwrap_or(false))
-    {
+    #[cfg(target_os = "linux")]
+    if crate::graphics::gamescope() {
         return Some("gamescope");
     }
     None

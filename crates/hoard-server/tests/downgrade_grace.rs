@@ -382,6 +382,18 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     .await
     .expect("blobs");
 
+    // A catalogue entry no version points at any more (pruning leaves them
+    // behind) shares nothing: the third save once held the shared bytes.
+    sqlx::query(
+        "INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
+         VALUES ($1, 'old.dat', decode($2, 'hex'), 1000)",
+    )
+    .bind(&lonely)
+    .bind(&shared_sha)
+    .execute(&pool)
+    .await
+    .expect("orphan entry");
+
     let groups = hoard_server::cloud::archive::shared_groups(&pool, id)
         .await
         .expect("shared groups");
@@ -392,6 +404,21 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     let mut want = vec![twin_a.clone(), twin_b.clone()];
     want.sort();
     assert_eq!(ids, want);
+
+    // What archiving each one alone would free: nothing for a twin, its own
+    // blob for the third.
+    let footprints = hoard_server::cloud::archive::game_footprints(&pool, id)
+        .await
+        .expect("footprints");
+    let freeable = |save: &str| {
+        footprints
+            .iter()
+            .find(|g| g.save_id == save)
+            .map(|g| g.freeable_bytes)
+    };
+    assert_eq!(freeable(&twin_a), Some(0));
+    assert_eq!(freeable(&twin_b), Some(0));
+    assert_eq!(freeable(&lonely), Some(500));
 
     // Archiving one twin retires it from the group: its references are already
     // released, so it can no longer hold the other's bytes hostage.
@@ -406,6 +433,16 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     assert!(
         groups.is_empty(),
         "one live save left holding the blob is not a shared group: {groups:?}"
+    );
+    let archived = hoard_server::cloud::archive::archived_games(&pool, id)
+        .await
+        .expect("archived games");
+    assert_eq!(
+        archived
+            .iter()
+            .map(|g| g.save_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![twin_a.as_str()]
     );
 
     for save_id in [&twin_a, &twin_b, &lonely] {

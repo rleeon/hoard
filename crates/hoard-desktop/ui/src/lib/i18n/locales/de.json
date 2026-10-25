@@ -1,5 +1,7 @@
 {
   "common.cancel": "Abbrechen",
+  "common.yes": "Ja",
+  "common.no": "Nein",
   "common.save": "Speichern",
   "common.loading": "Lädt…",
   "common.back": "Zurück",
@@ -578,8 +580,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "Auch Einstellungsdateien wiederherstellen",
   "history.allow_config_hint": "Dateien wie graphics.ini oder settings.cfg enthalten Auflösung und Hardware DIESES Rechners. Sie werden immer gesichert, aber nur auf Wunsch zurückgeschrieben.",
-  "history.allow_config_game_on": "Einstellungen mitwiederherstellen",
-  "history.allow_config_game_off": "Einstellungen nicht wiederherstellen",
+  "history.restore_settings": "Einstellungen wiederherstellen",
   "history.allow_config_game_hint_off": "Die Einstellungsdateien dieses Spiels werden gesichert, beim Wiederherstellen aber nicht zurückgeschrieben. Gilt für alle seine Ordner.",
   "history.allow_config_game_hint_on": "Die Einstellungsdateien dieses Spiels werden bei jeder Wiederherstellung geschrieben, auch bei automatischen. Gilt für alle seine Ordner.",
   "history.allow_config_game_orphan": "Dieses Spiel wird auf diesem Rechner nicht verfolgt, es existiert nur in der Cloud, also gibt es keinen Ort für diese Entscheidung. Verknüpfe zuerst einen lokalen Ordner.",

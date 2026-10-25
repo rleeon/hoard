@@ -49,6 +49,7 @@ pub mod savefilter;
 pub mod scoring;
 pub mod serverclass;
 pub mod session;
+pub mod shortcuts;
 pub mod sse;
 pub mod state;
 pub mod steam;

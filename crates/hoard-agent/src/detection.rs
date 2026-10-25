@@ -51,6 +51,7 @@ use crate::pathexpand::{
 };
 use crate::roots;
 use crate::scoring;
+use crate::shortcuts;
 use crate::state::CliState;
 use crate::steam::{self, SteamApp};
 use crate::wine_prefixes::{self, PrefixKind};
@@ -667,12 +668,24 @@ where
     // One blocking task per (prefix, user) bounds the cost and keeps it off the
     // async runtime. The deep scan additionally discovers prefixes in arbitrary
     // locations (Heroic/CrossOver/Flatpak/mounted media).
+    //
+    // A non-Steam shortcut's prefix holds one game, and the shortcut names it:
+    // that game's save found in there has two signals, like a Steam game's, and
+    // is `High`. Without this a game installed through Unifideck stayed `Medium`
+    // on both machines, so neither tracked it nor took the other's save (a
+    // tester's Deck and Bazzite PC, Oct 2026).
+    let mut prefix_owners: HashMap<PathBuf, shortcuts::PrefixOwner> = HashMap::new();
     if os == Os::Linux {
         let all_prefixes = if deep {
             wine_prefixes::list_wine_prefixes_deep(os)
         } else {
             wine_prefixes::list_wine_prefixes(os)
         };
+        prefix_owners = shortcuts::prefix_owners(
+            &all_prefixes,
+            &shortcuts::list(&steam::detect_steam_libraries(os)),
+            &shortcuts::unifideck_games(),
+        );
         let mut cross_ref_roots: Vec<PathBuf> = Vec::new();
         for p in all_prefixes {
             let keep = match p.kind {
@@ -719,19 +732,42 @@ where
                         found.push((entry.slug.clone(), entry.display_name.clone(), hits));
                     }
                 }
-                found
+                (root, found)
             }));
         }
         let mut generic_hits = 0usize;
         for t in tasks {
             match t.await {
-                Ok(found) => {
+                Ok((root, found)) => {
+                    let owner = prefix_owners.get(&root);
                     for (slug, display_name, hits) in found {
                         generic_hits += 1;
+                        let owned = owner.is_some_and(|o| o.slug == slug);
+                        if owned {
+                            for hit in &hits {
+                                verdict::offered(
+                                    &slug,
+                                    hit,
+                                    "inside the prefix of its own non-Steam shortcut",
+                                );
+                            }
+                        }
                         // Grade the hit's contents so a verified save-like
                         // archive (Factorio's zipped saves) corroborates `High`
                         // instead of being stuck at the `Medium` floor.
-                        merge_fs_hit_graded(&mut by_slug, slug, display_name, hits, &corr_store);
+                        merge_fs_hit_graded(
+                            &mut by_slug,
+                            slug.clone(),
+                            display_name,
+                            hits,
+                            &corr_store,
+                        );
+                        if owned {
+                            if let Some(g) = by_slug.get_mut(&slug) {
+                                g.source = DetectionSource::Both;
+                                g.confidence = Confidence::High;
+                            }
+                        }
                     }
                 }
                 Err(e) => tracing::warn!(error = %e, "generic-prefix scan task panicked"),
@@ -1012,7 +1048,11 @@ where
             .values()
             .flat_map(|g| g.found_paths.iter().cloned())
             .collect();
-        let attributed = discover_unattributed_mode(os, &corr_store, &known, deep);
+        let attributed = claim_for_shortcuts(
+            discover_unattributed_mode(os, &corr_store, &known, deep),
+            &prefix_owners,
+            &by_slug,
+        );
         let mut new_games = 0usize;
         let mut merged = 0usize;
         for a in attributed {
@@ -2497,7 +2537,16 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     // this entry's Windows templates against every real Windows user inside
     // each prefix, exactly like the whole-catalog cross-reference does.
     if os == Os::Linux && !entry.paths.windows.is_empty() {
-        for prefix in wine_prefixes::list_wine_prefixes(os) {
+        let prefixes = wine_prefixes::list_wine_prefixes(os);
+        let owners = shortcuts::prefix_owners(
+            &prefixes,
+            &shortcuts::list(&steam::detect_steam_libraries(os)),
+            &shortcuts::unifideck_games(),
+        );
+        for prefix in prefixes {
+            let own = owners
+                .get(&prefix.prefix_root)
+                .is_some_and(|o| o.slug == entry.slug);
             let qualifies = match prefix.kind {
                 PrefixKind::Generic => true,
                 PrefixKind::Proton => prefix
@@ -2515,9 +2564,14 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
                 let mut step = TraceStep {
                     kind: "generic_prefix".into(),
                     template: Some(format!(
-                        "windows templates under {} as user {:?}",
+                        "windows templates under {} as user {:?}{}",
                         prefix.prefix_root.display(),
-                        user
+                        user,
+                        if own {
+                            " (its own non-Steam shortcut's prefix: a hit here is High)"
+                        } else {
+                            ""
+                        }
                     )),
                     expanded: Vec::new(),
                     kept: Vec::new(),
@@ -3553,6 +3607,48 @@ pub fn discover_unattributed_mode(
     let mut out = discover_in_roots(walk_roots, store, known_paths, deep);
     add_configured_emulator_saves(&mut out, store, known_paths);
     out
+}
+
+/// Phase-4 finds inside the prefix of one non-Steam game belong to that game,
+/// whatever process or folder name the attribution came up with: the shortcut
+/// names it the same on every machine, which is what lets two of them meet on
+/// one save. The only find in such a prefix is its save and goes `High`; with
+/// several, or when the catalog already found the game there, the user picks.
+fn claim_for_shortcuts(
+    mut found: Vec<AttributedSave>,
+    owners: &HashMap<PathBuf, shortcuts::PrefixOwner>,
+    by_slug: &HashMap<String, DetectedGame>,
+) -> Vec<AttributedSave> {
+    if owners.is_empty() {
+        return found;
+    }
+    let owner_of = |p: &Path| owners.iter().find(|(root, _)| p.starts_with(root));
+    let mut per_prefix: HashMap<&PathBuf, usize> = HashMap::new();
+    for a in &found {
+        if let Some((root, _)) = owner_of(&a.path) {
+            *per_prefix.entry(root).or_default() += 1;
+        }
+    }
+    for a in &mut found {
+        let Some((root, owner)) = owner_of(&a.path) else {
+            continue;
+        };
+        let catalog_found_it = by_slug
+            .get(&owner.slug)
+            .is_some_and(|g| g.found_paths.iter().any(|p| p.starts_with(root)));
+        a.slug = owner.slug.clone();
+        a.display_name = owner.display_name.clone();
+        a.steam_app_id = None;
+        if per_prefix.get(root) == Some(&1) && !catalog_found_it {
+            a.confidence = Confidence::High;
+            a.reason = format!(
+                "the only save folder in the prefix of the non-Steam game {}",
+                owner.display_name
+            );
+        }
+        verdict::offered(&a.slug, &a.path, &a.reason);
+    }
+    found
 }
 
 /// The save folders emulators name in their own configuration
@@ -7026,6 +7122,102 @@ mod tests {
         ));
         assert!(path_already_known(Path::new("/games/a"), &known));
         assert!(!path_already_known(Path::new("/games/b/Saves"), &known));
+    }
+
+    fn attributed(slug: &str, path: &str) -> AttributedSave {
+        AttributedSave {
+            slug: slug.into(),
+            display_name: slug.into(),
+            path: PathBuf::from(path),
+            confidence: Confidence::Medium,
+            reason: "static".into(),
+            steam_app_id: Some(1),
+        }
+    }
+
+    /// The process wrote `ZzqxStudio`'s folder, but the prefix is the shortcut's,
+    /// and the shortcut's name is the one both machines agree on.
+    #[test]
+    fn a_shortcut_prefix_names_what_phase_4_found_in_it() {
+        let owners = HashMap::from([(
+            PathBuf::from("/c/3000000000/pfx"),
+            shortcuts::PrefixOwner {
+                slug: "zzqx-tiny-indie".into(),
+                display_name: "Zzqx Tiny Indie".into(),
+            },
+        )]);
+        let lone = claim_for_shortcuts(
+            vec![
+                attributed(
+                    "zzqxstudio",
+                    "/c/3000000000/pfx/drive_c/users/steamuser/AppData/Roaming/ZzqxStudio",
+                ),
+                attributed("other", "/c/42/pfx/drive_c/users/steamuser/Documents/Other"),
+            ],
+            &owners,
+            &HashMap::new(),
+        );
+        assert_eq!(lone[0].slug, "zzqx-tiny-indie");
+        assert_eq!(lone[0].display_name, "Zzqx Tiny Indie");
+        assert_eq!(lone[0].confidence, Confidence::High);
+        assert_eq!(lone[0].steam_app_id, None);
+        assert_eq!(lone[1].slug, "other");
+        assert_eq!(lone[1].confidence, Confidence::Medium);
+
+        // Two candidates in one game's prefix: both are its, neither decides.
+        let pair = claim_for_shortcuts(
+            vec![
+                attributed("a", "/c/3000000000/pfx/drive_c/users/steamuser/Documents/A"),
+                attributed(
+                    "b",
+                    "/c/3000000000/pfx/drive_c/users/steamuser/AppData/Local/B",
+                ),
+            ],
+            &owners,
+            &HashMap::new(),
+        );
+        assert!(pair.iter().all(|a| a.slug == "zzqx-tiny-indie"));
+        assert!(pair.iter().all(|a| a.confidence == Confidence::Medium));
+    }
+
+    /// The catalog's folder already stands for the game in its prefix; a second
+    /// find there is an extra path for the user to look at, not a rival `High`.
+    #[test]
+    fn a_shortcut_prefix_find_does_not_outrank_the_catalog() {
+        let root = PathBuf::from("/c/3000000000/pfx");
+        let owners = HashMap::from([(
+            root.clone(),
+            shortcuts::PrefixOwner {
+                slug: "stardew-valley".into(),
+                display_name: "Stardew Valley".into(),
+            },
+        )]);
+        let game = DetectedGame {
+            slug: "stardew-valley".into(),
+            display_name: "Stardew Valley".into(),
+            found_paths: vec![
+                root.join("drive_c/users/steamuser/AppData/Roaming/StardewValley/Saves")
+            ],
+            path_confidences: Vec::new(),
+            path_reasons: Vec::new(),
+            confidence: Confidence::High,
+            source: DetectionSource::Both,
+            steam_app_id: None,
+            install_dir: None,
+            needs_folder: false,
+            steam_cloud: false,
+        };
+        let by_slug = HashMap::from([("stardew-valley".to_string(), game)]);
+        let out = claim_for_shortcuts(
+            vec![attributed(
+                "x",
+                "/c/3000000000/pfx/drive_c/users/steamuser/Documents/X",
+            )],
+            &owners,
+            &by_slug,
+        );
+        assert_eq!(out[0].slug, "stardew-valley");
+        assert_eq!(out[0].confidence, Confidence::Medium);
     }
 
     /// Phase 4 end to end: a folder with an opaque name (a GUID) under a save root

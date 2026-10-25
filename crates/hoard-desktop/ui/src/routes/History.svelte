@@ -38,7 +38,6 @@
     FolderOpen,
     Snowflake,
     RotateCw,
-    SlidersHorizontal,
   } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
   import { fmtDate, fmtDateTime } from "../lib/utils/format";
@@ -856,26 +855,29 @@
         <!-- A cloud-only row (`orphan`) has no `state.json` entry on this
              machine, so there is nowhere to store the decision: the backend
              answered a raw "That save isn't tracked on this machine". Disable
-             the button and say why, rather than letting them press something
-             that cannot work. -->
-        <Button
-          variant="muted"
-          disabled={save.orphan || !save.local_path}
-          onclick={() => changeAllowConfig(!(save?.allow_device_local ?? false))}
-          loading={savingAllowConfig}
+             the choice and say why, rather than offering something that
+             cannot work. -->
+        <div
+          class="flex items-center gap-2 text-xs text-zinc-400"
           title={save.orphan || !save.local_path
             ? $_("history.allow_config_game_orphan")
             : save.allow_device_local
               ? $_("history.allow_config_game_hint_on")
               : $_("history.allow_config_game_hint_off")}
         >
-          <SlidersHorizontal size={14} data-anim="pop" />
-          {#if save.allow_device_local}
-            {$_("history.allow_config_game_off")}
-          {:else}
-            {$_("history.allow_config_game_on")}
-          {/if}
-        </Button>
+          <span class="text-zinc-500">{$_("history.restore_settings")}</span>
+          <Select
+            size="sm"
+            aria-label={$_("history.restore_settings")}
+            disabled={savingAllowConfig || save.orphan || !save.local_path}
+            value={save.allow_device_local ? "yes" : "no"}
+            onchange={(v) => changeAllowConfig(v === "yes")}
+            options={[
+              { value: "yes", label: $_("common.yes") },
+              { value: "no", label: $_("common.no") },
+            ]}
+          />
+        </div>
         {#if presets.length > 0}
           <div class="flex items-center gap-2 text-xs text-zinc-400">
             <span class="text-zinc-500">{$_("presets.label")}</span>

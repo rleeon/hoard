@@ -72,6 +72,15 @@ const TRANSFER_STALE: Duration = Duration::from_secs(30 * 60);
 /// stuck engine would hang the client that asked (and the UI behind it).
 const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// The longest wait for the server's list of archived saves. Every `Reload`
+/// asks for it before answering, and the client gives up at 15 s and tries once
+/// more: with the server taking over 30 s on an account with long histories,
+/// changing a setting in History hung the window for a minute (Oct 2026).
+const ARCHIVED_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// The server's last answer, for when it is too slow to give another.
+static LAST_ARCHIVED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
 /// Aborts a group of tasks when dropped. Without this, restarting the Cloud push
 /// would leave the old tasks running, and two pollers is exactly the failure D.12
 /// documents.
@@ -712,19 +721,35 @@ async fn archived_save_ids(client: &ApiClient) -> HashSet<String> {
     if !client.is_cloud().await {
         return HashSet::new();
     }
-    match client.cloud_archived_save_ids().await {
-        Ok(ids) => {
+    let last = || {
+        LAST_ARCHIVED
+            .lock()
+            .map(|l| l.clone().unwrap_or_default())
+            .unwrap_or_default()
+    };
+    match tokio::time::timeout(ARCHIVED_TIMEOUT, client.cloud_archived_save_ids()).await {
+        Ok(Ok(ids)) => {
             if !ids.is_empty() {
                 tracing::info!(count = ids.len(), "hoardd: saves archived on the server");
             }
+            if let Ok(mut l) = LAST_ARCHIVED.lock() {
+                *l = Some(ids.clone());
+            }
             ids
         }
-        Err(err) => {
+        Ok(Err(err)) => {
             tracing::warn!(
                 error = %format!("{err:#}"),
-                "hoardd: couldn't ask which saves are archived; watching them all"
+                "hoardd: couldn't ask which saves are archived; going by the last answer"
             );
-            HashSet::new()
+            last()
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout = ?ARCHIVED_TIMEOUT,
+                "hoardd: the server is slow to say which saves are archived; going by the last answer"
+            );
+            last()
         }
     }
 }

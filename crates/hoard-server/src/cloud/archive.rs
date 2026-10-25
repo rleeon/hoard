@@ -32,12 +32,12 @@ use crate::cloud::errors::CloudError;
 use crate::cloud::quota;
 use crate::cloud::state::CloudState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{IntoResponse, Json, Response},
     Extension,
 };
 use futures::StreamExt;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::time::Duration;
 use uuid::Uuid;
@@ -324,16 +324,37 @@ pub struct SharedGroup {
 /// without standing up a `CloudState`. The array decode (`text[]` to `Vec<String>`,
 /// which hinges on `saves.id` being TEXT rather than UUID) is the kind of thing
 /// that compiles happily and 500s in production.
+///
+/// The catalogue entries count only while some version still points at them
+/// (`used`): pruning versions leaves entries behind, and a path nothing restores
+/// any more holds nothing hostage. Read through the user's own saves for the
+/// reason given at [`game_footprints`].
 pub async fn shared_groups(pool: &PgPool, user_id: Uuid) -> Result<Vec<SharedGroup>, CloudError> {
     let rows: Vec<(Vec<String>, i64)> = sqlx::query_as(
         r#"
-        WITH per_blob AS (
-            SELECT f.sha256, array_agg(DISTINCT f.save_id ORDER BY f.save_id) AS save_ids
-            FROM manifest_files f
-            JOIN saves s ON s.id = f.save_id
+        WITH v AS MATERIALIZED (
+            SELECT v.id
+            FROM save_versions v
+            JOIN saves s ON s.id = v.save_id
             WHERE s.user_id = $1 AND s.archived_at IS NULL
-            GROUP BY f.sha256
-            HAVING COUNT(DISTINCT f.save_id) > 1
+        ),
+        e AS MATERIALIZED (
+            SELECT e.id, e.save_id, e.sha256
+            FROM file_entries e
+            JOIN saves s ON s.id = e.save_id
+            WHERE s.user_id = $1 AND s.archived_at IS NULL
+        ),
+        used AS MATERIALIZED (
+            SELECT DISTINCT vf.entry_id
+            FROM v
+            JOIN version_files vf ON vf.version_id = v.id
+        ),
+        per_blob AS (
+            SELECT e.sha256, array_agg(DISTINCT e.save_id ORDER BY e.save_id) AS save_ids
+            FROM e
+            JOIN used u ON u.entry_id = e.id
+            GROUP BY e.sha256
+            HAVING COUNT(DISTINCT e.save_id) > 1
         )
         SELECT pb.save_ids, COALESCE(SUM(b.size_bytes), 0)::bigint AS bytes
         FROM per_blob pb
@@ -371,29 +392,48 @@ pub struct StorageGamesOut {
     pub shared_groups: Vec<SharedGroup>,
 }
 
-/// `GET /v1/cloud/storage/games`: per-game freeable footprint plus the quota
-/// figures, so the desktop can render the "archive the heaviest to fit" dialog
-/// and know how much to free.
-pub async fn storage_games(
-    State(state): State<CloudState>,
-    Extension(user): Extension<CloudUser>,
-) -> Result<Response, CloudError> {
-    let (_, info) = match quota::load(&state.pool, user.user_id).await? {
-        Some(x) => x,
-        None => return Err(CloudError::NotFound("no profile")),
-    };
-
-    // Per save: bytes freed if archived (exclusive blobs, refcount <= refs
-    // contributed here). Cast the SUM to bigint (NUMERIC → i64 would fail to
-    // decode). Archived saves report 0 freeable (already out of quota).
+/// Per save, the bytes archiving it would free: blobs whose every reference
+/// comes from this save (refcount <= refs contributed here). Archived saves
+/// report 0, they are already out of the quota.
+///
+/// Each side of the manifest is read through the user's own saves, never
+/// through the `manifest_files` view. Over the view the planner hashed the whole
+/// of `file_entries` (801,126 rows, every account) to keep one account's 46,054,
+/// and spilled to disk: 16.4 s for this query and as much again for
+/// [`shared_groups`], past the 30 s the client waits. Every `Reload` of the
+/// service asked for it, so changing a setting in History hung the window for a
+/// minute (an account with 30 saves, Oct 2026). `MATERIALIZED` holds the order:
+/// left to itself the planner swapped to a sequential scan of `version_files`
+/// (4.7 M rows, 31 s). Now 2-4 s on the same account, warm or cold.
+pub async fn game_footprints(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<GameFootprint>, CloudError> {
+    // The SUM cast to bigint: NUMERIC does not decode into an i64.
     let rows: Vec<(String, String, String, i64, Option<time::OffsetDateTime>)> = sqlx::query_as(
         r#"
-        WITH refs AS (
-            SELECT f.save_id, f.sha256, COUNT(DISTINCT f.version_num) AS refs_here
-            FROM manifest_files f
-            JOIN saves s ON s.id = f.save_id
+        WITH v AS MATERIALIZED (
+            SELECT v.id
+            FROM save_versions v
+            JOIN saves s ON s.id = v.save_id
             WHERE s.user_id = $1
-            GROUP BY f.save_id, f.sha256
+        ),
+        e AS MATERIALIZED (
+            SELECT e.id, e.save_id, e.sha256
+            FROM file_entries e
+            JOIN saves s ON s.id = e.save_id
+            WHERE s.user_id = $1
+        ),
+        vf AS MATERIALIZED (
+            SELECT vf.version_id, vf.entry_id
+            FROM v
+            JOIN version_files vf ON vf.version_id = v.id
+        ),
+        refs AS (
+            SELECT e.save_id, e.sha256, COUNT(DISTINCT vf.version_id) AS refs_here
+            FROM vf
+            JOIN e ON e.id = vf.entry_id
+            GROUP BY e.save_id, e.sha256
         ),
         freeable AS (
             SELECT r.save_id,
@@ -411,11 +451,11 @@ pub async fn storage_games(
         ORDER BY COALESCE(fr.bytes, 0) DESC
         "#,
     )
-    .bind(user.user_id)
-    .fetch_all(&state.pool)
+    .bind(user_id)
+    .fetch_all(pool)
     .await?;
 
-    let games = rows
+    Ok(rows
         .into_iter()
         .map(
             |(save_id, game_slug, label, freeable, archived_at)| GameFootprint {
@@ -428,9 +468,69 @@ pub async fn storage_games(
                     .map(|a| fmt_ts(a + time::Duration::days(ARCHIVE_GRACE_DAYS))),
             },
         )
-        .collect();
+        .collect())
+}
 
-    let shared_groups = shared_groups(&state.pool, user.user_id).await?;
+/// Just the archived games, with no footprint worked out. The service asks
+/// which saves not to watch on every reload, and the rest of the answer is the
+/// expensive part.
+pub async fn archived_games(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<GameFootprint>, CloudError> {
+    let rows: Vec<(String, String, String, time::OffsetDateTime)> = sqlx::query_as(
+        "SELECT id, game_slug, label, archived_at
+           FROM saves
+          WHERE user_id = $1 AND archived_at IS NOT NULL",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(save_id, game_slug, label, archived_at)| GameFootprint {
+            save_id,
+            game_slug,
+            label,
+            freeable_bytes: 0,
+            archived: true,
+            purge_after: Some(fmt_ts(
+                archived_at + time::Duration::days(ARCHIVE_GRACE_DAYS),
+            )),
+        })
+        .collect())
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct StorageGamesQuery {
+    /// Older servers ignore it and answer in full, which still carries the
+    /// `archived` flags a client asking this way reads.
+    #[serde(default)]
+    pub archived_only: bool,
+}
+
+/// `GET /v1/cloud/storage/games`: per-game freeable footprint plus the quota
+/// figures, so the desktop can render the "archive the heaviest to fit" dialog
+/// and know how much to free. `?archived_only=true` lists the archived games
+/// and nothing else.
+pub async fn storage_games(
+    State(state): State<CloudState>,
+    Extension(user): Extension<CloudUser>,
+    Query(query): Query<StorageGamesQuery>,
+) -> Result<Response, CloudError> {
+    let (_, info) = match quota::load(&state.pool, user.user_id).await? {
+        Some(x) => x,
+        None => return Err(CloudError::NotFound("no profile")),
+    };
+
+    let (games, shared_groups) = if query.archived_only {
+        (archived_games(&state.pool, user.user_id).await?, Vec::new())
+    } else {
+        (
+            game_footprints(&state.pool, user.user_id).await?,
+            shared_groups(&state.pool, user.user_id).await?,
+        )
+    };
 
     let over = info.used_bytes.saturating_sub(info.limit_bytes);
     Ok(Json(StorageGamesOut {

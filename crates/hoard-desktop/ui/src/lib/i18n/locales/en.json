@@ -1,5 +1,7 @@
 {
   "common.cancel": "Cancel",
+  "common.yes": "Yes",
+  "common.no": "No",
   "common.save": "Save",
   "common.loading": "Loading…",
   "common.back": "Back",
@@ -598,8 +600,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "Also restore settings files",
   "history.allow_config_hint": "Files like graphics.ini or settings.cfg hold this machine's resolution and hardware. They are always backed up, but they aren't written back unless you ask.",
-  "history.allow_config_game_on": "Also restore settings",
-  "history.allow_config_game_off": "Don't restore settings",
+  "history.restore_settings": "Restore settings",
   "history.allow_config_game_hint_off": "This game's settings files are backed up, but not written back when restoring. Applies to all of its folders.",
   "history.allow_config_game_hint_on": "This game's settings files are written on every restore, automatic ones included. Applies to all of its folders.",
   "history.allow_config_game_orphan": "This game isn't tracked on this machine, it only exists in the cloud, so there's nowhere to store the choice. Link a local folder first.",

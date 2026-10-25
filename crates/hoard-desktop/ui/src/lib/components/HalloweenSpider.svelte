@@ -464,14 +464,23 @@
       </g>
     </svg>
 
+    <!-- One more stop for the arrow keys (`data-nav-stop`, see `spatialNav.ts`):
+         landing on it greets like the pointer does, and pressing it does
+         nothing. Out of the Tab order, like the rest of the decoration. -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       bind:this={mover}
-      class="absolute bottom-0 left-0 cursor-default"
+      class="absolute bottom-0 left-0 cursor-default rounded-md"
       style:width="{SIZE.w}px"
       style:height="{SIZE.h}px"
+      tabindex="-1"
+      data-nav-stop
       onpointerenter={hello}
       onpointerleave={() => (happy = false)}
+      onfocus={(e) => {
+        if (e.currentTarget.matches(":focus-visible")) hello();
+      }}
+      onblur={() => (happy = false)}
     >
       <div bind:this={leaner} class="origin-bottom">
         <svg bind:this={art} viewBox="0 -1 32 29" width={SIZE.w} height={SIZE.h} class="spider">

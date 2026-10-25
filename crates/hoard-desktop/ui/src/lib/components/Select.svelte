@@ -175,6 +175,9 @@
     switch (e.key) {
       case "ArrowDown":
       case "ArrowUp": {
+        // Closed, the arrow moves on to the next control (`spatialNav`), which
+        // is how a controller gets past a dropdown; Enter or Alt+Down opens it.
+        if (!open && !(e.altKey && e.key === "ArrowDown")) return;
         e.preventDefault();
         if (!open) void show();
         else if (e.key === "ArrowDown") move(step(active + 1, 1));
@@ -278,7 +281,7 @@
   aria-controls={open ? `${uid}-list` : undefined}
   aria-activedescendant={open && active >= 0 ? `${uid}-${active}` : undefined}
   aria-label={ariaLabel}
-  class="inline-flex items-center justify-between gap-2.5 rounded-md border bg-layer-2 text-left outline-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 {TRIGGER[
+  class="inline-flex items-center justify-between gap-2.5 rounded-md border bg-layer-2 text-left transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 {TRIGGER[
     size
   ]} {open
     ? 'border-white/[0.26] text-zinc-50'

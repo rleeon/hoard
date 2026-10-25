@@ -42,6 +42,7 @@ pub struct Render {
 pub enum Choice {
     User,
     Native,
+    Gamescope,
     Fallback(u8, Render),
 }
 
@@ -74,15 +75,35 @@ fn is_protocol_error(message: &str) -> bool {
     message.starts_with("Error 71 ") && message.contains("Wayland display")
 }
 
+/// Inside gamescope, the Deck's game mode, where everything is shown through
+/// its XWayland. Up to 1.2.1 the AppImage forced X11 and the app opened there;
+/// 1.2.2 went native, and a tester's Deck stopped opening it in game mode
+/// (Oct 2026). No ladder there: a failed start in game mode is a launch that
+/// shows nothing at all, with no desktop to read why.
+pub fn gamescope() -> bool {
+    is_gamescope(
+        std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY").is_some(),
+        std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
+    )
+}
+
+fn is_gamescope(socket: bool, desktop: Option<&str>) -> bool {
+    socket || desktop.is_some_and(|d| d.to_ascii_lowercase().contains("gamescope"))
+}
+
 /// Sets environment variables, so it must run before any thread exists.
 pub fn prepare() -> Choice {
     if USER_VARS.iter().any(|v| std::env::var_os(v).is_some()) {
         return Choice::User;
     }
+    let xwayland = std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty());
+    if xwayland && gamescope() {
+        std::env::set_var("GDK_BACKEND", "x11");
+        return Choice::Gamescope;
+    }
     let Ok(path) = hoard_agent::config::CliConfig::state_dir().map(|d| d.join(FILE)) else {
         return Choice::Native;
     };
-    let xwayland = std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty());
     let level = read_level(&path);
     watch(path, level, xwayland);
     if level == 0 {
@@ -105,6 +126,7 @@ pub fn log(choice: &Choice) {
     match choice {
         Choice::User => tracing::info!("graphics: left to the user's environment"),
         Choice::Native => {}
+        Choice::Gamescope => tracing::info!("graphics: game mode, X11 through gamescope's XWayland"),
         Choice::Fallback(level, r) => tracing::warn!(
             level,
             x11 = r.x11,
@@ -168,6 +190,15 @@ mod tests {
         // Level 2 would be level 1 again here.
         assert_eq!(next(1, false), 3);
         assert!(render(3, false).no_compositing);
+    }
+
+    #[test]
+    fn game_mode_is_told_by_its_socket_or_its_desktop() {
+        assert!(is_gamescope(true, None));
+        assert!(is_gamescope(false, Some("gamescope")));
+        assert!(is_gamescope(false, Some("Gamescope:KDE")));
+        assert!(!is_gamescope(false, Some("KDE")));
+        assert!(!is_gamescope(false, None));
     }
 
     #[test]

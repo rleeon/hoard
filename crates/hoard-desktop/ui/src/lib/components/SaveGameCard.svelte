@@ -311,6 +311,8 @@
 </script>
 
 <div
+  data-card
+  data-nav-frame
   class="panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--edge-strong)] hover:shadow-[var(--edge-top),var(--shadow-raised)]"
 >
   <!-- Esquina de arrastre, la misma de la biblioteca: a lo ancho manda el
@@ -338,7 +340,7 @@
        poster exactly; the ones that only ship the landscape header get
        letterboxed by `fit="smart"` rather than center-cropped to a third of
        themselves. Own art beats both: hover the cover → pencil in the corner. -->
-  <div class="relative w-full overflow-hidden" style={coverAspectStyle(aspect)}>
+  <div data-cover class="relative w-full overflow-hidden" style={coverAspectStyle(aspect)}>
     <Cover
       slug={save.game_slug}
       name={displayName}

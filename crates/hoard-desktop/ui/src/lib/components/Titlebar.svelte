@@ -142,6 +142,7 @@
      to close the window. -->
 <div
   data-tauri-drag-region
+  data-nav-region
   class="fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b {look.bar} pl-3 pr-1"
 >
   <span

@@ -1071,7 +1071,10 @@ impl ApiClient {
     /// The save ids parked in the server-side archive ("caja negra").
     ///
     /// Reads the same `/v1/cloud/storage/games` the desktop's storage screen
-    /// uses, and keeps only the one field the engine needs. A frozen save
+    /// uses, and keeps only the one field the engine needs. It asks for the
+    /// archived games alone (`archived_only`): the footprints are the slow part
+    /// and the service asks on every reload. A server from before that answers in
+    /// full, and the filter below still holds. A frozen save
     /// refuses every upload with a 403 by design, so the watch set has to know
     /// which ones they are *before* deciding to back one up; otherwise the
     /// folder is re-hashed on every reconcile to be turned away at `cas_init`.
@@ -1093,7 +1096,7 @@ impl ApiClient {
         }
         let resp = self
             .http
-            .get(self.url("/v1/cloud/storage/games"))
+            .get(self.url("/v1/cloud/storage/games?archived_only=true"))
             .header("authorization", self.auth_header())
             .send()
             .await?;

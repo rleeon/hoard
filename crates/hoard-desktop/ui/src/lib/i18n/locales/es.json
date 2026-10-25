@@ -1,5 +1,7 @@
 {
   "common.cancel": "Cancelar",
+  "common.yes": "Sí",
+  "common.no": "No",
   "common.save": "Guardar",
   "common.loading": "Cargando…",
   "common.back": "Atrás",
@@ -598,8 +600,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "Restaurar también los ficheros de ajustes",
   "history.allow_config_hint": "Ficheros como graphics.ini o settings.cfg llevan la resolución y el hardware de ESTE equipo. Siempre se copian, pero no se escriben al restaurar salvo que lo pidas.",
-  "history.allow_config_game_on": "Restaurar también los ajustes",
-  "history.allow_config_game_off": "No restaurar los ajustes",
+  "history.restore_settings": "Restaurar ajustes",
   "history.allow_config_game_hint_off": "Los ficheros de ajustes de este juego se copian, pero no se escriben al restaurar. Vale para todas sus carpetas.",
   "history.allow_config_game_hint_on": "Los ficheros de ajustes de este juego se escriben en cada restauración, también en las automáticas. Vale para todas sus carpetas.",
   "history.allow_config_game_orphan": "Este juego no está rastreado en este equipo: sólo existe en la nube, así que no hay dónde guardar la decisión. Vincula antes una carpeta local.",

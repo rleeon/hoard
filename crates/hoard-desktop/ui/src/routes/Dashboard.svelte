@@ -55,7 +55,11 @@
     hydrateGameNames,
     setGameName,
   } from "../lib/stores/gameNames";
-  import { cardWidth } from "../lib/stores/cardSizes.svelte";
+  import {
+    cardWidth,
+    fitCardWidth,
+    fitDashboardWidth,
+  } from "../lib/stores/cardSizes.svelte";
   import {
     coverAspect,
     hydrateCoverAspect,
@@ -78,6 +82,37 @@
   // SERVER-side one (`total_size_bytes`), the panel never shows local sizes,
   // that's the Library's job.
   let sortBy = $state<"recent" | "size">("recent");
+
+  // Card size for this screen, until the corner is dragged. Refitted when the
+  // grid's width or the visible height changes, not on every resize the grid
+  // reports: its own height moves with the size it is given, and the details'
+  // height with the width, which would chase each other.
+  let grid = $state<HTMLDivElement | null>(null);
+  $effect(() => {
+    const el = grid;
+    if (!el) return;
+    const aspect = coverAspect();
+    const scroller = el.closest("main") ?? document.documentElement;
+    let last = "";
+    const refit = () => {
+      const key = `${el.clientWidth}x${scroller.clientHeight}`;
+      if (key === last) return;
+      last = key;
+      const card = el.querySelector<HTMLElement>("[data-card]");
+      const cover = card?.querySelector<HTMLElement>("[data-cover]");
+      const info = card && cover ? card.offsetHeight - cover.offsetHeight : 150;
+      const gap = parseFloat(getComputedStyle(el).columnGap) || 20;
+      fitCardWidth(
+        "dashboard",
+        fitDashboardWidth(el.clientWidth, scroller.clientHeight, aspect, info, gap),
+      );
+    };
+    refit();
+    const observer = new ResizeObserver(refit);
+    observer.observe(el);
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  });
 
   const sortedSaves = $derived.by(() => {
     const arr = [...saves];
@@ -875,6 +910,7 @@
     <!-- Columnas por ancho mínimo, no por breakpoint: ese ancho es justo lo
          que mueve la esquina de arrastre de las tarjetas. -->
     <div
+      bind:this={grid}
       class="grid gap-5"
       style="grid-template-columns: repeat(auto-fill, minmax(min({cardWidth(
         'dashboard',

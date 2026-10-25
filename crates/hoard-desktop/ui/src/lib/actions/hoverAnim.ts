@@ -26,22 +26,33 @@ function play(icon: Element): void {
   icon.addEventListener("animationcancel", done);
 }
 
+/** Walk up from `target`. Every element on the way that did not already contain
+ *  `from` is one just entered; the first that did means everything above was
+ *  entered earlier. */
+function enter(target: Element | null, from: Node | null): void {
+  for (let el = target; el; el = el.parentElement) {
+    if (from && el.contains(from)) break;
+    const icons = el.classList.contains("anim-host")
+      ? el.querySelectorAll("[data-anim]")
+      : el.querySelectorAll(":scope > [data-anim]");
+    icons.forEach(play);
+  }
+}
+
 export function installHoverAnim(): void {
   document.addEventListener(
     "pointerover",
-    (e) => {
-      const from = e.relatedTarget as Node | null;
-      // Walk up from where the pointer is. Every element on the way that did
-      // not already contain it is one it just entered; the first that did
-      // means everything above was entered earlier.
-      for (let el = e.target as Element | null; el; el = el.parentElement) {
-        if (from && el.contains(from)) break;
-        const icons = el.classList.contains("anim-host")
-          ? el.querySelectorAll("[data-anim]")
-          : el.querySelectorAll(":scope > [data-anim]");
-        icons.forEach(play);
-      }
-    },
+    (e) => enter(e.target as Element | null, e.relatedTarget as Node | null),
     { passive: true },
   );
+  // The keyboard passing over a control (arrows, Tab) plays what the pointer
+  // would have. A click also focuses, and must not play it a second time:
+  // `:focus-visible` is false then. The control's own icons count however deep
+  // they sit, since the pointer would have crossed every wrapper on its way in.
+  document.addEventListener("focusin", (e) => {
+    const el = e.target;
+    if (!(el instanceof Element) || !el.matches(":focus-visible")) return;
+    el.querySelectorAll("[data-anim]").forEach(play);
+    enter(el, e.relatedTarget as Node | null);
+  });
 }

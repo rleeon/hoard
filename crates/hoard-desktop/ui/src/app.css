@@ -710,6 +710,13 @@ h2 {
   border-radius: inherit;
 }
 
+/* The same ring for a control drawn by its neighbours, a switch's hidden
+   checkbox: `actions/spatialNav.ts` puts it on what the eye sees. */
+[data-nav-focus] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /* ---- Native control legibility (webkit2gtk) ------------------------- */
 /* webkit2gtk renders <select> + its option list through GTK and ignores
    our CSS vars, so pin explicit hex to keep them readable on every

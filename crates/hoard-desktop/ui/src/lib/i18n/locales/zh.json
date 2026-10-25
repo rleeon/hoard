@@ -1,5 +1,7 @@
 {
   "common.cancel": "取消",
+  "common.yes": "是",
+  "common.no": "否",
   "common.save": "保存",
   "common.loading": "加载中…",
   "common.back": "返回",
@@ -578,8 +580,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "同时恢复设置文件",
   "history.allow_config_hint": "graphics.ini、settings.cfg 之类的文件保存的是本机的分辨率和硬件配置。它们始终会被备份，但除非你要求，否则不会写回。",
-  "history.allow_config_game_on": "同时恢复设置",
-  "history.allow_config_game_off": "不恢复设置",
+  "history.restore_settings": "恢复设置",
   "history.allow_config_game_hint_off": "此游戏的设置文件会备份，但恢复时不会写回。对该游戏的所有文件夹生效。",
   "history.allow_config_game_hint_on": "此游戏的设置文件会在每次恢复时写入，包括自动恢复。对该游戏的所有文件夹生效。",
   "history.allow_config_game_orphan": "此游戏未在本机跟踪，，它只存在于云端，因此没有地方保存该选择。请先关联一个本地文件夹。",

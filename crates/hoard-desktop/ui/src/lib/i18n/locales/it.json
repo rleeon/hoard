@@ -1,5 +1,7 @@
 {
   "common.cancel": "Annulla",
+  "common.yes": "Sì",
+  "common.no": "No",
   "common.save": "Salva",
   "common.loading": "Caricamento…",
   "common.back": "Indietro",
@@ -578,8 +580,7 @@
   "history.snapshot_label": "save_v{version} · {date}",
   "history.allow_config_label": "Ripristina anche i file di impostazioni",
   "history.allow_config_hint": "File come graphics.ini o settings.cfg contengono la risoluzione e l'hardware di QUESTA macchina. Vengono sempre salvati, ma non riscritti se non lo chiedi.",
-  "history.allow_config_game_on": "Ripristina anche le impostazioni",
-  "history.allow_config_game_off": "Non ripristinare le impostazioni",
+  "history.restore_settings": "Ripristina impostazioni",
   "history.allow_config_game_hint_off": "I file di impostazioni di questo gioco vengono salvati, ma non riscritti durante il ripristino. Vale per tutte le sue cartelle.",
   "history.allow_config_game_hint_on": "I file di impostazioni di questo gioco vengono scritti a ogni ripristino, anche automatico. Vale per tutte le sue cartelle.",
   "history.allow_config_game_orphan": "Questo gioco non è tracciato su questa macchina: esiste solo nel cloud, quindi non c'è dove salvare la scelta. Collega prima una cartella locale.",

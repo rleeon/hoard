@@ -5,6 +5,7 @@ import { initAccent } from "./lib/stores/theme";
 import { initUiScale, initUiScaleShortcuts } from "./lib/stores/uiScale";
 import { tagOs } from "./lib/os";
 import { installHoverAnim } from "./lib/actions/hoverAnim";
+import { installSpatialNav } from "./lib/actions/spatialNav";
 import { mount } from "svelte";
 import "./app.css";
 import App from "./App.svelte";
@@ -20,6 +21,7 @@ if (!isOverlayWindow()) {
   // here rather than in the awaited scale below, where the shortcuts would sit
   // dead until the locale dictionary finished loading.
   initUiScaleShortcuts();
+  installSpatialNav();
 }
 
 // Wait for svelte-i18n to finish loading the active locale's dictionary
