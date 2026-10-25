@@ -67,6 +67,23 @@ pub struct Prefs {
     #[serde(default)]
     pub notify_on_failure: bool,
 
+    /// When `true`, notify after a newer cloud version lands on this machine.
+    /// Off by default for the same reason as [`Self::notify_on_success`]: with
+    /// two machines every play session ends in a download.
+    #[serde(default)]
+    pub notify_on_restore_success: bool,
+
+    /// When `true`, notify when downloads from the cloud keep failing on the
+    /// same version (`SaveAutoRestoreStuck`). Not on every failure: the sweep
+    /// retries on its own and most failures clear by the next attempt.
+    ///
+    /// A file written before this field existed inherits
+    /// [`Self::notify_on_failure`], which governed this notice until then (see
+    /// [`Prefs::load`]). Whoever had silenced failures must not start hearing
+    /// about restores after an update.
+    #[serde(default = "default_true")]
+    pub notify_on_restore_failure: bool,
+
     /// When `true`, the launcher integration opens **the window** at login. We
     /// don't read this directly (the autostart plugin owns the truth) but we
     /// mirror it so the Settings page can render without an extra IPC
@@ -277,6 +294,8 @@ impl Default for Prefs {
             system_titlebar: false,
             notify_on_success: false,
             notify_on_failure: true,
+            notify_on_restore_success: false,
+            notify_on_restore_failure: true,
             // Default on: Hoard registers itself at login and boots silently
             // (only the tray icon). The desktop applies the real OS autostart
             // entry on first run and only hides the window when launched via
@@ -378,12 +397,26 @@ impl Prefs {
         }
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        match serde_json::from_str(&text) {
-            Ok(p) => Ok(p),
+        match serde_json::from_str::<Self>(&text) {
+            Ok(mut p) => {
+                p.inherit_restore_failure(&text);
+                Ok(p)
+            }
             Err(e) => {
                 tracing::warn!(error = %e, path = %path.display(), "prefs.json was corrupt; resetting to defaults");
                 Ok(Self::default())
             }
+        }
+    }
+
+    /// A serde default cannot look at another field, so the inheritance from
+    /// `notify_on_failure` happens here, and only when the key is absent.
+    fn inherit_restore_failure(&mut self, text: &str) {
+        let has_key = serde_json::from_str::<serde_json::Value>(text)
+            .ok()
+            .is_some_and(|v| v.get("notify_on_restore_failure").is_some());
+        if !has_key {
+            self.notify_on_restore_failure = self.notify_on_failure;
         }
     }
 
@@ -459,6 +492,8 @@ mod tests {
         // error doesn't slip by unnoticed.
         assert!(!p.notify_on_success);
         assert!(p.notify_on_failure);
+        assert!(!p.notify_on_restore_success);
+        assert!(p.notify_on_restore_failure);
         // Default on since the "arranque silencioso" change: autostart at login
         // + start hidden (only the tray). The desktop gates the actual hide on
         // the autostart `--silent` flag so a manual launch still shows.
@@ -494,6 +529,27 @@ mod tests {
         let parsed: Prefs = serde_json::from_str(legacy).expect("legacy prefs parse");
         assert!(parsed.autostart, "a missing key must mean the default");
         assert_eq!(parsed.autostart, Prefs::default().autostart);
+    }
+
+    /// The stuck-restore notice used to ride on `notify_on_failure`. A file from
+    /// before the split keeps that answer; one written after it says its own.
+    #[test]
+    fn restore_failure_notices_inherit_the_old_failure_switch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prefs.json");
+
+        std::fs::write(&path, r#"{ "notify_on_failure": false }"#).unwrap();
+        assert!(!Prefs::load(&path).unwrap().notify_on_restore_failure);
+
+        std::fs::write(&path, r#"{ "notify_on_failure": true }"#).unwrap();
+        assert!(Prefs::load(&path).unwrap().notify_on_restore_failure);
+
+        std::fs::write(
+            &path,
+            r#"{ "notify_on_failure": false, "notify_on_restore_failure": true }"#,
+        )
+        .unwrap();
+        assert!(Prefs::load(&path).unwrap().notify_on_restore_failure);
     }
 
     #[test]

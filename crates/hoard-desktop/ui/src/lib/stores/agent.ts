@@ -374,6 +374,14 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
           }),
         );
       }
+      if (get(prefs)?.notify_on_restore_success) {
+        notify(
+          get(i18n)("library.restored_notify_title"),
+          `${ev.game_slug} · v${ev.version_num} (${formatBytes(
+            ev.bytes_extracted,
+          )})`,
+        );
+      }
       break;
     }
     case "save_auto_restore_failed": {
@@ -391,10 +399,10 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         ...m,
         [ev.save_id]: { failures: ev.failures, error: ev.error },
       }));
-      // Honour the same pref as backup failures: the card badge is the part
-      // the user can't miss, so a silenced notification loses nothing.
+      // The card badge is the part the user can't miss, so a silenced
+      // notification loses nothing.
       const $prefs = get(prefs);
-      if ($prefs?.notify_on_failure) {
+      if ($prefs?.notify_on_restore_failure) {
         const t = get(i18n);
         notify(
           t("library.restore_stuck_notify_title"),

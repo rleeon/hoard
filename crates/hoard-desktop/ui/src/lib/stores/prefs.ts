@@ -32,6 +32,8 @@ export async function hydratePrefs(): Promise<void> {
       system_titlebar: false,
       notify_on_success: false,
       notify_on_failure: true,
+      notify_on_restore_success: false,
+      notify_on_restore_failure: true,
       autostart: true,
       start_minimised: true,
       seen_tray_hint: false,

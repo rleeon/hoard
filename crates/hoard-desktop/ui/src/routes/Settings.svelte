@@ -752,6 +752,24 @@
       anim: "ring",
       animBothWays: true,
     },
+    {
+      field: "notify_on_restore_success",
+      label: $_("settings.notify_restore_success_label"),
+      description: $_("settings.notify_restore_success_desc"),
+      icon: BellRing,
+      iconOff: BellOff,
+      anim: "ring",
+      animBothWays: true,
+    },
+    {
+      field: "notify_on_restore_failure",
+      label: $_("settings.notify_restore_failure_label"),
+      description: $_("settings.notify_restore_failure_desc"),
+      icon: BellRing,
+      iconOff: BellOff,
+      anim: "ring",
+      animBothWays: true,
+    },
   ]);
 
   // Cloud-only toggles. The old "Modo ahorro (solo subida)"

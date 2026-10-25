@@ -890,6 +890,8 @@ export type Prefs = {
   system_titlebar: boolean;
   notify_on_success: boolean;
   notify_on_failure: boolean;
+  notify_on_restore_success: boolean;
+  notify_on_restore_failure: boolean;
   autostart: boolean;
   start_minimised: boolean;
   seen_tray_hint: boolean;

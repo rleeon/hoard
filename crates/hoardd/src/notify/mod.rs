@@ -61,12 +61,17 @@ pub struct Notice {
     pub kind: Kind,
 }
 
-/// The notices the service sends. Deliberately the same four the desktop used to
-/// send: what changed is **who** notifies, not what about.
+/// The notices the service sends. Each one answers to its own switch in Settings
+/// (see [`notice_for`]), except the update, which has none.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
     /// Backup uploaded. `bytes` is what travelled.
     BackupSaved {
+        version: i64,
+        bytes: u64,
+    },
+    /// A cloud version landed on this machine. `bytes` is what was written.
+    RestoreDone {
         version: i64,
         bytes: u64,
     },
@@ -102,10 +107,11 @@ pub enum Kind {
 
 /// What to notify about for this event, or nothing.
 ///
-/// **Pure, and where the prefs gate lives.** The two that already existed rule just
-/// as they did when the frontend notified: `notify_on_success` for the saved
-/// backup and `notify_on_failure` for the three problem notices. No new preferences
-/// are invented.
+/// **Pure, and where the prefs gate lives.** One switch per kind of news:
+/// `notify_on_success` for the saved backup, `notify_on_failure` for the backup's
+/// problems, and `notify_on_restore_success` / `notify_on_restore_failure` for the
+/// downloads. A lone `SaveAutoRestoreFailed` never notifies: the sweep retries it,
+/// and only the stuck one (several in a row on the same version) is news.
 pub fn notice_for(event: &AgentEvent, prefs: &Prefs) -> Option<Notice> {
     match event {
         AgentEvent::BackupSuccess {
@@ -167,12 +173,26 @@ pub fn notice_for(event: &AgentEvent, prefs: &Prefs) -> Option<Notice> {
                 actual_bytes: *actual_bytes,
             },
         }),
+        AgentEvent::SaveAutoRestored {
+            save_id,
+            game_slug,
+            version_num,
+            bytes_extracted,
+            ..
+        } => prefs.notify_on_restore_success.then(|| Notice {
+            name: Some(game_slug.clone()),
+            save_id: save_id.clone(),
+            kind: Kind::RestoreDone {
+                version: *version_num,
+                bytes: *bytes_extracted,
+            },
+        }),
         AgentEvent::SaveAutoRestoreStuck {
             save_id,
             game_slug,
             failures,
             ..
-        } => prefs.notify_on_failure.then(|| Notice {
+        } => prefs.notify_on_restore_failure.then(|| Notice {
             name: Some(game_slug.clone()),
             save_id: save_id.clone(),
             kind: Kind::RestoreStuck {
@@ -334,6 +354,7 @@ fn notifiable(event: &AgentEvent) -> bool {
         AgentEvent::BackupSuccess { .. }
             | AgentEvent::BackupFailed { .. }
             | AgentEvent::BackupTooLarge { .. }
+            | AgentEvent::SaveAutoRestored { .. }
             | AgentEvent::SaveAutoRestoreStuck { .. }
     )
 }
@@ -438,10 +459,14 @@ mod tests {
     use hoard_core::ipc::events::TooLargeKind;
     use std::sync::Mutex;
 
+    /// The backup and download switches move together here; the test that keeps
+    /// them apart builds its own.
     fn prefs(success: bool, failure: bool) -> Prefs {
         Prefs {
             notify_on_success: success,
             notify_on_failure: failure,
+            notify_on_restore_success: success,
+            notify_on_restore_failure: failure,
             ..Prefs::default()
         }
     }
@@ -470,6 +495,25 @@ mod tests {
         }
     }
 
+    fn restored() -> AgentEvent {
+        AgentEvent::SaveAutoRestored {
+            save_id: "s1".into(),
+            game_slug: "factorio".into(),
+            version_num: 7,
+            files_extracted: 3,
+            bytes_extracted: 4096,
+        }
+    }
+
+    fn stuck() -> AgentEvent {
+        AgentEvent::SaveAutoRestoreStuck {
+            save_id: "s1".into(),
+            game_slug: "factorio".into(),
+            failures: 3,
+            error: "sha mismatch".into(),
+        }
+    }
+
     #[test]
     fn success_is_gated_by_notify_on_success() {
         assert!(notice_for(&success(false), &prefs(false, true)).is_none());
@@ -488,6 +532,36 @@ mod tests {
         assert!(notice_for(&failure(), &prefs(true, false)).is_none());
         let notice = notice_for(&failure(), &prefs(false, true)).expect("should notify");
         assert_eq!(notice.name.as_deref(), Some("factorio"));
+    }
+
+    /// Each download notice answers to its own switch, not to the backup's: turning
+    /// backup failures off must not silence a restore that keeps failing, and the
+    /// other way round.
+    #[test]
+    fn downloads_have_their_own_switches() {
+        let only = |restore_success: bool, restore_failure: bool| Prefs {
+            notify_on_success: !restore_success,
+            notify_on_failure: !restore_failure,
+            notify_on_restore_success: restore_success,
+            notify_on_restore_failure: restore_failure,
+            ..Prefs::default()
+        };
+        assert!(notice_for(&restored(), &only(false, true)).is_none());
+        assert_eq!(
+            notice_for(&restored(), &only(true, false)).unwrap().kind,
+            Kind::RestoreDone {
+                version: 7,
+                bytes: 4096
+            }
+        );
+        assert!(notice_for(&stuck(), &only(true, false)).is_none());
+        assert_eq!(
+            notice_for(&stuck(), &only(false, true)).unwrap().kind,
+            Kind::RestoreStuck { failures: 3 }
+        );
+        // And the backup notices ignore the download switches.
+        assert!(notice_for(&failure(), &only(true, true)).is_none());
+        assert!(notice_for(&success(false), &only(true, true)).is_none());
     }
 
     /// A backup that uploaded nothing is not announced: the content was already up
@@ -565,12 +639,8 @@ mod tests {
                 actual_bytes: 200,
                 received_bytes: 0,
             },
-            AgentEvent::SaveAutoRestoreStuck {
-                save_id: "s1".into(),
-                game_slug: "factorio".into(),
-                failures: 3,
-                error: "sha mismatch".into(),
-            },
+            restored(),
+            stuck(),
         ];
         for event in notifying {
             assert!(notifiable(&event), "{event:?} should be notifiable");

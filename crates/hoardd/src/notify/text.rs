@@ -1,10 +1,9 @@
 //! What the notification says, and in which language.
 //!
 //! The daemon cannot use the frontend's i18n (it is Svelte JSON loaded in the
-//! webview), so the four sentences it sends live here, in the same eight languages
-//! the app has. There are few of them and they do not grow: what moved is **who**
-//! notifies, not how many things are notified about. If one day there are many, the
-//! answer is sharing the `.json` at compile time, not two catalogues that drift.
+//! webview), so the sentences it sends live here, in the same eight languages the
+//! app has. There are few of them. If one day there are many, the answer is sharing
+//! the `.json` at compile time, not two catalogues that drift.
 //!
 //! The language comes from the preference the user picked in Settings
 //! (`prefs.language`, which until now only the frontend read) and, when they have
@@ -95,6 +94,9 @@ struct Strings {
     saved_title: &'static str,
     /// `{name}`, `{version}`, `{size}`
     saved_body: &'static str,
+    restored_title: &'static str,
+    /// `{name}`, `{version}`, `{size}`
+    restored_body: &'static str,
     failed_title: &'static str,
     failed_retrying_title: &'static str,
     /// `{name}`, `{error}`
@@ -133,6 +135,8 @@ struct Strings {
 const EN: Strings = Strings {
     saved_title: "Backup saved",
     saved_body: "{name} · v{version} ({size})",
+    restored_title: "Save downloaded from the cloud",
+    restored_body: "{name} · v{version} ({size})",
     failed_title: "Backup failed",
     failed_retrying_title: "Backup failed (retrying)",
     failed_body: "{name}: {error}",
@@ -153,6 +157,8 @@ const EN: Strings = Strings {
 const ES: Strings = Strings {
     saved_title: "Copia guardada",
     saved_body: "{name} · v{version} ({size})",
+    restored_title: "Partida descargada de la nube",
+    restored_body: "{name} · v{version} ({size})",
     failed_title: "La copia falló",
     failed_retrying_title: "La copia falló (reintentando)",
     failed_body: "{name}: {error}",
@@ -174,6 +180,8 @@ const ES: Strings = Strings {
 const DE: Strings = Strings {
     saved_title: "Sicherung gespeichert",
     saved_body: "{name} · v{version} ({size})",
+    restored_title: "Spielstand aus der Cloud geladen",
+    restored_body: "{name} · v{version} ({size})",
     failed_title: "Sicherung fehlgeschlagen",
     failed_retrying_title: "Sicherung fehlgeschlagen (neuer Versuch)",
     failed_body: "{name}: {error}",
@@ -194,6 +202,8 @@ const DE: Strings = Strings {
 const FR: Strings = Strings {
     saved_title: "Sauvegarde enregistrée",
     saved_body: "{name} · v{version} ({size})",
+    restored_title: "Partie téléchargée depuis le cloud",
+    restored_body: "{name} · v{version} ({size})",
     failed_title: "Échec de la sauvegarde",
     failed_retrying_title: "Échec de la sauvegarde (nouvelle tentative)",
     failed_body: "{name} : {error}",
@@ -214,6 +224,8 @@ const FR: Strings = Strings {
 const IT: Strings = Strings {
     saved_title: "Backup salvato",
     saved_body: "{name} · v{version} ({size})",
+    restored_title: "Salvataggio scaricato dal cloud",
+    restored_body: "{name} · v{version} ({size})",
     failed_title: "Backup non riuscito",
     failed_retrying_title: "Backup non riuscito (nuovo tentativo)",
     failed_body: "{name}: {error}",
@@ -234,6 +246,8 @@ const IT: Strings = Strings {
 const JA: Strings = Strings {
     saved_title: "バックアップを保存しました",
     saved_body: "{name} · v{version}（{size}）",
+    restored_title: "クラウドからセーブをダウンロードしました",
+    restored_body: "{name} · v{version}（{size}）",
     failed_title: "バックアップに失敗しました",
     failed_retrying_title: "バックアップに失敗しました（再試行中）",
     failed_body: "{name}: {error}",
@@ -254,6 +268,8 @@ const JA: Strings = Strings {
 const PT: Strings = Strings {
     saved_title: "Cópia guardada",
     saved_body: "{name} · v{version} ({size})",
+    restored_title: "Save descarregado da nuvem",
+    restored_body: "{name} · v{version} ({size})",
     failed_title: "A cópia falhou",
     failed_retrying_title: "A cópia falhou (a tentar de novo)",
     failed_body: "{name}: {error}",
@@ -275,6 +291,8 @@ const PT: Strings = Strings {
 const ZH: Strings = Strings {
     saved_title: "备份已保存",
     saved_body: "{name} · v{version}（{size}）",
+    restored_title: "已从云端下载存档",
+    restored_body: "{name} · v{version}（{size}）",
     failed_title: "备份失败",
     failed_retrying_title: "备份失败（正在重试）",
     failed_body: "{name}：{error}",
@@ -300,6 +318,17 @@ pub fn render(kind: &Kind, name: &str, lang: Lang) -> Note {
             title: s.saved_title.to_string(),
             body: fill(
                 s.saved_body,
+                &[
+                    ("name", name),
+                    ("version", &version.to_string()),
+                    ("size", &bytes_human(*bytes)),
+                ],
+            ),
+        },
+        Kind::RestoreDone { version, bytes } => Note {
+            title: s.restored_title.to_string(),
+            body: fill(
+                s.restored_body,
                 &[
                     ("name", name),
                     ("version", &version.to_string()),
@@ -437,6 +466,10 @@ mod tests {
             let s = lang.strings();
             for hole in ["{name}", "{version}", "{size}"] {
                 assert!(s.saved_body.contains(hole), "{lang:?} saved_body: {hole}");
+                assert!(
+                    s.restored_body.contains(hole),
+                    "{lang:?} restored_body: {hole}"
+                );
             }
             for hole in ["{name}", "{error}"] {
                 assert!(s.failed_body.contains(hole), "{lang:?} failed_body: {hole}");
@@ -473,6 +506,10 @@ mod tests {
         let kinds = [
             Kind::BackupSaved {
                 version: 3,
+                bytes: 5 * 1024 * 1024,
+            },
+            Kind::RestoreDone {
+                version: 4,
                 bytes: 5 * 1024 * 1024,
             },
             Kind::BackupFailed {
