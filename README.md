@@ -110,7 +110,6 @@ here is the [installer](https://hoard.services/cli).
 
 ## Steam Deck plugin
 
-This come in 1.3.0, we all need wait.
 Game Mode doesn't show notifications, so Hoard has a plugin for
 [Decky Loader](https://decky.xyz): it tells you when a save is uploaded, fails
 or is restored, and has a Manual Upload button. Install Decky first, then run
