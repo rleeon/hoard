@@ -118,6 +118,21 @@ const JUNK_SEGMENTS: &[&str] = &[
     "shadervariantanalytics",
     // Unreal.
     "crashreportclient",
+    // Chromium's own caches, in every Electron or NW.js game that keeps its
+    // profile next to the saves. The running game rewrites them constantly: in
+    // oct-2026 a Deck tracking `~/.config/Alabaster Dawn` whole failed 63
+    // backups in two hours on `GPUCache/index` changing mid-upload. Exact names
+    // only, and never `Local Storage` or `IndexedDB`, where those engines keep
+    // the save itself.
+    "gpucache",
+    "grshadercache",
+    "graphitedawncache",
+    "dawncache",
+    "dawngraphitecache",
+    "dawnwebgpucache",
+    "code cache",
+    "cache_data",
+    "crashpad",
 ];
 
 /// Config extensions. Unshielded, a file with one of these uploads but never
@@ -398,6 +413,26 @@ mod tests {
         // And the saves in the same folder come out untouched.
         assert_eq!(c("savedGames2.gd"), FileClass::SaveData);
         assert_eq!(c("savedGamesDeepBackup.gd.restore"), FileClass::SaveData);
+    }
+
+    #[test]
+    fn an_electron_profile_keeps_its_saves_and_drops_its_caches() {
+        for p in [
+            "Default/GPUCache/index",
+            "GraphiteDawnCache/index",
+            "Default/Code Cache/js/index",
+            "Default/Cache/Cache_Data/data_0",
+            "Crashpad/settings.dat",
+        ] {
+            assert_eq!(c(p), FileClass::Junk, "{p}");
+        }
+        for p in [
+            "Saves/Default/file1.rpgsave",
+            "Default/Local Storage/leveldb/000003.log",
+            "Default/IndexedDB/file__0.indexeddb.leveldb/CURRENT",
+        ] {
+            assert_ne!(c(p), FileClass::Junk, "{p}");
+        }
     }
 
     #[test]

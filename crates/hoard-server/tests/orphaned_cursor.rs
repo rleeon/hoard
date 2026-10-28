@@ -134,6 +134,43 @@ async fn a_deleted_save_does_not_diverge_from_its_own_replacement() {
     cleanup(&pool, user).await;
 }
 
+/// Alabaster Dawn, oct-2026: the first push after the user deleted every version
+/// died mid-upload and left its pending v1 behind. That attempt is not history,
+/// and the next push with the same dead cursor has to get through.
+#[tokio::test]
+async fn a_pending_attempt_is_not_history() {
+    let Some(pool) = pool().await else { return };
+    let user = seed_user(&pool).await;
+    let mut conn = pool.acquire().await.unwrap();
+
+    let row = resolve_save_row(
+        &mut conn,
+        &Uuid::new_v4().to_string(),
+        user,
+        "alabaster-dawn",
+        &None,
+        false,
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, file_count, content_addressed)
+         VALUES ($1, 1, 24311461, '', '', 0, TRUE)",
+    )
+    .bind(&row.0)
+    .execute(&mut *conn)
+    .await
+    .unwrap();
+
+    assert!(
+        save_has_no_history(&mut conn, &row.0, 0).await.unwrap(),
+        "a version that never committed has nothing another device could have advanced"
+    );
+
+    drop(conn);
+    cleanup(&pool, user).await;
+}
+
 /// The concession is scoped to *no history*, not to a head that reads 0. If the
 /// bookkeeping column ever lags its versions, the versions win and the push is
 /// still refused, that column is the thing this check refuses to trust.

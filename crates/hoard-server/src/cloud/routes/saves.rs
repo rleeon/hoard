@@ -276,6 +276,20 @@ pub async fn init_upload(
     //    pending and storage_bytes hasn't been credited (trigger runs on
     //    INSERT but with the *requested* size; if the upload fails or never
     //    commits, the cleanup cron deletes pending rows older than 1h).
+    //    A pending row already at this version is an earlier init that never
+    //    committed, and since `save_has_no_history` looks past it the insert
+    //    would trip the unique key. Same version, same `r2_key`: the new PUT
+    //    overwrites whatever the old attempt left in the bucket. A pending
+    //    content-addressed row is left alone: its manifest is the only record
+    //    of the blobs it uploaded, and only `cas_init` cleans those up.
+    sqlx::query(
+        "DELETE FROM save_versions
+          WHERE save_id = $1 AND version_num = $2 AND sha256 = '' AND NOT content_addressed",
+    )
+    .bind(&save_row.0)
+    .bind(next_version)
+    .execute(&state.pool)
+    .await?;
     sqlx::query(
         r#"
         INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, notes, parent_version, file_count, device_name)
@@ -2679,6 +2693,12 @@ pub async fn resolve_save_row(
 /// Accepting is the safe half of the choice, not the risky one: an empty row has
 /// no content to lose, and the push becomes version 1 of a save whose history is
 /// genuinely gone.
+///
+/// Only committed versions count. A pending one is an attempt that never landed,
+/// and counting it closed the same trap one step later: in oct-2026 a Deck user
+/// deleted every version of `alabaster-dawn`, the next push came through here,
+/// died mid-upload on a cache file the running game kept rewriting, and its
+/// pending v1 turned every later push into a 409 naming "another device".
 pub async fn save_has_no_history(
     conn: &mut sqlx::PgConnection,
     save_id: &str,
@@ -2690,10 +2710,12 @@ pub async fn save_has_no_history(
     // `latest_version_num` is the fast answer, but it is bookkeeping; the
     // versions are the fact. Only reached on a mismatch against head 0, so this
     // costs nothing on the hot path.
-    let existing: i64 = sqlx::query_scalar("SELECT count(*) FROM save_versions WHERE save_id = $1")
-        .bind(save_id)
-        .fetch_one(&mut *conn)
-        .await?;
+    let existing: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM save_versions WHERE save_id = $1 AND sha256 <> ''",
+    )
+    .bind(save_id)
+    .fetch_one(&mut *conn)
+    .await?;
     Ok(existing == 0)
 }
 
