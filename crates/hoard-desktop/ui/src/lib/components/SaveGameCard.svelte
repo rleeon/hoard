@@ -35,6 +35,7 @@
   import Button from "./Button.svelte";
   import CardResizeHandle from "./CardResizeHandle.svelte";
   import Cover from "./Cover.svelte";
+  import { byKeys, navFocus } from "../actions/spatialNav";
   import type { TrackedSave } from "../api";
   import {
     coverAspectStyle,
@@ -287,14 +288,68 @@
   // wrapper (which contains both the trigger and the dropdown).
   let menuOpen = $state(false);
   let menuEl = $state<HTMLDivElement | null>(null);
+  let menuButton = $state<HTMLButtonElement | null>(null);
   $effect(() => {
     if (!menuOpen) return;
     const onDown = (e: PointerEvent) => {
-      if (menuEl && !menuEl.contains(e.target as Node)) menuOpen = false;
+      if (menuEl && !menuEl.contains(e.target as Node)) setMenu(false);
+    };
+    // Escape closes the menu before the arrows take it as leaving the card.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      const within = !!menuEl?.contains(document.activeElement);
+      setMenu(false);
+      if (within && menuButton) navFocus(menuButton);
     };
     window.addEventListener("pointerdown", onDown);
-    return () => window.removeEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+    };
   });
+
+  // Opening or closing the menu while its trigger drew a focus ring made
+  // WebKitGTK scroll the page to near its top, on any card below the first row
+  // (Oct 2026). Whatever the engine scrolls in the moment after is put back,
+  // unless the card is gone (an item that leaves for History).
+  function setMenu(open: boolean) {
+    if (open === menuOpen) return;
+    const scroller = menuEl?.closest("main");
+    const top = scroller?.scrollTop ?? 0;
+    menuOpen = open;
+    if (!scroller) return;
+    const hold = () => {
+      if (menuEl?.isConnected) scroller.scrollTop = top;
+    };
+    scroller.addEventListener("scroll", hold);
+    setTimeout(() => scroller.removeEventListener("scroll", hold), 250);
+  }
+
+  // Arrowed out of the open menu: it closes behind the focus. A click that
+  // leaves the focus on nothing is the pointerdown's to handle.
+  function onMenuFocusOut(e: FocusEvent) {
+    if (e.relatedTarget instanceof Node && !menuEl?.contains(e.relatedTarget)) {
+      setMenu(false);
+    }
+  }
+
+  // The cover's pencil otherwise needs the pointer on the cover. With the
+  // arrows inside this card it comes up so they can reach it; a card that is
+  // only selected, like every other one, keeps it hidden.
+  let cardEl = $state<HTMLDivElement | null>(null);
+  let coverHovered = $state(false);
+  let keysInside = $state(false);
+  function onCardFocusIn(e: FocusEvent) {
+    keysInside = e.target !== cardEl && byKeys();
+  }
+  function onCardFocusOut(e: FocusEvent) {
+    const next = e.relatedTarget;
+    if (!(next instanceof Node) || next === cardEl || !cardEl?.contains(next)) {
+      keysInside = false;
+    }
+  }
 
   /** A row that exists only in the cloud (uploaded from another machine, or
    *  not yet linked here) has no entry in `state.json`, so anything that
@@ -310,9 +365,16 @@
     "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-white/[0.06] hover:text-zinc-200";
 </script>
 
+<!-- One layer for the arrows (`spatialNav.ts`): from the grid it is a single
+     stop, and Enter goes in among its buttons. -->
 <div
+  bind:this={cardEl}
   data-card
   data-nav-frame
+  data-nav-layer
+  tabindex="-1"
+  onfocusin={onCardFocusIn}
+  onfocusout={onCardFocusOut}
   class="panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-200 hover:border-[var(--edge-strong)] hover:shadow-[var(--edge-top),var(--shadow-raised)]"
 >
   <!-- Esquina de arrastre, la misma de la biblioteca: a lo ancho manda el
@@ -340,7 +402,14 @@
        poster exactly; the ones that only ship the landscape header get
        letterboxed by `fit="smart"` rather than center-cropped to a third of
        themselves. Own art beats both: hover the cover → pencil in the corner. -->
-  <div data-cover class="relative w-full overflow-hidden" style={coverAspectStyle(aspect)}>
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    data-cover
+    class="relative w-full overflow-hidden"
+    style={coverAspectStyle(aspect)}
+    onmouseenter={() => (coverHovered = true)}
+    onmouseleave={() => (coverHovered = false)}
+  >
     <Cover
       slug={save.game_slug}
       name={displayName}
@@ -349,7 +418,30 @@
       fit="smart"
       editor="corner"
       fallback="standby"
+      showEditor={coverHovered || keysInside}
+      editorNav={{
+        "data-nav-id": "cover-edit",
+        "data-nav-up": "cover",
+        "data-nav-down": "rename",
+      }}
     />
+    <!-- The whole cover opens the history. It lies under the pencil, the chips
+         and the overflow menu, which sit on top of it and keep their clicks. -->
+    <button
+      type="button"
+      data-nav-id="cover"
+      data-nav-down="cover-edit"
+      data-nav-right="menu"
+      data-nav-inset
+      class="cover-history absolute inset-0 cursor-pointer"
+      aria-label={$_("dashboard.history_title")}
+      onclick={() => onHistory(save)}
+    >
+      <span class="cover-history-veil" aria-hidden="true">
+        <span class="cover-history-badge"><History size={26} strokeWidth={1.75} /></span>
+        <span class="cover-history-label">{$_("dashboard.history")}</span>
+      </span>
+    </button>
     <div
       class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-zinc-950/70 to-transparent"
       aria-hidden="true"
@@ -391,10 +483,13 @@
     </div>
 
     <!-- Overflow menu: rename / pause-resume / history. -->
-    <div class="absolute right-2.5 top-2.5" bind:this={menuEl}>
+    <div class="absolute right-2.5 top-2.5" bind:this={menuEl} onfocusout={onMenuFocusOut}>
       <button
+        bind:this={menuButton}
         type="button"
-        onclick={() => (menuOpen = !menuOpen)}
+        data-nav-id="menu"
+        data-nav-left="cover"
+        onclick={() => setMenu(!menuOpen)}
         aria-label={$_("dashboard.menu_open")}
         title={$_("dashboard.menu_open")}
         aria-expanded={menuOpen}
@@ -410,7 +505,7 @@
             type="button"
             class={menuItemClass}
             onclick={() => {
-              menuOpen = false;
+              setMenu(false);
               onRename(save);
             }}
           >
@@ -423,7 +518,7 @@
             disabled={cloudOnly}
             title={cloudOnly ? $_("common.cloud_only_no_local") : undefined}
             onclick={() => {
-              menuOpen = false;
+              setMenu(false);
               onTogglePause(save);
             }}
           >
@@ -439,7 +534,7 @@
             type="button"
             class={menuItemClass}
             onclick={() => {
-              menuOpen = false;
+              setMenu(false);
               onHistory(save);
             }}
           >
@@ -470,6 +565,8 @@
       {/if}
       <button
         type="button"
+        data-nav-id="rename"
+        data-nav-up="cover-edit cover"
         class={iconBtnClass}
         onclick={() => onRename(save)}
         title={$_("dashboard.rename_aria")}
@@ -479,6 +576,7 @@
       </button>
       <button
         type="button"
+        data-nav-up="cover-edit cover"
         class={iconBtnClass}
         onclick={() => onHistory(save)}
         title={$_("dashboard.history_title")}
@@ -488,6 +586,7 @@
       </button>
       <button
         type="button"
+        data-nav-up="cover-edit cover"
         class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
         onclick={() => onDelete(save)}
         title={$_("dashboard.delete_title")}

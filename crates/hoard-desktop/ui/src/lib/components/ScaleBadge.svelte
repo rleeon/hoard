@@ -20,6 +20,7 @@
 </script>
 
 <div
+  data-nav-hint-avoid
   class="scale-badge pointer-events-none fixed right-4 bottom-4 z-[60] rounded-lg border px-3 py-1.5 text-sm font-medium tabular-nums text-zinc-200"
   class:is-shown={shown}
   aria-hidden="true"

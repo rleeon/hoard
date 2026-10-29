@@ -60,6 +60,11 @@
      *  two wait for the lookup on plain black, so a game whose art is on its
      *  way never flashes the stand-in first. */
     fallback = "initial",
+    /** Keeps the editor up without the pointer on the cover: the Panel shows
+     *  it on the game the arrows are inside. */
+    showEditor = false,
+    /** `data-nav-*` links for the editor button (see `spatialNav.ts`). */
+    editorNav = {},
   }: {
     appId?: number | null;
     slug?: string | null;
@@ -69,6 +74,8 @@
     fit?: "cover" | "smart";
     editor?: "overlay" | "corner";
     fallback?: "initial" | "outline" | "standby";
+    showEditor?: boolean;
+    editorNav?: Record<string, string>;
   } = $props();
 
   const initial = $derived((name.trim().charAt(0) || "?").toUpperCase());
@@ -261,10 +268,11 @@
     </div>
   {/if}
 
-  {#if resolvedKey != null && hovered}
+  {#if resolvedKey != null && (hovered || showEditor)}
     {@const isRestore = isCustom}
     {@const label = isRestore ? $_("covers.restore") : $_("covers.change")}
     <button
+      {...editorNav}
       type="button"
       onclick={isRestore ? restoreOriginal : pickCover}
       title={label}

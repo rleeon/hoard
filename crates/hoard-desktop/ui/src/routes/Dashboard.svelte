@@ -22,7 +22,6 @@
     Gamepad2,
     HardDrive,
     Layers,
-    LogOut,
     Pin,
     Plus,
     RefreshCw,
@@ -660,27 +659,15 @@
   }
 </script>
 
-<div class="mx-auto max-w-[1600px] px-8 py-8">
-  <header class="mb-6 flex items-start justify-between gap-4">
-    <div class="min-w-0">
-      <h1
-        class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50"
-      >
-        {$_("dashboard.title")}
-      </h1>
-    </div>
-    <!-- mr-20 clears the shell's fixed bell/eye overlay (top-right corner). -->
-    <div class="mr-20 flex shrink-0 items-center gap-2">
-      <Button
-        variant="ghost"
-        onclick={handleLogout}
-        loading={signingOut}
-        aria-label={$_("dashboard.sign_out")}
-      >
-        <LogOut size={16} />
-        {$_("dashboard.sign_out")}
-      </Button>
-    </div>
+<!-- In layers for the arrows (`spatialNav.ts`): the bar above the games, and
+     the games, each game a layer of its own inside them. -->
+<div data-nav-page class="mx-auto max-w-[1600px] px-8 py-8">
+  <header class="mb-6">
+    <h1
+      class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50"
+    >
+      {$_("dashboard.title")}
+    </h1>
   </header>
 
   <!-- Sync service down — and, since 1.1.1, *why*. The service reports a typed
@@ -802,79 +789,83 @@
     <!-- Ya no hay selector de forma de carátula: el tamaño y el encuadre se
          arrastran desde la esquina de cualquier tarjeta, como en la
          biblioteca. -->
-    <div
-      class="mb-5 flex flex-wrap items-center justify-end gap-x-5 gap-y-3"
-    >
-      <div class="flex items-center gap-2 text-xs text-zinc-400">
-        <span class="text-zinc-500">{$_("dashboard.sort_label")}</span>
-        <Select
-          size="sm"
-          aria-label={$_("dashboard.sort_label")}
-          bind:value={sortBy}
-          options={[
-            { value: "recent", label: $_("dashboard.sort_recent") },
-            { value: "size", label: $_("dashboard.sort_size") },
-          ]}
-        />
+    <div class="mb-5 flex justify-end">
+      <div
+        data-nav-layer
+        tabindex="-1"
+        class="flex flex-wrap items-center justify-end gap-x-5 gap-y-3 rounded-lg"
+      >
+        <div class="flex items-center gap-2 text-xs text-zinc-400">
+          <span class="text-zinc-500">{$_("dashboard.sort_label")}</span>
+          <Select
+            size="sm"
+            aria-label={$_("dashboard.sort_label")}
+            bind:value={sortBy}
+            options={[
+              { value: "recent", label: $_("dashboard.sort_recent") },
+              { value: "size", label: $_("dashboard.sort_size") },
+            ]}
+          />
+        </div>
+
+        <!-- Max stored versions per game. Server-side, per-user; lowering it
+             prunes the oldest versions immediately. -->
+        <label
+          class="flex items-center gap-2 text-xs text-zinc-400"
+          title={$_("dashboard.max_versions_hint")}
+        >
+          <Layers size={13} class="text-zinc-500" />
+          <span class="text-zinc-500">{$_("dashboard.max_versions_label")}</span>
+          <input
+            type="number"
+            min="1"
+            max="10000"
+            placeholder="∞"
+            bind:value={maxVersionsInput}
+            disabled={savingMaxVersions}
+            class="w-16 rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 [appearance:textfield] focus:border-emerald-500/40 focus:outline-none disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          {#if maxVersionsDirty}
+            <Button
+              variant="secondary"
+              class="!px-2.5 !py-1.5 !text-xs"
+              onclick={() => applyMaxVersions(false)}
+              loading={savingMaxVersions}
+            >
+              {$_("dashboard.max_versions_apply")}
+            </Button>
+          {/if}
+        </label>
+
+        <!-- Cupo aparte para las copias que pide el usuario. Sin límite por
+             defecto: son pocas y son las que se quieren conservar. -->
+        <label
+          class="flex items-center gap-2 text-xs text-zinc-400"
+          title={$_("dashboard.max_manual_hint")}
+        >
+          <Pin size={13} class="text-zinc-500" />
+          <span class="text-zinc-500">{$_("dashboard.max_manual_label")}</span>
+          <input
+            type="number"
+            min="1"
+            max="10000"
+            placeholder="∞"
+            bind:value={maxManualInput}
+            disabled={savingMaxManual}
+            class="w-16 rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 [appearance:textfield] focus:border-emerald-500/40 focus:outline-none disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          {#if maxManualDirty}
+            <Button
+              variant="secondary"
+              class="!px-2.5 !py-1.5 !text-xs"
+              onclick={() => applyMaxVersions(true)}
+              loading={savingMaxManual}
+            >
+              {$_("dashboard.max_versions_apply")}
+            </Button>
+          {/if}
+        </label>
       </div>
-
-      <!-- Max stored versions per game. Server-side, per-user; lowering it
-           prunes the oldest versions immediately. -->
-      <label
-        class="flex items-center gap-2 text-xs text-zinc-400"
-        title={$_("dashboard.max_versions_hint")}
-      >
-        <Layers size={13} class="text-zinc-500" />
-        <span class="text-zinc-500">{$_("dashboard.max_versions_label")}</span>
-        <input
-          type="number"
-          min="1"
-          max="10000"
-          placeholder="∞"
-          bind:value={maxVersionsInput}
-          disabled={savingMaxVersions}
-          class="w-16 rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 [appearance:textfield] focus:border-emerald-500/40 focus:outline-none disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-        {#if maxVersionsDirty}
-          <Button
-            variant="secondary"
-            class="!px-2.5 !py-1.5 !text-xs"
-            onclick={() => applyMaxVersions(false)}
-            loading={savingMaxVersions}
-          >
-            {$_("dashboard.max_versions_apply")}
-          </Button>
-        {/if}
-      </label>
-
-      <!-- Cupo aparte para las copias que pide el usuario. Sin límite por
-           defecto: son pocas y son las que se quieren conservar. -->
-      <label
-        class="flex items-center gap-2 text-xs text-zinc-400"
-        title={$_("dashboard.max_manual_hint")}
-      >
-        <Pin size={13} class="text-zinc-500" />
-        <span class="text-zinc-500">{$_("dashboard.max_manual_label")}</span>
-        <input
-          type="number"
-          min="1"
-          max="10000"
-          placeholder="∞"
-          bind:value={maxManualInput}
-          disabled={savingMaxManual}
-          class="w-16 rounded-md border border-white/[0.08] bg-zinc-900 px-2 py-1.5 text-xs text-zinc-200 [appearance:textfield] focus:border-emerald-500/40 focus:outline-none disabled:opacity-50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-        {#if maxManualDirty}
-          <Button
-            variant="secondary"
-            class="!px-2.5 !py-1.5 !text-xs"
-            onclick={() => applyMaxVersions(true)}
-            loading={savingMaxManual}
-          >
-            {$_("dashboard.max_versions_apply")}
-          </Button>
-        {/if}
-      </label>
     </div>
   {/if}
 
@@ -911,7 +902,9 @@
          que mueve la esquina de arrastre de las tarjetas. -->
     <div
       bind:this={grid}
-      class="grid gap-5"
+      data-nav-layer
+      tabindex="-1"
+      class="grid gap-5 rounded-xl"
       style="grid-template-columns: repeat(auto-fill, minmax(min({cardWidth(
         'dashboard',
       )}px, 100%), 1fr))"
@@ -1030,6 +1023,7 @@
     <div class="space-y-2">
       <button
         type="button"
+        data-nav-danger
         onclick={deleteFromMachine}
         class="flex w-full items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3 text-left transition-colors hover:border-white/[0.16] hover:bg-layer-hover"
       >
@@ -1046,6 +1040,7 @@
       {#if isOnServer(deleteTarget)}
         <button
           type="button"
+          data-nav-danger
           onclick={() => (deleteStep = "confirm")}
           class="flex w-full items-start gap-3 rounded-lg border border-white/[0.08] bg-layer-2 p-3 text-left transition-colors hover:border-red-500/40 hover:bg-red-500/5"
         >

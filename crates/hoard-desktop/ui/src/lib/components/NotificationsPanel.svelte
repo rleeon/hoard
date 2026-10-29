@@ -29,6 +29,8 @@
     renderMarkdown,
     type AppNotification,
   } from "../stores/notifications";
+  import { notifOpen } from "../stores/panels";
+  import { navPopup } from "../actions/spatialNav";
 
   function relativeTime(at: number): string {
     const seconds = Math.round((Date.now() - at) / 1000);
@@ -88,6 +90,7 @@
 <div
   class="pinned-panel fixed right-3 top-14 z-[61] w-80 overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-3 shadow-xl"
   transition:fly={{ y: -8, duration: 180 }}
+  use:navPopup={() => notifOpen.set(false)}
 >
   <!-- Header -->
   <div class="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
@@ -105,6 +108,7 @@
     {#if $notifications.length > 0}
       <button
         type="button"
+        data-nav-danger
         onclick={clearNotifications}
         class="text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
       >

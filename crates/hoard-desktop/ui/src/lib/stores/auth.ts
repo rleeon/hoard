@@ -7,7 +7,7 @@
  * the app sees the change without each component having to refetch.
  */
 
-import { writable, derived, type Readable } from "svelte/store";
+import { writable, derived, get, type Readable } from "svelte/store";
 import * as api from "../api";
 import type { UserInfo } from "../api";
 import { bootAgent, shutdownAgent } from "./agent";
@@ -62,6 +62,9 @@ export async function hydrateAuth(): Promise<void> {
  *  polls this so the "% used" / "MB used" indicator tracks reality without
  *  forcing a full re-login. Silently no-ops when not signed in. */
 export async function refreshQuota(): Promise<void> {
+  // Only a self-hosted session has its quota here. A Hoard One user has no
+  // `user` in this store, and the Panel's poll failed for them every 30 s.
+  if (!get(internal).user) return;
   try {
     const user = await api.refreshQuota();
     internal.update(($s) => ({ ...$s, user }));

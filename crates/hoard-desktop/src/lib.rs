@@ -7,6 +7,8 @@
 mod commands;
 mod daemon;
 #[cfg(target_os = "linux")]
+mod gamepad;
+#[cfg(target_os = "linux")]
 mod graphics;
 mod state;
 mod titlebar;
@@ -382,6 +384,11 @@ pub fn run() {
                 #[cfg(windows)]
                 commands::window::watch_engine(&window);
             }
+
+            // Controllers, for the arrow navigation (`gamepad.rs`). Elsewhere
+            // the web engine reads them itself.
+            #[cfg(target_os = "linux")]
+            gamepad::spawn(app.handle().clone());
 
             // Build the tray as soon as we have an AppHandle. Failures here
             // shouldn't kill the app: Linux desktops without an AppIndicator

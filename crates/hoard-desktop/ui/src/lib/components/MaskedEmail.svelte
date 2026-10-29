@@ -28,8 +28,11 @@
   }
 </script>
 
+<!-- The masked address stays selectable: with `select-none` on it, focusing the
+     eye beside it killed WebKitGTK 2.52's web process, every time, and the
+     arrow keys reach the eye straight from the sidebar (Oct 2026). -->
 <span class="inline-flex min-w-0 max-w-full items-center gap-1.5 align-middle {klass}">
-  <span class="truncate {$emailRevealed ? '' : 'select-none'}">
+  <span class="truncate">
     {$emailRevealed ? email : masked}
   </span>
   {#if withToggle}

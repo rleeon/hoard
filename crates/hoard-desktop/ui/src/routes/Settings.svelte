@@ -798,7 +798,9 @@
   }
 </script>
 
-<div class="mx-auto max-w-3xl px-8 py-8">
+<!-- In layers for the arrows (`spatialNav.ts`): each section one, its title
+     with it, so the sections are what Up and Down pick between. -->
+<div data-nav-page class="mx-auto max-w-3xl px-8 py-8">
   <header class="mb-6">
     <h1 class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50">
       {$_("settings.title")}
@@ -814,7 +816,7 @@
     </Card>
   {:else}
     <div class="space-y-6">
-      <section class="keep-emerald">
+      <section data-nav-layer tabindex="-1" class="keep-emerald rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -865,7 +867,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -885,7 +887,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -919,7 +921,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -949,7 +951,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1117,7 +1119,7 @@
       </section>
 
       <!-- ── Overlay sobre el juego ─────────────────────────────────── -->
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1186,7 +1188,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1236,7 +1238,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1262,7 +1264,7 @@
         2026-07-04 — it was confusing and never wired to the agent.)
       -->
       {#if $cloud.account}
-        <section>
+        <section data-nav-layer tabindex="-1" class="rounded-xl">
           <h2
             class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
           >
@@ -1283,7 +1285,7 @@
         </section>
       {/if}
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1308,7 +1310,7 @@
            ("habla de servidor local, pero yo tengo la nube"). The cloud
            account lives in its own section above. -->
       {#if $auth.user}
-        <section>
+        <section data-nav-layer tabindex="-1" class="rounded-xl">
           <h2
             class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
           >
@@ -1341,7 +1343,7 @@
         </section>
       {/if}
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1395,7 +1397,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1430,7 +1432,7 @@
         </Card>
       </section>
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >
@@ -1603,7 +1605,7 @@
       </section>
 
       {#if diagnosticsUnlocked}
-        <section>
+        <section data-nav-layer tabindex="-1" class="rounded-xl">
           <h2
             class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
           >
@@ -1705,7 +1707,7 @@
         </section>
       {/if}
 
-      <section>
+      <section data-nav-layer tabindex="-1" class="rounded-xl">
         <h2
           class="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500"
         >

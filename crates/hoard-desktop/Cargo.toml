@@ -34,6 +34,9 @@ windows-core = "0.61"
 # The version GTK already pulls in through Tauri.
 [target.'cfg(target_os = "linux")'.dependencies]
 glib = "0.18"
+# Game controllers (`gamepad.rs`), for a controller Steam is not turning into
+# keys: Ubuntu's WebKitGTK has no Gamepad API. Pure Rust, no libudev to build.
+evdev = "0.13"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -1119,6 +1119,7 @@
     </Button>
     <Button
       variant="secondary"
+      data-nav-danger
       class="!bg-red-600 !text-zinc-50 hover:!bg-red-500"
       loading={busyAction === "delete"}
       disabled={

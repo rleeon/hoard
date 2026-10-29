@@ -12,7 +12,7 @@
   // running) and `syncPlaytime` pushes it to Hoard Cloud, then reads back the
   // DEVICE-MERGED aggregate, so the recap reflects every machine you sign in
   // from, not just this one. Signed out / offline it falls back to local data.
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import {
     currentUser,
     listTrackedSaves,
@@ -26,6 +26,7 @@
   } from "../api";
   import Cover from "../components/Cover.svelte";
   import WrappedCard from "./WrappedCard.svelte";
+  import { byKeys, navFocus } from "../actions/spatialNav";
   import {
     Eye,
     EyeOff,
@@ -191,6 +192,36 @@
 
   function toggleDay(key: string) {
     selectedKey = selectedKey === key ? null : key;
+  }
+
+  // What a button opens or closes, the arrows follow: the shareable card comes
+  // up below the page and they go onto it, and closing the card or a day puts
+  // them back where it was opened from. Left where they were, they sat on a
+  // button that was gone or far from what had just appeared.
+  let cardToggle = $state<HTMLButtonElement | null>(null);
+  let cardHost = $state<HTMLDivElement | null>(null);
+
+  async function followArrows(target: () => HTMLElement | null | undefined) {
+    if (!byKeys()) return;
+    await tick();
+    const el = target();
+    if (el) navFocus(el);
+  }
+
+  function toggleCard() {
+    showCard = !showCard;
+    if (showCard) void followArrows(() => cardHost?.querySelector<HTMLElement>("[data-nav-layer]"));
+  }
+
+  function closeCard() {
+    showCard = false;
+    void followArrows(() => cardToggle);
+  }
+
+  function closeDay() {
+    const key = selectedKey;
+    selectedKey = null;
+    void followArrows(() => document.querySelector<HTMLElement>(`[data-day="${key}"]`));
   }
 
   // Games played on the selected day (resolved to labels, sorted by time).
@@ -460,7 +491,9 @@
   onMount(build);
 </script>
 
-<div class="mx-auto max-w-5xl px-6 py-8">
+<!-- In layers for the arrows (`spatialNav.ts`): who, the calendar, the day
+     picked in it, and the shareable card once it is open. -->
+<div data-nav-page class="mx-auto max-w-5xl px-6 py-8">
   <!-- header -->
   <div class="mb-6">
     <h1 class="font-display text-2xl font-semibold tracking-tight text-zinc-50">
@@ -473,6 +506,8 @@
 
   <!-- identity card — masked by default, reveal like a password -->
   <div
+    data-nav-layer
+    tabindex="-1"
     class="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
   >
     <div class="flex items-center gap-4">
@@ -507,7 +542,8 @@
               size={12}
               class="shrink-0"
             />{/if}
-          <span class="truncate {revealed ? '' : 'select-none'}">
+          <!-- Selectable on purpose, see `MaskedEmail`. -->
+          <span class="truncate">
             {revealed ? identity.sub : maskedSub}
           </span>
           <button
@@ -566,6 +602,8 @@
 
   <!-- activity calendar -->
   <div
+    data-nav-layer
+    tabindex="-1"
     class="relative mt-4 rounded-2xl border border-white/[0.08] bg-layer-1 p-4"
   >
     <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -643,6 +681,7 @@
                     {#if d.inRange}
                       <button
                         type="button"
+                        data-day={d.key}
                         onclick={() => toggleDay(d.key)}
                         class="block h-3 w-3 cursor-pointer rounded-[3px] p-0 {LEVEL_BG[
                           level(d.secs, stats.busiest?.secs ?? 0)
@@ -721,6 +760,8 @@
   <!-- day detail — opens when a calendar square is clicked -->
   {#if dayDetail}
     <div
+      data-nav-layer
+      tabindex="-1"
       class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1"
     >
       <div
@@ -758,7 +799,7 @@
           </div>
           <button
             type="button"
-            onclick={() => (selectedKey = null)}
+            onclick={closeDay}
             class="grid h-7 w-7 place-items-center rounded-lg border border-white/[0.08] text-zinc-400 transition hover:border-white/25"
             aria-label={$_("wrapped.close")}
           >
@@ -820,8 +861,9 @@
 
   <!-- Opens the shareable card: the same recap, as an image to show around. -->
   <button
+    bind:this={cardToggle}
     type="button"
-    onclick={() => (showCard = !showCard)}
+    onclick={toggleCard}
     class="mt-4 flex w-full items-center justify-center gap-2.5 rounded-2xl border px-4 py-3.5 transition {showCard
       ? 'border-emerald-400/40 bg-layer-2 text-zinc-300'
       : 'border-white/[0.08] bg-layer-2 text-zinc-300 hover:border-emerald-400/30'}"
@@ -837,6 +879,7 @@
   </button>
 
   {#if showCard}
+    <div bind:this={cardHost}>
     <WrappedCard
       daysByKey={daysByKey}
       dailyByGame={dailyByGame}
@@ -846,8 +889,9 @@
       sessionAvatar={identity.avatar}
       totalGames={totalGames}
       hoardedBytes={hoardedBytes}
-      onClose={() => (showCard = false)}
+      onClose={closeCard}
     />
+    </div>
   {/if}
 </div>
 

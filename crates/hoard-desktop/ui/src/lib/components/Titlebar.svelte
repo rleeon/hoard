@@ -139,11 +139,16 @@
 </script>
 
 <!-- Sits above everything, including modals: a dialog must never cover the way
-     to close the window. -->
+     to close the window. One stop for the arrows (`data-nav-layer`): going up
+     from the page used to land straight on whichever button was above, the
+     close one included, and a ring clipped by the window's top edge barely
+     showed, so the next Enter closed the window or opened the repo. -->
 <div
   data-tauri-drag-region
   data-nav-region
-  class="fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b {look.bar} pl-3 pr-1"
+  data-nav-layer
+  tabindex="-1"
+  class="titlebar fixed inset-x-0 top-0 z-[400] flex h-8 select-none items-center justify-between border-b {look.bar} pl-3 pr-1"
 >
   <span
     data-tauri-drag-region
@@ -157,6 +162,7 @@
     <button
       type="button"
       tabindex="-1"
+      aria-hidden="true"
       onclick={() => tapVersion($_("diagnostics.unlocked_toast"))}
       class="pointer-events-auto translate-y-[4px] cursor-default select-none text-[11px] {look.version} outline-none"
     >
@@ -194,7 +200,7 @@
       onclick={openRepoPage}
       aria-label={$_("github.star_label")}
       title={$_("github.star_label")}
-      class="flex h-7 w-9 items-center justify-center rounded-lg ring-1 ring-transparent transition-colors {look.star}"
+      class="titlebar-star flex h-7 w-9 items-center justify-center rounded-lg ring-1 ring-transparent transition-colors {look.star}"
     >
       <AnimIcon icon={MarioStar} on={false} kind="pop" size={14} />
     </button>
@@ -212,8 +218,10 @@
     <!-- The bell and the eye, where every window keeps its global controls: next
          to the window buttons, not floating over the page. Same pill, same
          moves they had before (the bell rings, the eye blinks). -->
+    <!-- Where Enter into the bar lands: harmless, unlike the star or close. -->
     <button
       type="button"
+      data-nav-start
       onclick={toggleNotif}
       aria-label={$_("notifications.title")}
       aria-expanded={$notifOpen}
@@ -287,7 +295,7 @@
     </button>
     <button
       type="button"
-      class="flex h-7 w-9 items-center justify-center rounded-lg {look.close} ring-1 ring-transparent transition-colors hover:bg-red-600 hover:text-white hover:ring-red-400/40"
+      class="titlebar-close flex h-7 w-9 items-center justify-center rounded-lg {look.close} ring-1 ring-transparent transition-colors hover:bg-red-600 hover:text-white hover:ring-red-400/40"
       aria-label={$_("titlebar.close")}
       onclick={() => win.close()}
     >

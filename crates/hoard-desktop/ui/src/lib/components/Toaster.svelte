@@ -35,6 +35,7 @@
 </script>
 
 <div
+  data-nav-hint-avoid
   class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2"
   role="region"
   aria-label={$_("common.notifications")}

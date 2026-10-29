@@ -6,6 +6,7 @@ import { initUiScale, initUiScaleShortcuts } from "./lib/stores/uiScale";
 import { tagOs } from "./lib/os";
 import { installHoverAnim } from "./lib/actions/hoverAnim";
 import { installSpatialNav } from "./lib/actions/spatialNav";
+import { installGamepad } from "./lib/actions/gamepad";
 import { mount } from "svelte";
 import "./app.css";
 import App from "./App.svelte";
@@ -22,6 +23,7 @@ if (!isOverlayWindow()) {
   // dead until the locale dictionary finished loading.
   initUiScaleShortcuts();
   installSpatialNav();
+  installGamepad();
 }
 
 // Wait for svelte-i18n to finish loading the active locale's dictionary

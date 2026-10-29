@@ -743,9 +743,13 @@
   }
 </script>
 
-<div class="mx-auto max-w-4xl px-8 py-8">
+<!-- In layers for the arrows (`spatialNav.ts`): the game's buttons, the list's
+     own, and the versions, each version a layer of its own inside them. With no
+     entry of its own in the sidebar, Escape at the top goes to the way back. -->
+<div data-nav-page class="mx-auto max-w-4xl px-8 py-8">
   <button
     type="button"
+    data-nav-back
     onclick={() => push("/dashboard")}
     class="mb-4 inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
   >
@@ -825,7 +829,12 @@
         </div>
       </div>
 
-      <div class="mt-4 flex flex-wrap items-center gap-2">
+      <div
+        data-nav-layer
+        data-nav-start
+        tabindex="-1"
+        class="mt-4 flex flex-wrap items-center gap-2 rounded-lg"
+      >
         <Button variant="outline" onclick={backupNow} loading={backingUp}>
           {#if !backingUp}
             <UploadCloud size={14} data-anim="bump" />
@@ -945,7 +954,7 @@
         <HistoryIcon size={14} class="text-zinc-500" />
         {$_("history.versions")}
       </h2>
-      <div class="flex items-center gap-4">
+      <div data-nav-layer tabindex="-1" class="flex items-center gap-4 rounded-lg">
         {#if selectableVersions.length > 0}
           <label class="flex items-center gap-2 text-xs text-zinc-400">
             <input
@@ -973,6 +982,8 @@
     {#if selected.size > 0}
       <!-- Bulk action bar: appears as soon as one version is ticked. -->
       <div
+        data-nav-layer
+        tabindex="-1"
         class="mb-3 flex items-center justify-between gap-3 rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-2"
       >
         <span class="text-xs text-red-200">
@@ -1012,6 +1023,7 @@
         </div>
       </Card>
     {:else}
+      <div data-nav-layer tabindex="-1" class="rounded-xl">
       {#each groups as group (group.key)}
         <section class="mb-5">
           <!-- Cabecera del día. Un juego que autoguarda cada minuto llena la
@@ -1038,7 +1050,11 @@
               {@const isDeleted = !!snap.deleted_at}
               {@const insight = snap.insight}
               <li
-                class="group rounded-2xl border border-white/[0.08] bg-layer-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.14]
+                data-card="row"
+                data-nav-frame
+                data-nav-layer
+                tabindex="-1"
+                class="group rounded-2xl border border-white/[0.08] bg-layer-2 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-[border-color,box-shadow] duration-150 hover:border-white/[0.14]
                   {isDeleted ? 'opacity-60' : ''}"
               >
                 <div class="flex items-center gap-3 px-4 py-3">
@@ -1321,6 +1337,7 @@
           </ol>
         </section>
       {/each}
+      </div>
     {/if}
   {/if}
 </div>

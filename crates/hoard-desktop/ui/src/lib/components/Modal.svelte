@@ -11,6 +11,7 @@
    */
   import type { Snippet } from "svelte";
   import { onMount } from "svelte";
+  import { byKeys, navEnterDialog, navFocus } from "../actions/spatialNav";
   import { X } from "@lucide/svelte";
   import { _ } from "svelte-i18n";
 
@@ -63,6 +64,20 @@
   function backdropClick() {
     if (dismissible) onClose();
   }
+
+  // Opened from the keys, the arrows go into the dialog at once, on its way
+  // out when it holds a dangerous button (`navEnterDialog`): left behind on the
+  // control that opened it, the next Enter pressed that again. Closed, they go
+  // back there, if it is still on the page.
+  let card = $state<HTMLDivElement | null>(null);
+  $effect(() => {
+    if (!card) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    navEnterDialog(card);
+    return () => {
+      if (byKeys() && opener?.isConnected) navFocus(opener);
+    };
+  });
 </script>
 
 {#if open}
@@ -73,6 +88,7 @@
     onclick={backdropClick}
   >
     <div
+      bind:this={card}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"

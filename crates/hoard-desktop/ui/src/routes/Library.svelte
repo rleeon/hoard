@@ -1089,9 +1089,18 @@
       .map((path, i) => ({ path, i }))
       .filter(({ path }) => !trackedByPath.has(path));
   }
+
+  /** Whose history the cover opens: with several folders the saved-games one,
+   *  as the Panel does. The others keep their own button in the green block. */
+  function mainSave(saves: TrackedSave[]): TrackedSave | undefined {
+    return saves.find((s) => s.slot === 1 || s.slot === null) ?? saves[0];
+  }
 </script>
 
-<div class="mx-auto max-w-6xl px-8 py-8">
+<!-- In layers for the arrows (`spatialNav.ts`), as on the Panel: the buttons
+     up top, the filters, and each grid of games, each game a layer of its own
+     inside them. -->
+<div data-nav-page class="mx-auto max-w-6xl px-8 py-8">
   <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
     <div class="min-w-0">
       <h1 class="font-display text-[28px] leading-tight font-semibold tracking-[-0.02em] text-zinc-50">{$_("library.title")}</h1>
@@ -1106,7 +1115,7 @@
         {/if}
       </p>
     </div>
-    <div class="flex shrink-0 items-center gap-2">
+    <div data-nav-layer tabindex="-1" class="flex shrink-0 items-center gap-2 rounded-lg">
       <Button
         variant="secondary"
         onclick={() => (scanFolderOpen = true)}
@@ -1175,7 +1184,7 @@
   <!-- Una sola rejilla: monitorizados y detectados en la misma lista, con los
        primeros arriba. Ver el bloque "Rejilla única" del <script>. -->
   {#if report || localSaves.length > 0}
-    <div class="mb-4 flex flex-wrap items-center gap-3">
+    <div data-nav-layer tabindex="-1" class="mb-4 flex flex-wrap items-center gap-3 rounded-lg">
       <div
         class="flex items-center gap-0.5 rounded-lg border border-white/[0.08] bg-zinc-900 p-0.5"
         role="group"
@@ -1273,14 +1282,21 @@
            secciones o el cubo del escaneo profundo queda pegado al siguiente
            encabezado. -->
       <div
-        class="mb-6 grid gap-3"
+        data-nav-layer
+        tabindex="-1"
+        class="mb-6 grid gap-3 rounded-xl"
         style="grid-template-columns: repeat(auto-fill, minmax({cardWidth('detected')}px, 1fr))"
       >
         {#each entries as entry (entry.slug)}
           {@const isTracked = entry.saves.length > 0}
           {@const pending = entry.game ? untrackedPaths(entry.game) : []}
           {@const expanded = expandedPaths.has(entry.slug)}
+          {@const historySave = mainSave(entry.saves)}
           <div
+            data-card
+            data-nav-frame
+            data-nav-layer
+            tabindex="-1"
             class="panel group relative flex flex-col overflow-hidden transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[var(--surface-2)] {isTracked
               ? 'border-emerald-500/25 hover:border-emerald-500/40'
               : 'hover:border-[var(--edge-strong)]'}"
@@ -1289,14 +1305,30 @@
 
             <div class="flex items-start justify-between gap-2 p-4 pb-3">
               <div class="flex min-w-0 items-center gap-3">
-                <Cover
-                  appId={entry.appId}
-                  slug={entry.slug}
-                  name={entry.name}
-                  class="h-12 w-12 shrink-0 rounded-xl"
-                  fallback="outline"
-                  initialClass="text-lg"
-                />
+                <div class="relative h-12 w-12 shrink-0">
+                  <Cover
+                    appId={entry.appId}
+                    slug={entry.slug}
+                    name={entry.name}
+                    class="h-12 w-12 rounded-xl"
+                    fallback="outline"
+                    initialClass="text-lg"
+                  />
+                  {#if historySave}
+                    <button
+                      type="button"
+                      data-size="sm"
+                      class="cover-history absolute inset-0 cursor-pointer rounded-xl"
+                      aria-label={$_("library.open_history")}
+                      title={$_("library.open_history")}
+                      onclick={() => push(`/history/${historySave.save_id}`)}
+                    >
+                      <span class="cover-history-veil" aria-hidden="true">
+                        <span class="cover-history-badge"><History size={16} /></span>
+                      </span>
+                    </button>
+                  {/if}
+                </div>
                 <div class="min-w-0">
                   <h3 class="truncate text-sm font-medium text-zinc-100" title={entry.name}>
                     {entry.name}
@@ -1701,12 +1733,18 @@
         </span>
       </div>
       <div
-        class="grid gap-2"
+        data-nav-layer
+        tabindex="-1"
+        class="grid gap-2 rounded-xl"
         style="grid-template-columns: repeat(auto-fill, minmax({cardWidth("orphans")}px, 1fr))"
       >
         {#each cloudOrphans as save (save.save_id)}
           <div
-            class="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-2 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 hover:border-white/[0.14] hover:bg-layer-hover"
+            data-card
+            data-nav-frame
+            data-nav-layer
+            tabindex="-1"
+            class="group relative flex flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-2 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-[background-color,border-color,box-shadow] duration-150 hover:border-white/[0.14] hover:bg-layer-hover"
           >
             <CardResizeHandle section="orphans" />
             <div class="flex items-start gap-2.5">
@@ -1790,12 +1828,18 @@
         {$_("library.playtime_hint")}
       </p>
       <div
-        class="grid gap-2"
+        data-nav-layer
+        tabindex="-1"
+        class="grid gap-2 rounded-xl"
         style="grid-template-columns: repeat(auto-fill, minmax({cardWidth("playtime")}px, 1fr))"
       >
         {#each playtimeGames as game (game.slug)}
           <div
-            class="group relative flex items-center justify-between gap-2 rounded-2xl border p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-all duration-150 {game.excluded
+            data-card
+            data-nav-frame
+            data-nav-layer
+            tabindex="-1"
+            class="group relative flex items-center justify-between gap-2 rounded-2xl border p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)] transition-[background-color,border-color,box-shadow] duration-150 {game.excluded
               ? 'border-white/[0.08] bg-layer-2 opacity-50'
               : 'border-amber-500/40 bg-amber-500/10 hover:border-amber-500/60'}"
           >
@@ -2027,6 +2071,7 @@
       </Button>
       <button
         type="button"
+        data-nav-danger
         onclick={confirmUntrack}
         disabled={untracking}
         class="inline-flex items-center justify-center gap-2 rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-red-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
@@ -2066,6 +2111,7 @@
       </Button>
       <button
         type="button"
+        data-nav-danger
         onclick={confirmDelete}
         disabled={deleting}
         class="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
@@ -2130,6 +2176,7 @@
       </Button>
       <button
         type="button"
+        data-nav-danger
         onclick={confirmDismiss}
         disabled={dismissBusy}
         class="inline-flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-zinc-50 transition-colors hover:bg-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"

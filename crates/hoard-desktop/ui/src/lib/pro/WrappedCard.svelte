@@ -409,7 +409,11 @@
   ]);
 </script>
 
-<section class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1">
+<section
+  data-nav-layer
+  tabindex="-1"
+  class="mt-4 overflow-hidden rounded-2xl border border-emerald-400/20 bg-layer-1"
+>
   <div
     class="flex items-center justify-between gap-3 border-b border-white/[0.08] px-4 py-3"
   >

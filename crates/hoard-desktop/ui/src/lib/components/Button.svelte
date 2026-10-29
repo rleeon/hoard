@@ -108,6 +108,7 @@
     use:glow
     class="{baseClass} {glowClass} {variantClasses[variant]} {sizeClasses[size]} {extraClass}"
     disabled={disabled || loading}
+    data-nav-danger={variant === "danger" ? "" : undefined}
     {...rest}
   >
     {#if loading}

@@ -700,21 +700,221 @@ h2 {
    percentage next to its slider) draws the ring on the box, with
    `focus-within`, and not on itself: an outline inset two pixels inside a
    bordered pill lands on top of the number. */
-.field-inner:focus-visible {
+.field-inner:focus-visible,
+.field-inner[data-nav-focus] {
   outline: none;
 }
 
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--color-accent);
+/* No ring of the engine's own: WebKitGTK paints a blue one, and a game card
+   focused by a click wore it on top of the orange selection (Oct 2026). Every
+   ring on screen is one of the rules below. */
+:where(:focus) {
+  outline: none;
+}
+
+/* The ring is the accent lifted towards white: the accent itself, 2 px wide on
+   near-black, was easy to lose. Worked out here, on the root, so a subtree that
+   pins its own accent (`keep-emerald`) still rings in the gem's colour. */
+:root {
+  --nav-ring: color-mix(in oklab, var(--color-accent) 72%, white);
+}
+
+/* A layer keeps its own corners: `inherit` would hand a game card the grid's. */
+:where(a, button, input, select, textarea, [tabindex]:not([data-nav-layer])):focus-visible {
+  outline: 2px solid var(--nav-ring);
   outline-offset: 2px;
   border-radius: inherit;
 }
 
-/* The same ring for a control drawn by its neighbours, a switch's hidden
-   checkbox: `actions/spatialNav.ts` puts it on what the eye sees. */
+/* The same ring for whatever the arrows focus, which `actions/spatialNav.ts`
+   marks itself: WebKitGTK does not always grant `:focus-visible` to a focus
+   moved from script, and a switch's hidden checkbox is drawn by its
+   neighbours, so the mark goes on what the eye sees. */
 [data-nav-focus] {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--nav-ring);
   outline-offset: 2px;
+}
+
+/* A layer taken as one stop (the Panel's bar, a section of Settings) is a lit
+   plate: faintly tinted, framed a little way out from its edge. The frame is an
+   outline, which follows the rounded edge at that distance. It used to be two
+   spread shadows, and both went wrong: the solid one lay under the faint one
+   and made a 10 px band, and a spread shadow fills the corner outside a rounded
+   edge, which is just where a title sits (CUENTA in Settings, «Ordenar por» on
+   the Panel), so the band ate its first letters (Oct 2026). The tint inside is
+   an inset shadow, laid over the layer's own background instead of replacing
+   it: the title bar went black. */
+[data-nav-layer]:not([data-card])[data-nav-focus] {
+  outline: 2px solid var(--nav-ring);
+  outline-offset: 6px;
+  box-shadow:
+    0 0 0 6px color-mix(in oklab, var(--color-accent) 7%, transparent),
+    inset 0 0 0 100vmax color-mix(in oklab, var(--color-accent) 7%, transparent);
+}
+/* Its title lights up with it, so what the stop is reads at a glance. */
+[data-nav-layer][data-nav-focus] > h2 {
+  color: var(--nav-ring);
+}
+[data-nav-layer] {
+  scroll-margin: 18px;
+}
+
+/* The game the arrows are on, raised the way a console's home screen does it:
+   bigger, lit in the accent, above its neighbours, in place of the ring. With
+   the arrows inside it, among its buttons, it stays raised without the light,
+   so the only ring is the button's. Keyed off the arrows' own mark, so a click
+   never leaves a card raised. The growth is not animated: on WebKitGTK an
+   animated transform gets a layer of its own for the length of the animation,
+   and the card flashed black going down the games (Oct 2026). */
+[data-card]:is([data-nav-focus], :has([data-nav-focus])) {
+  z-index: 10;
+  transform: scale(1.04);
+}
+/* A row in a list (a version in History) is as wide as the page: the same 4 %
+   would push it well past its neighbours' edges. */
+[data-card="row"]:is([data-nav-focus], :has([data-nav-focus])) {
+  transform: scale(1.012);
+}
+/* Ring, a soft halo just outside it, and the light it casts under the card.
+   The cast light used to reach 56 px below at 55 %, over the top of the card
+   underneath, and washed out its badges. */
+[data-card][data-nav-focus] {
+  outline: none;
+  border-color: var(--nav-ring);
+  box-shadow:
+    0 0 0 2px var(--nav-ring),
+    0 0 0 7px color-mix(in oklab, var(--color-accent) 18%, transparent),
+    0 18px 36px -18px color-mix(in oklab, var(--color-accent) 60%, transparent);
+}
+[data-nav-frame] {
+  scroll-margin: 32px;
+}
+
+/* A cover that opens its game's history. Under the pointer or the arrows a
+   rewind mark comes up over the art, so it reads as a button: before, the only
+   sign was the thin ring, and the cover looked like it did nothing. Faded, not
+   slid or grown, for WebKitGTK's sake; only the clock itself turns back. */
+.cover-history-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, oklch(0.1 0 0 / 0.6), oklch(0.1 0 0 / 0.25) 75%);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+  pointer-events: none;
+}
+.cover-history:hover .cover-history-veil,
+.cover-history:focus-visible .cover-history-veil,
+.cover-history[data-nav-focus] .cover-history-veil {
+  opacity: 1;
+}
+.cover-history-badge {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  color: oklch(0.98 0 0 / 0.95);
+  background: oklch(0.1 0 0 / 0.6);
+  box-shadow:
+    inset 0 0 0 1px oklch(1 0 0 / 0.2),
+    0 0 0 5px color-mix(in oklab, var(--color-accent) 25%, transparent),
+    0 12px 32px -8px oklch(0 0 0 / 0.75);
+}
+.cover-history:hover .cover-history-badge svg,
+.cover-history[data-nav-focus] .cover-history-badge svg {
+  animation: cover-rewind 650ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.cover-history-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(1 0 0 / 0.88);
+  text-shadow: 0 1px 6px oklch(0 0 0 / 0.85);
+}
+/* A thumbnail (the Library's) only has room for the mark. */
+.cover-history[data-size="sm"] .cover-history-badge {
+  width: 30px;
+  height: 30px;
+  box-shadow:
+    inset 0 0 0 1px oklch(1 0 0 / 0.2),
+    0 0 0 3px color-mix(in oklab, var(--color-accent) 25%, transparent);
+}
+@keyframes cover-rewind {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* A button that deletes or cannot be undone, under the arrows: ringed red, not
+   in the accent, so it never looks like the safe choice next to it. */
+[data-nav-danger][data-nav-focus] {
+  outline-color: var(--color-red-400);
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--color-red-500) 30%, transparent);
+}
+
+/* A control filling a box that clips it (the Panel's covers): ring inside. */
+[data-nav-inset]:focus-visible,
+[data-nav-inset][data-nav-focus] {
+  outline-offset: -3px;
+}
+
+/* The title bar as one stop: lit across, ringed inside, since anything drawn
+   outside it is off the window. Inside it the buttons are lit the same way,
+   ringed inside for the same reason (a shadow, which keeps their rounded
+   corners), and close shows red, as under the pointer, so it is never pressed
+   by mistake for the one next to it. */
+/* Loud on purpose: a faint tint and a thin ring on a 32 px strip went
+   unnoticed. It fills with the accent, gets a thick edge along the bottom and
+   casts light down onto the page, and its name and buttons light up. */
+.titlebar[data-nav-layer][data-nav-focus] {
+  --bar-tint: color-mix(in oklab, var(--color-accent) 42%, transparent);
+  outline: none;
+  box-shadow:
+    inset 0 -3px 0 var(--nav-ring),
+    inset 0 0 0 2px var(--nav-ring),
+    inset 0 0 0 100vmax var(--bar-tint),
+    0 6px 28px 0 color-mix(in oklab, var(--color-accent) 70%, transparent);
+}
+.titlebar[data-nav-layer][data-nav-focus] > span,
+.titlebar[data-nav-layer][data-nav-focus] button:not(.titlebar-star) {
+  color: var(--color-fg);
+}
+.titlebar:has([data-nav-focus]) {
+  box-shadow: inset 0 0 0 100vmax color-mix(in oklab, var(--color-accent) 8%, transparent);
+}
+.titlebar [data-nav-focus] {
+  outline: none;
+  /* Their own `rounded-lg`, which the `inherit` above takes away. */
+  border-radius: var(--radius-lg);
+  color: var(--color-fg);
+  background-color: color-mix(in oklab, var(--color-accent) 30%, transparent);
+  box-shadow: inset 0 0 0 2px var(--nav-ring);
+}
+.titlebar .titlebar-close[data-nav-focus] {
+  color: white;
+  background-color: var(--color-red-600);
+  box-shadow: inset 0 0 0 2px var(--color-red-300);
+}
+/* Halloween's bar is pale green, where the light ring disappears and the
+   accent barely tints. */
+html[data-halloween] .titlebar[data-nav-layer][data-nav-focus],
+html[data-halloween] .titlebar [data-nav-focus] {
+  --nav-ring: var(--color-emerald-900);
+}
+html[data-halloween] .titlebar[data-nav-layer][data-nav-focus] {
+  --bar-tint: color-mix(in oklab, var(--color-emerald-500) 70%, transparent);
+}
+html[data-halloween] .titlebar [data-nav-focus]:not(.titlebar-close),
+html[data-halloween] .titlebar[data-nav-layer][data-nav-focus] > span,
+html[data-halloween] .titlebar[data-nav-layer][data-nav-focus] button:not(.titlebar-star) {
+  color: var(--color-emerald-950);
 }
 
 /* ---- Native control legibility (webkit2gtk) ------------------------- */

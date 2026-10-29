@@ -58,6 +58,7 @@
 
   import Toaster from "./lib/components/Toaster.svelte";
   import ScaleBadge from "./lib/components/ScaleBadge.svelte";
+  import NavHint from "./lib/components/NavHint.svelte";
   import TourOverlay from "./lib/components/TourOverlay.svelte";
   import AccountDeletedModal from "./lib/components/AccountDeletedModal.svelte";
   import EyePanel from "./lib/components/EyePanel.svelte";
@@ -96,6 +97,7 @@
     toggleNotif,
     updatePromptOpen,
   } from "./lib/stores/panels";
+  import { navPopup } from "./lib/actions/spatialNav";
   import { tapVersion } from "./lib/stores/versionTap";
   import Modal from "./lib/components/Modal.svelte";
   import DeviceLimitModal from "./lib/components/DeviceLimitModal.svelte";
@@ -943,6 +945,7 @@
           <button
             type="button"
             data-tour-route={item.route}
+            data-nav-entry
             aria-label={$_(item.labelKey)}
             title={$_(item.labelKey)}
             aria-current={active ? "page" : undefined}
@@ -1212,6 +1215,7 @@
     <div
       class="pinned-panel fixed right-8 top-14 z-[61] w-72 overflow-hidden rounded-2xl border border-white/[0.08] bg-layer-3 shadow-xl"
       transition:fly={{ y: -8, duration: 180 }}
+      use:navPopup={() => eyeOpen.set(false)}
     >
       <EyePanel {now} />
     </div>
@@ -1311,6 +1315,7 @@
      on screen, since nothing gets backed up until it clears. -->
 {#if isAppRoute}
   <div
+    data-nav-hint-avoid
     class="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[min(22rem,calc(100vw-2rem))] flex-col items-stretch gap-2"
   >
     <StorageFullBanner />
@@ -1323,6 +1328,9 @@
 
 <Toaster />
 <ScaleBadge />
+{#if isAppRoute}
+  <NavHint />
+{/if}
 
 <!-- Account scheduled for deletion: a blocking screen over everything (incl. the
      tour). The account is frozen server-side, so the app behind is dead until
