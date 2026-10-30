@@ -3,7 +3,7 @@ title: "How to self-host Hoard with Docker"
 description: "Run your own Hoard server with Docker Compose and sync saves between all your devices through it: free, open source, no account with us and no quota."
 order: 0
 featured: true
-updated: 2026-10-18
+updated: 2026-10-30
 related: sync-game-saves-across-pcs, opensave-alternative, back-up-game-saves
 ---
 
@@ -97,6 +97,15 @@ docker compose up -d
 ```
 
 Stop after the first and the old container keeps running untouched: `/v1/health` goes on reporting the old version and the update looks as if it silently failed. `git pull` updates neither — what runs is the published image, not your checkout. Pin a version (`ghcr.io/rleeon/hoard:1.1`) instead of `:latest` if you would rather choose when a new one lands.
+
+**Synology (Container Manager).** Do this once: in the project's YAML, replace the `image:` line with these two. It is the same image, mirrored on Docker Hub, and your data stays where it is.
+
+```yaml
+    image: rleeon/hoard:latest
+    pull_policy: always
+```
+
+Container Manager only shows *Update available* for `:latest` images from Docker Hub, and on its own **Build** reuses the image already on disk, so deleting the container and rebuilding changes nothing. With these two lines, updating is **Stop**, then **Build**.
 
 **Unraid.** *Docker* tab → Hoard → *Apply update* when one is offered. Nothing to type.
 

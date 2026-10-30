@@ -105,6 +105,20 @@ already back up, create a `data` folder next to `config` too and change
 More devices later need no shell either: open `http://IP:12421` in a browser,
 sign in with that username and password, and use **Users** → *New token*.
 
+To keep it up to date, do this once: in the project's YAML, replace the
+`image:` line with these two. It is the same image, mirrored on Docker Hub, and
+your data stays where it is.
+
+```yaml
+    image: rleeon/hoard:latest
+    pull_policy: always
+```
+
+Container Manager only shows *Update available* for `:latest` images from
+Docker Hub, and on its own **Build** reuses the image already on disk, so
+deleting the container and rebuilding changes nothing. With these two lines,
+updating is **Stop**, then **Build**.
+
 ### Unraid
 
 Hoard ships an Unraid template, so on Unraid none of the above is needed:

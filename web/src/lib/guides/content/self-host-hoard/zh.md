@@ -3,7 +3,7 @@ title: "如何用 Docker 自托管 Hoard"
 description: "用 Docker Compose 运行你自己的 Hoard 服务端，让所有设备通过它同步存档：免费开源，无需我们的账号，也没有配额限制。"
 order: 0
 featured: true
-updated: 2026-10-18
+updated: 2026-10-30
 ---
 
 Hoard 是开源且可自托管的。你可以不使用 Hoard One，而是在自己的机器上运行同一个 `hoard-server`，让每台设备都连接到它——无需账号，容量只受你分配的磁盘大小限制。本指南用 Docker 在几分钟内把服务器跑起来。
@@ -96,6 +96,15 @@ docker compose up -d
 ```
 
 只执行第一条的话，旧容器会原封不动地继续运行：`/v1/health` 仍然报告旧版本，看起来就像更新悄悄失败了。`git pull` 两者都更新不了 —— 运行的是已发布的镜像，不是你的代码副本。如果你想自己决定什么时候用上新版本，把 `:latest` 换成固定版本（`ghcr.io/rleeon/hoard:1.1`）。
+
+**群晖（Container Manager）.** 只需做一次：在项目的 YAML 里，把 `image:` 这一行换成下面两行。这是同一个镜像，只是改从 Docker Hub 拉取，你的数据不会动。
+
+```yaml
+    image: rleeon/hoard:latest
+    pull_policy: always
+```
+
+Container Manager 只对 Docker Hub 上的 `:latest` 镜像显示 *Update available*，而且 **Build** 默认会复用磁盘上已有的镜像，所以删掉容器再重建不会有任何变化。加上这两行后，更新就是先 **Stop** 再 **Build**。
 
 **Unraid.** *Docker* 标签页 → Hoard → 出现更新时点 *Apply update*。不需要输入任何命令。
 

@@ -3,7 +3,7 @@ title: "Comment auto-héberger Hoard avec Docker (self-hosted)"
 description: "Hébergez votre serveur Hoard avec Docker Compose et synchronisez vos sauvegardes entre tous vos appareils : gratuit, open source, sans compte ni quota."
 order: 0
 featured: true
-updated: 2026-10-18
+updated: 2026-10-30
 ---
 
 Hoard est open source et auto-hébergeable. Au lieu d'utiliser Hoard One, vous pouvez exécuter le même `hoard-server` sur votre propre machine et y connecter chaque appareil — sans compte, sans quota au-delà du disque que vous lui donnez. Ce guide met un serveur en route avec Docker en quelques minutes.
@@ -96,6 +96,15 @@ docker compose up -d
 ```
 
 Si vous vous arrêtez à la première, l'ancien conteneur continue de tourner intact : `/v1/health` annonce toujours l'ancienne version et la mise à jour a l'air d'avoir échoué en silence. `git pull` ne met à jour ni l'un ni l'autre — ce qui tourne, c'est l'image publiée, pas votre copie du dépôt. Épinglez une version (`ghcr.io/rleeon/hoard:1.1`) au lieu de `:latest` si vous préférez choisir quand une nouvelle arrive.
+
+**Synology (Container Manager).** Une seule fois : dans le YAML du projet, remplacez la ligne `image:` par ces deux-ci. C'est la même image, répliquée sur Docker Hub, et vos données restent où elles sont.
+
+```yaml
+    image: rleeon/hoard:latest
+    pull_policy: always
+```
+
+Container Manager n'affiche *Update available* que pour les images `:latest` de Docker Hub, et à lui seul **Build** réutilise l'image déjà sur le disque : supprimer le conteneur et reconstruire ne change donc rien. Avec ces deux lignes, mettre à jour revient à **Stop**, puis **Build**.
 
 **Unraid.** Onglet *Docker* → Hoard → *Apply update* quand une mise à jour est proposée. Rien à taper.
 
