@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./CRr55vd_.js","./C4BeUwog.js","./BhCURQgk.js"])))=>i.map(i=>d[i]);
+import{_ as o}from"./Dp1pzeXC.js";import{bs as a}from"./DH8B-riE.js";import{i,r as n}from"./Dlm9AYwu.js";const e=a(void 0);let s=!1;function h(){s||(s=!0,o(async()=>{const{auth:t}=await import("./CRr55vd_.js").then(r=>r.i);return{auth:t}},__vite__mapDeps([0,1,2]),import.meta.url).then(({auth:t})=>{t.getSession().then(r=>e.set(r)),t.onAuthChange(r=>e.set(r))}).catch(t=>{i(t)&&n()||e.set(null)}))}export{h as a,e as s};
