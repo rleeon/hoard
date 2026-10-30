@@ -6,7 +6,7 @@
 > Steam Cloud is not a backup strategy. Hoard is.
 
 **Hoard is an open-source (AGPL-3.0) game save backup and sync system.** 
-You can Self-Host **Without Account or Telemetry**, or log in and play.
+You can Self-Host **[Without Account or Telemetry](EXPLAINING.md#what-leaves-your-machine)**, or log in and play.
 The desktop app and the CLI work the same against either. Self-hosting
 needs no Hoard account and has no quota beyond your own disk.
 
@@ -22,7 +22,7 @@ hashes every file, and lets you roll back to any earlier version or pull
 your entire library onto a fresh machine. Nothing is ever silently
 overwritten, that's the entire point.
 
-Auto-detects your games. Watches your saves. Syncs in the background.
+[Auto-detects your games](EXPLAINING.md#finding-your-games). Watches your saves. Syncs in the background.
 Rolls back when things go wrong. That's it. That's Hoard.
 
 *Necessity is the mother of invention, I created **Hoard** because I needed it.*
@@ -32,14 +32,14 @@ Rolls back when things go wrong. That's it. That's Hoard.
 | **Versioned** | Every session = new snapshot. Roll back to *any* previous version. Old saves never expire (self-hosted) or until you hit your quota (Hoard One). |
 | **Verified** | Every file SHA256-hashed on upload, re-verified on restore. Corruption caught before it overwrites your good save. |
 | **Compact** | Content-hash deduplication: 10 versions of a 2 GB save cost ~2 GB, not 20 GB. Transfers are zstd-compressed; restores byte-for-byte (SHA-256 verified). The same dedup applies on upload: a second backup of the same game moves only the files that changed, only megabytes, not the whole folder. After the 1.2.2 this gonna be upgraded. |
-| **Auto-detect** | +20,000 games from the Ludusavi manifest, found through 10 signals: Steam libraries, Epic/GOG/Xbox launchers, running processes, filesystem scan, Windows registry, Steam Cloud stubs, Proton/Wine prefixes, wrappers and +20 emulators. Zero config. |
+| **Auto-detect** | +20,000 games from the Ludusavi manifest, found through 10 signals: Steam libraries, Epic/GOG/Xbox launchers, [running processes](EXPLAINING.md#running-processes), [filesystem scan](EXPLAINING.md#filesystem-scan), Windows registry, Steam Cloud stubs, Proton/Wine prefixes, wrappers and +20 emulators. Zero config. |
 | **Emulator support** | PCSX2, RPCS3, DuckStation, PPSSPP, Dolphin, Cemu, Ryujinx, yuzu, Citra/Azahar, RetroArch, mGBA, melonDS, Project64, shadPS4, Vita3K, Eden, Suyu, Citron, Sudachi, xemu and Flycast. Pick from presets, tracked like any other game, you can manually add others, is easy. |
 | **Self-hosted storage** | The server keeps your blobs on local disk or any S3-compatible bucket — MinIO, Backblaze B2, Cloudflare R2, or an `rclone serve s3` bridge in front of OneDrive/Drive/Dropbox. |
 |**Why a cloud and not P2P?**|Your other PC is off. Your laptop is dead. Who has the save? An always-on server does, every version, ready before you sit down.|
 | **Cross-platform** | Windows · Linux · macOS · SteamOS · BazziteOS - If you can play doom you can run Hoard, not a joke. |
 
-Also includes a headless CLI — the sync engine (`hoardd`) runs as a background
-service and the terminal (`hoard`) talks to it. Perfect for servers and Steam
+Also includes a headless CLI — the sync engine (`hoardd`) runs as a [background
+service](EXPLAINING.md#credentials-and-the-local-service) and the terminal (`hoard`) talks to it. Perfect for servers and Steam
 Decks. No desktop required, just set it and forget it.
 
 ## Hoard and Hoard One
@@ -77,7 +77,7 @@ What Hoard doesn't do:
 
 - No ads.
 - No selling your data.
-- No account with us and no telemetry to us when you self-host.
+- No account with us and [no telemetry to us](EXPLAINING.md#what-leaves-your-machine) when you self-host.
 - No donations.
 - The free plan of Hoard One is not a trial and does not expire.
 
