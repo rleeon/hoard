@@ -14,14 +14,16 @@
 //! the client reconnects and, thanks to the journal's cursor, recovers what it
 //! missed with no gaps.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
 use hoard_agent::session::LendError;
 use hoard_core::ipc::{
-    ClientFrame, DaemonStatus, Hello, IpcError, JournalEntry, Payload, Rejected, Reply, Request,
-    ScanNote, ServerFrame, Welcome, CAP_DETECTION, PROTOCOL_VERSION,
+    ClientFrame, DaemonStatus, Hello, IpcError, JournalEntry, NotificationSwitches, Payload,
+    Rejected, Reply, Request, ScanNote, ServerFrame, Welcome, CAP_DETECTION, CAP_NOTICES,
+    PROTOCOL_VERSION,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{broadcast, mpsc};
@@ -29,6 +31,7 @@ use tokio::sync::{broadcast, mpsc};
 use crate::codec::{read_frame, write_frame};
 use crate::engine::{self, Engine};
 use crate::journal::EventLog;
+use crate::notify::{Claim, Delivery, Notifier, Way};
 use crate::transport::Listener;
 
 /// Outbound frames queued per connection. A client that does not read gets cut off
@@ -68,6 +71,8 @@ pub struct Daemon {
     pub updater: crate::updater::Updater,
     /// Detection, automatic mode and the catalogue (Slice 8).
     pub detect: Arc<crate::detect::Detect>,
+    /// Every notification, and the switches that govern them.
+    pub notifier: Arc<Notifier>,
 }
 
 impl Daemon {
@@ -84,7 +89,13 @@ impl Daemon {
             said: std::sync::OnceLock::new(),
             updater: crate::updater::Updater::new(),
             detect: Arc::new(crate::detect::Detect::new()),
+            notifier: Arc::new(Notifier::for_this_platform()),
         }
+    }
+
+    pub fn with_notifier(mut self, notifier: Arc<Notifier>) -> Self {
+        self.notifier = notifier;
+        self
     }
 
     /// Espera la orden de apagado.
@@ -118,7 +129,7 @@ impl Daemon {
             pid: self.pid,
             epoch: self.epoch.clone(),
             cursor: self.log.cursor(),
-            caps: vec![CAP_DETECTION.to_string()],
+            caps: vec![CAP_DETECTION.to_string(), CAP_NOTICES.to_string()],
         }
     }
 
@@ -137,9 +148,8 @@ impl Daemon {
             epoch: self.epoch.clone(),
             uptime_secs: self.started.elapsed().as_secs(),
             cursor: self.log.cursor(),
-            // Que el frontend sepa si avisamos nosotros. Es una constante de
-            // este build (hay backend de notificaciones para esta plataforma o
-            // no), no algo que cambie mientras corremos.
+            // Una constante de este build (hay backend de notificaciones para esta
+            // plataforma o no), no algo que cambie mientras corremos.
             notifications: crate::notify::SUPPORTED,
             engine: engine_status,
             slots,
@@ -457,16 +467,29 @@ impl Daemon {
                 self.detect.automatic_changed();
                 Reply::Ok(Payload::Ack)
             }
+            Request::NotificationSwitches => {
+                Reply::Ok(Payload::NotificationSwitches(self.notifier.switches()))
+            }
+            Request::SetNotificationSwitch { switch, enabled } => {
+                match self.notifier.set_switch(switch, enabled).await {
+                    Ok(switches) => Reply::Ok(Payload::NotificationSwitches(switches)),
+                    Err(err) => Reply::Error(IpcError::Internal {
+                        message: format!("{err:#}"),
+                    }),
+                }
+            }
             // A request from a client newer than this service. It is answered, not
             // hung up on: the client has just updated and we are seconds from being
             // relieved.
             Request::Unknown => Reply::Error(IpcError::Unsupported {
                 op: "an operation this version of the Hoard service doesn't know".to_string(),
             }),
-            // The two that never get here.
-            Request::Subscribe { .. } | Request::Shutdown => Reply::Error(IpcError::Internal {
-                message: "handled by the connection loop".to_string(),
-            }),
+            // The three that never get here.
+            Request::Subscribe { .. } | Request::Shutdown | Request::ClaimNotices { .. } => {
+                Reply::Error(IpcError::Internal {
+                    message: "handled by the connection loop".to_string(),
+                })
+            }
         }
     }
 
@@ -651,6 +674,12 @@ where
     // Signing up to the push: kept for when the `Subscribe` arrives. `None` until
     // then, so a client that only sends commands pays nothing for it.
     let mut pusher: Option<tokio::task::JoinHandle<()>> = None;
+    // Whether this client paints notices at all, and whether it is holding them
+    // right now. The flag is shared with the push task, which outlives a re-subscribe;
+    // the claim lives here so that a closed connection gives them back.
+    let paints = hello.caps.iter().any(|cap| cap == CAP_NOTICES);
+    let claimed = Arc::new(AtomicBool::new(false));
+    let mut claim: Option<Claim> = None;
 
     while let Some(frame) = read_frame::<_, ClientFrame>(reader).await? {
         let ClientFrame::Request { id, request } = frame else {
@@ -693,6 +722,7 @@ where
                 if let Some(old) = pusher.replace(tokio::spawn(push_loop(
                     rx,
                     daemon.detect.subscribe(),
+                    notices_for(paints, &daemon.notifier, claimed.clone()),
                     out.clone(),
                     cursor,
                     daemon.log.clone(),
@@ -700,6 +730,24 @@ where
                     // Re-subscribing replaces the previous subscription; two pushers
                     // per connection would double every event.
                     old.abort();
+                }
+            }
+            Request::ClaimNotices { active } => {
+                // A claim with nothing to carry the notices would swallow them.
+                let reply = if active && (!paints || pusher.is_none()) {
+                    Reply::Error(IpcError::Internal {
+                        message: "claiming notices needs the cap and a subscription".to_string(),
+                    })
+                } else {
+                    if active != claim.is_some() {
+                        tracing::info!(client = %hello.client, active, "hoardd: notices claimed");
+                    }
+                    claim = active.then(|| claim.take().unwrap_or_else(|| daemon.notifier.claim()));
+                    claimed.store(active, Ordering::Relaxed);
+                    Reply::Ok(Payload::Ack)
+                };
+                if out.send(ServerFrame::Reply { id, reply }).await.is_err() {
+                    break;
                 }
             }
             other => {
@@ -717,6 +765,54 @@ where
     Ok(())
 }
 
+/// What a connection hears of the notifications.
+struct NoticeFeed {
+    notices: broadcast::Receiver<Delivery>,
+    switches: broadcast::Receiver<NotificationSwitches>,
+    claimed: Arc<AtomicBool>,
+}
+
+/// `None` for a client that does not paint them: it pays nothing, and an older one
+/// never meets a frame it would have to skip.
+fn notices_for(paints: bool, notifier: &Notifier, claimed: Arc<AtomicBool>) -> Option<NoticeFeed> {
+    paints.then(|| NoticeFeed {
+        notices: notifier.subscribe_notices(),
+        switches: notifier.subscribe_switches(),
+        claimed,
+    })
+}
+
+impl NoticeFeed {
+    /// The next frame for this connection. A delivery for somebody else is skipped
+    /// here, which is what keeps it to one screen. Missing one to a lag is fine: it
+    /// takes dozens in a burst, and the journal still has the event.
+    async fn next(&mut self) -> Option<ServerFrame> {
+        loop {
+            tokio::select! {
+                delivery = self.notices.recv() => match delivery {
+                    Ok(delivery) => {
+                        let mine = match delivery.to {
+                            Way::Claimant => self.claimed.load(Ordering::Relaxed),
+                            Way::App => !self.claimed.load(Ordering::Relaxed),
+                            Way::System => false,
+                        };
+                        if mine {
+                            return Some(ServerFrame::Notice(delivery.note));
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => return None,
+                },
+                switches = self.switches.recv() => match switches {
+                    Ok(switches) => return Some(ServerFrame::NotificationSwitches(switches)),
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(broadcast::error::RecvError::Closed) => return None,
+                },
+            }
+        }
+    }
+}
+
 /// Do we speak the same protocol? Today it is strict equality. When there is a
 /// version 2, this is the place to decide which old versions are still served: the
 /// handshake exists precisely so that can be done without the client seeing a parse
@@ -731,6 +827,7 @@ fn accepts(hello: &Hello) -> bool {
 async fn push_loop(
     mut rx: broadcast::Receiver<JournalEntry>,
     mut notes: broadcast::Receiver<ScanNote>,
+    mut feed: Option<NoticeFeed>,
     out: mpsc::Sender<ServerFrame>,
     mut cursor: u64,
     log: Arc<EventLog>,
@@ -738,6 +835,14 @@ async fn push_loop(
     let mut notes_open = true;
     loop {
         tokio::select! {
+            frame = async { feed.as_mut()?.next().await }, if feed.is_some() => match frame {
+                Some(frame) => {
+                    if out.send(frame).await.is_err() {
+                        return;
+                    }
+                }
+                None => feed = None,
+            },
             entry = rx.recv() => match entry {
                 Ok(entry) => {
                     if entry.seq <= cursor {

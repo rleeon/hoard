@@ -28,8 +28,8 @@
 //! - [`codec`]: frames over the socket (the format lives in `hoard_core::ipc`).
 //! - [`journal`]: a journal with a cursor plus push; it stores transitions and
 //!   actions, not repeated idles.
-//! - [`notify`]: the OS's native notifications (Linux today; Windows and macOS
-//!   behind the same interface).
+//! - [`notify`]: every notification and their switches (Linux and Windows reach the
+//!   OS themselves; macOS goes through the app).
 //! - [`engine`]: starting, supervising and pumping the engine's events.
 //! - [`server`]: handshake and dispatch.
 //! - [`client`]: the client plus "spawn if absent" (what the desktop and the CLI
@@ -150,7 +150,7 @@ pub async fn run(options: Options) -> Result<Outcome> {
     let daemon = Arc::new(Daemon::new(log.clone(), engine.clone()));
     // The service is what tells the user, not the window (D.14.1): with the app
     // closed there is nobody else who can.
-    let notifier = Arc::new(notify::Notifier::for_this_platform());
+    let notifier = daemon.notifier.clone();
 
     // The event channel belongs to the daemon, not to the engine: it is created once
     // and every engine start gets a clone of the sender. That way a restarted engine

@@ -130,6 +130,36 @@ struct Strings {
     update_ready_title: &'static str,
     /// `{version}`
     update_ready_body: &'static str,
+    quota_full_title: &'static str,
+    /// `{name}`
+    quota_full_body: &'static str,
+    trimmed_title: &'static str,
+    /// `{name}`, `{count}`
+    trimmed_body: &'static str,
+    unreadable_title: &'static str,
+    /// `{name}`, `{count}`
+    unreadable_body: &'static str,
+    /// Not one file could be read, so there is no copy at all.
+    unreadable_none_title: &'static str,
+    /// `{name}`, `{count}`
+    unreadable_none_body: &'static str,
+    blocked_title: &'static str,
+    /// `{name}`, `{count}`
+    blocked_body: &'static str,
+    wrong_folder_title: &'static str,
+    /// `{name}`
+    wrong_folder_body: &'static str,
+    conflicts_title: &'static str,
+    /// `{name}`, `{count}`
+    conflicts_body: &'static str,
+    game_started_title: &'static str,
+    game_stopped_title: &'static str,
+    /// What a failed backup says in place of the engine's own text.
+    error_unreachable: &'static str,
+    error_timeout: &'static str,
+    error_signed_out: &'static str,
+    error_disk_full: &'static str,
+    error_permission: &'static str,
 }
 
 const EN: Strings = Strings {
@@ -152,6 +182,27 @@ const EN: Strings = Strings {
     stuck_body: "{name} — failures in a row: {count}. Hoard keeps retrying, less and less often.",
     update_ready_title: "An update is waiting",
     update_ready_body: "Hoard {version} is downloaded. Open Hoard to install it — your system will ask for permission.",
+    quota_full_title: "Your storage is full",
+    quota_full_body: "{name} wasn't uploaded. Free some space to keep backing up.",
+    trimmed_title: "Partial backup",
+    trimmed_body: "{name}: {count} older files didn't fit in your plan and were left out.",
+    unreadable_title: "Some files couldn't be read",
+    unreadable_body: "{name}: {count} files were left out of this backup.",
+    unreadable_none_title: "Nothing was backed up",
+    unreadable_none_body: "{name}: Hoard couldn't read any of its {count} files.",
+    blocked_title: "A backup needs your attention",
+    blocked_body: "{name}: Hoard stopped retrying after {count} conflicts. Open Hoard to fix it.",
+    wrong_folder_title: "Nothing to back up",
+    wrong_folder_body: "{name}: the save folder is empty and may be the wrong one.",
+    conflicts_title: "Conflicting files kept aside",
+    conflicts_body: "{name}: {count} local files were moved aside before applying the cloud version.",
+    game_started_title: "Game started",
+    game_stopped_title: "Game closed",
+    error_unreachable: "can't reach the server",
+    error_timeout: "the server took too long to answer",
+    error_signed_out: "signed out, open Hoard to sign in again",
+    error_disk_full: "the disk is full",
+    error_permission: "a file could not be read (permission denied)",
 };
 
 const ES: Strings = Strings {
@@ -175,6 +226,27 @@ const ES: Strings = Strings {
         "{name} — fallos seguidos: {count}. Hoard sigue reintentando, cada vez con menos frecuencia.",
     update_ready_title: "Hay una actualización esperando",
     update_ready_body: "Hoard {version} está descargada. Abre Hoard para instalarla; tu sistema te pedirá permiso.",
+    quota_full_title: "Tu almacenamiento está lleno",
+    quota_full_body: "{name} no se ha subido. Libera espacio para seguir haciendo copias.",
+    trimmed_title: "Copia parcial",
+    trimmed_body: "{name}: {count} archivos antiguos no caben en tu plan y se han quedado fuera.",
+    unreadable_title: "Algunos archivos no se pudieron leer",
+    unreadable_body: "{name}: {count} archivos se han quedado fuera de esta copia.",
+    unreadable_none_title: "No se ha copiado nada",
+    unreadable_none_body: "{name}: Hoard no ha podido leer ninguno de sus {count} archivos.",
+    blocked_title: "Una copia necesita tu atención",
+    blocked_body: "{name}: Hoard dejó de reintentar tras {count} conflictos. Abre Hoard para resolverlo.",
+    wrong_folder_title: "Nada que copiar",
+    wrong_folder_body: "{name}: la carpeta de partidas está vacía y puede que no sea la correcta.",
+    conflicts_title: "Archivos en conflicto guardados aparte",
+    conflicts_body: "{name}: {count} archivos locales se apartaron antes de aplicar la versión de la nube.",
+    game_started_title: "Juego iniciado",
+    game_stopped_title: "Juego cerrado",
+    error_unreachable: "no se puede conectar con el servidor",
+    error_timeout: "el servidor tardó demasiado en responder",
+    error_signed_out: "sesión cerrada, abre Hoard para volver a entrar",
+    error_disk_full: "el disco está lleno",
+    error_permission: "no se pudo leer un archivo (permiso denegado)",
 };
 
 const DE: Strings = Strings {
@@ -197,6 +269,27 @@ const DE: Strings = Strings {
     stuck_body: "{name} — Fehler in Folge: {count}. Hoard versucht es weiter, immer seltener.",
     update_ready_title: "Ein Update wartet",
     update_ready_body: "Hoard {version} ist heruntergeladen. Öffne Hoard, um es zu installieren — dein System fragt nach der Berechtigung.",
+    quota_full_title: "Dein Speicher ist voll",
+    quota_full_body: "{name} wurde nicht hochgeladen. Gib Speicher frei, um weiter zu sichern.",
+    trimmed_title: "Teilweise Sicherung",
+    trimmed_body: "{name}: {count} ältere Dateien passen nicht in deinen Tarif und wurden ausgelassen.",
+    unreadable_title: "Einige Dateien konnten nicht gelesen werden",
+    unreadable_body: "{name}: {count} Dateien fehlen in dieser Sicherung.",
+    unreadable_none_title: "Nichts wurde gesichert",
+    unreadable_none_body: "{name}: Hoard konnte keine der {count} Dateien lesen.",
+    blocked_title: "Eine Sicherung braucht deine Aufmerksamkeit",
+    blocked_body: "{name}: Hoard hat nach {count} Konflikten aufgehört, es weiter zu versuchen. Öffne Hoard, um das zu beheben.",
+    wrong_folder_title: "Nichts zu sichern",
+    wrong_folder_body: "{name}: Der Spielstandordner ist leer und vielleicht der falsche.",
+    conflicts_title: "Konfliktdateien beiseitegelegt",
+    conflicts_body: "{name}: {count} lokale Dateien wurden vor dem Anwenden der Cloud-Version beiseitegelegt.",
+    game_started_title: "Spiel gestartet",
+    game_stopped_title: "Spiel beendet",
+    error_unreachable: "Server nicht erreichbar",
+    error_timeout: "der Server hat zu lange gebraucht",
+    error_signed_out: "abgemeldet, öffne Hoard, um dich wieder anzumelden",
+    error_disk_full: "die Festplatte ist voll",
+    error_permission: "eine Datei konnte nicht gelesen werden (Zugriff verweigert)",
 };
 
 const FR: Strings = Strings {
@@ -219,6 +312,27 @@ const FR: Strings = Strings {
     stuck_body: "{name} — échecs consécutifs : {count}. Hoard réessaie, de moins en moins souvent.",
     update_ready_title: "Une mise à jour attend",
     update_ready_body: "Hoard {version} est téléchargée. Ouvre Hoard pour l'installer — ton système demandera l'autorisation.",
+    quota_full_title: "Votre stockage est plein",
+    quota_full_body: "{name} n'a pas été envoyé. Libérez de l'espace pour continuer les sauvegardes.",
+    trimmed_title: "Sauvegarde partielle",
+    trimmed_body: "{name} : {count} fichiers anciens ne tiennent pas dans votre offre et ont été laissés de côté.",
+    unreadable_title: "Certains fichiers n'ont pas pu être lus",
+    unreadable_body: "{name} : {count} fichiers manquent dans cette sauvegarde.",
+    unreadable_none_title: "Rien n'a été sauvegardé",
+    unreadable_none_body: "{name} : Hoard n'a pu lire aucun de ses {count} fichiers.",
+    blocked_title: "Une sauvegarde demande votre attention",
+    blocked_body: "{name} : Hoard a cessé de réessayer après {count} conflits. Ouvrez Hoard pour le résoudre.",
+    wrong_folder_title: "Rien à sauvegarder",
+    wrong_folder_body: "{name} : le dossier de sauvegarde est vide et n'est peut-être pas le bon.",
+    conflicts_title: "Fichiers en conflit mis de côté",
+    conflicts_body: "{name} : {count} fichiers locaux ont été mis de côté avant d'appliquer la version du cloud.",
+    game_started_title: "Jeu lancé",
+    game_stopped_title: "Jeu fermé",
+    error_unreachable: "impossible de joindre le serveur",
+    error_timeout: "le serveur a mis trop de temps à répondre",
+    error_signed_out: "session fermée, ouvrez Hoard pour vous reconnecter",
+    error_disk_full: "le disque est plein",
+    error_permission: "un fichier n'a pas pu être lu (permission refusée)",
 };
 
 const IT: Strings = Strings {
@@ -241,6 +355,27 @@ const IT: Strings = Strings {
     stuck_body: "{name} — errori di fila: {count}. Hoard continua a riprovare, sempre più di rado.",
     update_ready_title: "C'è un aggiornamento in attesa",
     update_ready_body: "Hoard {version} è scaricato. Apri Hoard per installarlo: il sistema ti chiederà il permesso.",
+    quota_full_title: "Il tuo spazio è pieno",
+    quota_full_body: "{name} non è stato caricato. Libera spazio per continuare con i backup.",
+    trimmed_title: "Backup parziale",
+    trimmed_body: "{name}: {count} file più vecchi non rientrano nel tuo piano e sono stati esclusi.",
+    unreadable_title: "Alcuni file non si possono leggere",
+    unreadable_body: "{name}: {count} file sono rimasti fuori da questo backup.",
+    unreadable_none_title: "Non è stato salvato nulla",
+    unreadable_none_body: "{name}: Hoard non è riuscito a leggere nessuno dei suoi {count} file.",
+    blocked_title: "Un backup richiede la tua attenzione",
+    blocked_body: "{name}: Hoard ha smesso di riprovare dopo {count} conflitti. Apri Hoard per risolverlo.",
+    wrong_folder_title: "Niente da salvare",
+    wrong_folder_body: "{name}: la cartella dei salvataggi è vuota e forse non è quella giusta.",
+    conflicts_title: "File in conflitto messi da parte",
+    conflicts_body: "{name}: {count} file locali sono stati messi da parte prima di applicare la versione del cloud.",
+    game_started_title: "Gioco avviato",
+    game_stopped_title: "Gioco chiuso",
+    error_unreachable: "impossibile raggiungere il server",
+    error_timeout: "il server ha impiegato troppo a rispondere",
+    error_signed_out: "sessione chiusa, apri Hoard per accedere di nuovo",
+    error_disk_full: "il disco è pieno",
+    error_permission: "impossibile leggere un file (permesso negato)",
 };
 
 const JA: Strings = Strings {
@@ -263,6 +398,27 @@ const JA: Strings = Strings {
     stuck_body: "{name} — 連続失敗: {count} 回。Hoard は間隔を空けながら再試行を続けます。",
     update_ready_title: "アップデートが待機中です",
     update_ready_body: "Hoard {version} をダウンロード済みです。Hoard を開いてインストールしてください。システムが許可を求めます。",
+    quota_full_title: "ストレージがいっぱいです",
+    quota_full_body: "{name} はアップロードされませんでした。バックアップを続けるには空き容量を確保してください。",
+    trimmed_title: "一部のみバックアップしました",
+    trimmed_body: "{name}: 古いファイル {count} 個はプランの上限に収まらず、除外されました。",
+    unreadable_title: "読み取れないファイルがあります",
+    unreadable_body: "{name}: {count} 個のファイルはこのバックアップに含まれていません。",
+    unreadable_none_title: "バックアップされませんでした",
+    unreadable_none_body: "{name}: {count} 個のファイルをどれも読み取れませんでした。",
+    blocked_title: "バックアップの確認が必要です",
+    blocked_body: "{name}: 競合が {count} 回続いたため再試行を停止しました。Hoard を開いて解決してください。",
+    wrong_folder_title: "バックアップするものがありません",
+    wrong_folder_body: "{name}: セーブフォルダーが空です。フォルダーが間違っている可能性があります。",
+    conflicts_title: "競合したファイルを退避しました",
+    conflicts_body: "{name}: クラウドのバージョンを適用する前に、ローカルのファイル {count} 個を退避しました。",
+    game_started_title: "ゲームを開始しました",
+    game_stopped_title: "ゲームを終了しました",
+    error_unreachable: "サーバーに接続できません",
+    error_timeout: "サーバーの応答に時間がかかりすぎました",
+    error_signed_out: "サインアウトしました。Hoard を開いて再度サインインしてください",
+    error_disk_full: "ディスクがいっぱいです",
+    error_permission: "ファイルを読み取れませんでした（アクセス拒否）",
 };
 
 const PT: Strings = Strings {
@@ -286,6 +442,27 @@ const PT: Strings = Strings {
         "{name} — falhas seguidas: {count}. O Hoard continua a tentar, cada vez menos vezes.",
     update_ready_title: "Há uma atualização à espera",
     update_ready_body: "O Hoard {version} está descarregado. Abre o Hoard para o instalar — o teu sistema vai pedir permissão.",
+    quota_full_title: "O teu armazenamento está cheio",
+    quota_full_body: "{name} não foi enviado. Liberta espaço para continuares a fazer cópias.",
+    trimmed_title: "Cópia parcial",
+    trimmed_body: "{name}: {count} ficheiros antigos não cabem no teu plano e ficaram de fora.",
+    unreadable_title: "Alguns ficheiros não puderam ser lidos",
+    unreadable_body: "{name}: {count} ficheiros ficaram de fora desta cópia.",
+    unreadable_none_title: "Não foi copiado nada",
+    unreadable_none_body: "{name}: o Hoard não conseguiu ler nenhum dos seus {count} ficheiros.",
+    blocked_title: "Uma cópia precisa da tua atenção",
+    blocked_body: "{name}: o Hoard deixou de tentar após {count} conflitos. Abre o Hoard para resolver.",
+    wrong_folder_title: "Nada para copiar",
+    wrong_folder_body: "{name}: a pasta de saves está vazia e pode não ser a correta.",
+    conflicts_title: "Ficheiros em conflito postos de lado",
+    conflicts_body: "{name}: {count} ficheiros locais foram postos de lado antes de aplicar a versão da nuvem.",
+    game_started_title: "Jogo iniciado",
+    game_stopped_title: "Jogo fechado",
+    error_unreachable: "não é possível contactar o servidor",
+    error_timeout: "o servidor demorou demasiado a responder",
+    error_signed_out: "sessão terminada, abre o Hoard para voltares a entrar",
+    error_disk_full: "o disco está cheio",
+    error_permission: "não foi possível ler um ficheiro (permissão recusada)",
 };
 
 const ZH: Strings = Strings {
@@ -308,6 +485,27 @@ const ZH: Strings = Strings {
     stuck_body: "{name} — 连续失败：{count} 次。Hoard 会继续重试，频率逐渐降低。",
     update_ready_title: "有一个更新在等待",
     update_ready_body: "Hoard {version} 已下载。打开 Hoard 安装它——系统会请求权限。",
+    quota_full_title: "你的存储空间已满",
+    quota_full_body: "{name} 未上传。请释放空间以继续备份。",
+    trimmed_title: "部分备份",
+    trimmed_body: "{name}：{count} 个较旧的文件超出套餐上限，未包含在内。",
+    unreadable_title: "部分文件无法读取",
+    unreadable_body: "{name}：{count} 个文件未包含在此次备份中。",
+    unreadable_none_title: "未备份任何内容",
+    unreadable_none_body: "{name}：{count} 个文件都无法读取。",
+    blocked_title: "有备份需要你处理",
+    blocked_body: "{name}：连续 {count} 次冲突后，Hoard 已停止重试。请打开 Hoard 解决。",
+    wrong_folder_title: "没有可备份的内容",
+    wrong_folder_body: "{name}：存档文件夹为空，可能选错了文件夹。",
+    conflicts_title: "冲突文件已另存",
+    conflicts_body: "{name}：应用云端版本前，已将 {count} 个本地文件移到一旁。",
+    game_started_title: "游戏已启动",
+    game_stopped_title: "游戏已关闭",
+    error_unreachable: "无法连接服务器",
+    error_timeout: "服务器响应时间过长",
+    error_signed_out: "已退出登录，请打开 Hoard 重新登录",
+    error_disk_full: "磁盘已满",
+    error_permission: "无法读取文件（权限被拒绝）",
 };
 
 /// Escribe el aviso.
@@ -342,7 +540,10 @@ pub fn render(kind: &Kind, name: &str, lang: Lang) -> Note {
             } else {
                 s.failed_title.to_string()
             },
-            body: fill(s.failed_body, &[("name", name), ("error", error)]),
+            body: fill(
+                s.failed_body,
+                &[("name", name), ("error", &plain_error(error, &s))],
+            ),
         },
         // Three different things answer 413 and only one of them is a plan, so
         // the sentence follows `kind`, the same split the window makes. It used
@@ -406,12 +607,96 @@ pub fn render(kind: &Kind, name: &str, lang: Lang) -> Note {
                 &[("name", name), ("count", &failures.to_string())],
             ),
         },
+        Kind::QuotaFull => Note {
+            title: s.quota_full_title.to_string(),
+            body: fill(s.quota_full_body, &[("name", name)]),
+        },
+        Kind::BackupTrimmed { omitted } => Note {
+            title: s.trimmed_title.to_string(),
+            body: fill(
+                s.trimmed_body,
+                &[("name", name), ("count", &omitted.to_string())],
+            ),
+        },
+        Kind::FilesUnreadable { count, uploaded } => {
+            let (title, body) = if *uploaded {
+                (s.unreadable_title, s.unreadable_body)
+            } else {
+                (s.unreadable_none_title, s.unreadable_none_body)
+            };
+            Note {
+                title: title.to_string(),
+                body: fill(body, &[("name", name), ("count", &count.to_string())]),
+            }
+        }
+        Kind::NeedsAttention { conflicts } => Note {
+            title: s.blocked_title.to_string(),
+            body: fill(
+                s.blocked_body,
+                &[("name", name), ("count", &conflicts.to_string())],
+            ),
+        },
+        Kind::WrongFolder => Note {
+            title: s.wrong_folder_title.to_string(),
+            body: fill(s.wrong_folder_body, &[("name", name)]),
+        },
+        Kind::ConflictsKept { count } => Note {
+            title: s.conflicts_title.to_string(),
+            body: fill(
+                s.conflicts_body,
+                &[("name", name), ("count", &count.to_string())],
+            ),
+        },
+        Kind::GameStarted => Note {
+            title: s.game_started_title.to_string(),
+            body: name.to_string(),
+        },
+        Kind::GameStopped => Note {
+            title: s.game_stopped_title.to_string(),
+            body: name.to_string(),
+        },
         // No lleva `name`: no habla de una partida, habla de la app.
         Kind::UpdateReady { version } => Note {
             title: s.update_ready_title.to_string(),
             body: fill(s.update_ready_body, &[("version", version)]),
         },
     }
+}
+
+/// The longest engine error a notification repeats as it is.
+const ERROR_CHARS: usize = 90;
+
+/// The engine's errors are written for logs: a URL, a whole context chain. A
+/// notification gets the gist, and the full text stays in the service's log.
+///
+/// The `os error` codes are there because Windows words the same failure in the
+/// language of the system, and its code for a full disk is not Linux's.
+fn plain_error(error: &str, s: &Strings) -> String {
+    let e = error.to_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|needle| e.contains(needle));
+    let gist = if has(&[
+        "error sending request",
+        "connection refused",
+        "dns error",
+        // A service that has not reached the server once since it started.
+        "/v1/health probe",
+    ]) {
+        s.error_unreachable
+    } else if has(&["timed out", "timeout"]) {
+        s.error_timeout
+    } else if has(&[" 401", "unauthorized"]) {
+        s.error_signed_out
+    } else if has(&["no space left", "(os error 28)", "(os error 112)"]) {
+        s.error_disk_full
+    } else if has(&["permission denied", "(os error 13)", "(os error 5)"]) {
+        s.error_permission
+    } else if error.chars().count() <= ERROR_CHARS {
+        return error.to_string();
+    } else {
+        let kept: String = error.chars().take(ERROR_CHARS - 3).collect();
+        return format!("{kept}...");
+    };
+    gist.to_string()
 }
 
 /// Sustituye `{clave}` por su valor. Deliberadamente tonto: son plantillas
@@ -496,7 +781,18 @@ mod tests {
             }
             for hole in ["{name}", "{count}"] {
                 assert!(s.stuck_body.contains(hole), "{lang:?} stuck_body: {hole}");
+                for body in [
+                    s.trimmed_body,
+                    s.unreadable_body,
+                    s.unreadable_none_body,
+                    s.blocked_body,
+                    s.conflicts_body,
+                ] {
+                    assert!(body.contains(hole), "{lang:?} {body}: {hole}");
+                }
             }
+            assert!(s.quota_full_body.contains("{name}"));
+            assert!(s.wrong_folder_body.contains("{name}"));
         }
     }
 
@@ -546,6 +842,21 @@ mod tests {
                 actual_bytes: 0,
             },
             Kind::RestoreStuck { failures: 3 },
+            Kind::QuotaFull,
+            Kind::BackupTrimmed { omitted: 2 },
+            Kind::FilesUnreadable {
+                count: 2,
+                uploaded: true,
+            },
+            Kind::FilesUnreadable {
+                count: 2,
+                uploaded: false,
+            },
+            Kind::NeedsAttention { conflicts: 5 },
+            Kind::WrongFolder,
+            Kind::ConflictsKept { count: 2 },
+            Kind::GameStarted,
+            Kind::GameStopped,
         ];
         for lang in ALL {
             for kind in &kinds {
@@ -556,6 +867,53 @@ mod tests {
                 assert!(note.body.contains("Factorio"), "{lang:?} {kind:?}");
             }
         }
+    }
+
+    /// Nobody can act on a URL and a context chain in a toast on a handheld.
+    #[test]
+    fn a_failure_says_the_gist_not_the_log_line() {
+        let refused = "cas init: error sending request for url \
+                       (http://10.0.2.2:12431/v1/saves/7a4a6dbb/cas/init): client error (Connect)";
+        for lang in ALL {
+            let s = lang.strings();
+            let note = render(
+                &Kind::BackupFailed {
+                    error: refused.into(),
+                    retrying: false,
+                },
+                "Factorio",
+                lang,
+            );
+            assert!(!note.body.contains("http"), "{lang:?}: {}", note.body);
+            assert!(note.body.contains(s.error_unreachable), "{}", note.body);
+        }
+        let s = Lang::En.strings();
+        for (error, gist) in [
+            ("the /v1/health probe hasn't succeeded", s.error_unreachable),
+            ("operation timed out", s.error_timeout),
+            ("server said 401", s.error_signed_out),
+            (
+                "write: No space left on device (os error 28)",
+                s.error_disk_full,
+            ),
+            ("write failed (os error 112)", s.error_disk_full),
+            ("open: Permission denied (os error 13)", s.error_permission),
+            ("open failed (os error 5)", s.error_permission),
+        ] {
+            assert_eq!(plain_error(error, &s), gist, "{error}");
+        }
+        // Another code that only starts the same is not the same failure.
+        assert_eq!(plain_error("(os error 53)", &s), "(os error 53)");
+    }
+
+    /// Cut by characters: a byte cut through a multi-byte letter would panic.
+    #[test]
+    fn a_long_error_is_cut_and_a_short_one_kept() {
+        let s = Lang::En.strings();
+        assert_eq!(plain_error("boom", &s), "boom");
+        let cut = plain_error(&"é".repeat(200), &s);
+        assert_eq!(cut.chars().count(), ERROR_CHARS);
+        assert!(cut.ends_with("..."));
     }
 
     /// A 413 from the user's own server must not mention a plan and must not

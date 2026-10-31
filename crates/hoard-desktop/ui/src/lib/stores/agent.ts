@@ -26,12 +26,11 @@
  *
  *  1. **Tray colouring**, we collapse all per-save states into a single
  *     "global state" and push it down to Rust so the tray icon recolours.
- *  2. **Desktop notifications**, a fallback now, not the source. Since ADR
- *     0021 D.14.1 the *service* fires them, which is the only way they arrive
- *     with the app closed; it says so in `AgentStatus.service_notifies` and
- *     then `notify()` here stays quiet. On a platform where the service can't
- *     yet (Windows, macOS) the flag is `false` and this store notifies exactly
- *     as it always did.
+ *  2. **Notices the service hands us.** Every notification is decided by the
+ *     service, the only one that is there with the app closed. On a platform
+ *     where it can't reach the OS by itself (macOS) it hands them to this window
+ *     over `agent://notice`, and this store only paints them. Nothing here
+ *     decides what deserves one.
  *
  * Doing this in the same place avoids a separate listener subscription per
  * concern, and keeps the priority logic (failures beat successes beat
@@ -50,10 +49,11 @@ import type {
   AgentEvent,
   AgentStatus,
   BackupReason,
+  NoticeNote,
   TrayStateName,
 } from "../api";
 import * as api from "../api";
-import { prefs } from "./prefs";
+import { hydratePrefs } from "./prefs";
 import { seedWatcher } from "./live";
 import { toastSuccess } from "./toasts";
 
@@ -225,17 +225,11 @@ async function ensureNotificationPermission() {
  *  was closed. */
 let replaying = false;
 
-function notify(title: string, body: string) {
-  if (replaying) return;
-  // The service notifies by itself where it can (Linux today; ADR 0021 D.14.1).
-  // Sending ours on top would show the same backup twice whenever the window
-  // happens to be open, and the whole point of moving them to the service is
-  // that they also arrive when it isn't. Where the service can't yet (Windows,
-  // macOS) the flag is `false` and this stays exactly as it was.
-  if (get(status).service_notifies) return;
+/** Puts on screen a notice the service picked this window for. */
+function paintNotice(note: NoticeNote) {
   if (!notificationsAllowed) return;
   try {
-    sendNotification({ title, body });
+    sendNotification({ title: note.title, body: note.body });
   } catch (e) {
     console.warn("sendNotification failed:", e);
   }
@@ -299,18 +293,6 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         error: undefined,
         will_retry: undefined,
       });
-      const $prefs = get(prefs);
-      // Notifying about a backup that did not happen now is the same class of lie
-      // as chiming while replaying the journal: the state is updated, the notice is
-      // not sent.
-      if ($prefs?.notify_on_success && !ev.already_landed) {
-        notify(
-          "Backup saved",
-          `${ev.save_id.slice(0, 8)} · v${ev.version_num} (${formatBytes(
-            ev.total_bytes,
-          )})`,
-        );
-      }
       break;
     }
     case "backup_failed": {
@@ -319,13 +301,6 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         error: ev.error,
         will_retry: ev.will_retry,
       });
-      const $prefs = get(prefs);
-      if ($prefs?.notify_on_failure) {
-        notify(
-          ev.will_retry ? "Backup failed (retrying)" : "Backup failed",
-          ev.error,
-        );
-      }
       break;
     }
     case "backup_files_unreadable": {
@@ -374,14 +349,6 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
           }),
         );
       }
-      if (get(prefs)?.notify_on_restore_success) {
-        notify(
-          get(i18n)("library.restored_notify_title"),
-          `${ev.game_slug} · v${ev.version_num} (${formatBytes(
-            ev.bytes_extracted,
-          )})`,
-        );
-      }
       break;
     }
     case "save_auto_restore_failed": {
@@ -393,24 +360,11 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
     }
     case "save_auto_restore_stuck": {
       // The agent only sends this once per (save, version), after repeated
-      // failures, so it's rare enough to deserve a notification, and the
-      // Library card keeps an amber badge until it recovers.
+      // failures, and the Library card keeps an amber badge until it recovers.
       restoreStuck.update((m) => ({
         ...m,
         [ev.save_id]: { failures: ev.failures, error: ev.error },
       }));
-      // The card badge is the part the user can't miss, so a silenced
-      // notification loses nothing.
-      const $prefs = get(prefs);
-      if ($prefs?.notify_on_restore_failure) {
-        const t = get(i18n);
-        notify(
-          t("library.restore_stuck_notify_title"),
-          t("library.restore_stuck_notify_body", {
-            values: { name: ev.game_slug, count: ev.failures },
-          }),
-        );
-      }
       break;
     }
     case "backup_needs_attention": {
@@ -426,18 +380,6 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         // invisible for two weeks.
         will_retry: false,
       });
-      // Once per jam (the engine emits it on the edge), so it does deserve a
-      // notification. The same pref as the other failures.
-      const $prefs = get(prefs);
-      if ($prefs?.notify_on_failure) {
-        const t = get(i18n);
-        notify(
-          t("library.backup_blocked_notify_title"),
-          t("library.backup_blocked_notify_body", {
-            values: { name: ev.game_slug, count: ev.conflicts },
-          }),
-        );
-      }
       break;
     }
     case "backup_attention_cleared": {
@@ -495,9 +437,7 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
                 });
       }
       patch(ev.save_id, { state: "failed", error: msg, will_retry: false });
-      // No toast: the activity feed carries this now (see live.ts). Native
-      // notification stays behind the user's opt-in `notify_on_failure`.
-      if (get(prefs)?.notify_on_failure) notify("Backup failed", msg);
+      // No toast: the activity feed carries this now (see live.ts).
       break;
     }
     case "backup_trimmed": {
@@ -522,7 +462,7 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       // the server). This is a benign, recurring condition, the
       // reconciliation sweep re-checks the folder every cycle, and a
       // mis-detected/empty tracked folder (or a game that never wrote a save
-      // yet) would fire this on every tick. So don't toast or notify; just
+      // yet) would fire this on every tick. So don't toast; just
       // reflect the save as idle. Users who want the cloud copy pulled into an
       // empty folder enable "Restore from cloud when a save folder is empty"
       // in Settings.
@@ -608,6 +548,13 @@ export async function subscribeAgent() {
     await listen<BacklogPayload>("agent://backlog", (e) =>
       applyBacklog(e.payload),
     ),
+  );
+  unlisteners.push(
+    await listen<NoticeNote>("agent://notice", (e) => paintNotice(e.payload)),
+  );
+  // Moved from the CLI or the Decky plugin: Settings has to show it at once.
+  unlisteners.push(
+    await listen("agent://notification-switches", () => void hydratePrefs()),
   );
   unlisteners.push(
     await listen<AgentStatus>("agent://daemon-status", (e) => {

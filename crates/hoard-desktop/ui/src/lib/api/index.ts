@@ -588,13 +588,6 @@ export type AgentStatus = {
    *  reads that blank as "the service is stopped" and says so, while the app
    *  is still opening. Set by the store, never by the service. */
   known?: boolean;
-  /** The sync service sends the native OS notifications itself (ADR 0021
-   *  D.14.1), so this app must not send its own or the user sees each one
-   *  twice while the window is open. `false`, including on an older service
-   *  that doesn't report the field, and on the platforms whose service-side
-   *  backend isn't wired yet (Windows, macOS), means the notification is
-   *  still ours to send, exactly as before. */
-  service_notifies?: boolean;
   /** Why there's no engine, when there isn't one. Until 1.1.0 the window only
    *  knew *that* the service was down, never why: the reason existed inside the
    *  daemon and was dropped on the way here, which is how two self-hosted users
@@ -892,6 +885,8 @@ export type Prefs = {
   notify_on_failure: boolean;
   notify_on_restore_success: boolean;
   notify_on_restore_failure: boolean;
+  notify_on_game_activity: boolean;
+  notify_on_update: boolean;
   autostart: boolean;
   start_minimised: boolean;
   seen_tray_hint: boolean;
@@ -919,12 +914,6 @@ export type Prefs = {
    *  and non-destructive (local-newer files are parked under conflicts).
    *  Off by default. */
   global_sync: boolean;
-  /** Last desktop-client version we already fired a native notification
-   *  about. The update poller compares this against the latest report and
-   *  only sends a notification the first time it sees a new version, the
-   *  sidebar amber badge keeps showing regardless. Persisted so reopening
-   *  the app doesn't re-notify for a version the user already saw. */
-  last_update_notified_version: string | null;
   /** When `true`, the sidebar's automatic-mode toggle is on. The Rust
    *  side keeps two background schedulers alive, a cheap detection scan
    *  (`automatic_scan_interval_secs`) and an expensive staggered hash sweep
@@ -1028,6 +1017,32 @@ export function uiLog(topic: string, message: string): Promise<void> {
 /** Persist prefs. Returns the saved object so the caller can hydrate stores. */
 export function savePrefs(prefs: Prefs): Promise<Prefs> {
   return invoke<Prefs>("save_prefs", { prefs });
+}
+
+/** A notification the service wants this window to put on screen. */
+export type NoticeNote = {
+  title: string;
+  body: string;
+  level: "ok" | "info" | "warn" | "error";
+};
+
+/** The same switches the CLI and the Decky plugin move. */
+export type NotificationSwitch =
+  | "backup_success"
+  | "backup_problems"
+  | "restore_success"
+  | "restore_problems"
+  | "game_activity"
+  | "updates";
+
+export function setNotificationSwitch(
+  notificationSwitch: NotificationSwitch,
+  enabled: boolean,
+): Promise<void> {
+  return invoke("set_notification_switch", {
+    switch: notificationSwitch,
+    enabled,
+  });
 }
 
 /** Toggle the sidebar's persisted automatic-mode flag. Returns the

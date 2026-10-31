@@ -62,6 +62,11 @@ pub const PROTOCOL_VERSION: u32 = 1;
 /// round, both keep working.
 pub const CAP_DETECTION: &str = "detection";
 
+/// The service decides every notification and keeps their switches. A client
+/// that advertises it can put a [`ServerFrame::Notice`] on screen when the
+/// service hands it one, and hears [`ServerFrame::NotificationSwitches`].
+pub const CAP_NOTICES: &str = "notices";
+
 /// Header bytes on every frame (the length `u32`).
 pub const HEADER_BYTES: usize = 4;
 
@@ -204,6 +209,14 @@ pub enum ServerFrame {
     /// result lands in the detection cache on disk. Older clients drop it
     /// through [`ServerFrame::Unknown`].
     Scan(ScanNote),
+    /// A notification for this client to put on screen, already decided and
+    /// already written. Only the client the service picked as the way out gets
+    /// it: that, and not a rule in each client, is what keeps one notice from
+    /// showing up twice. Ephemeral, like [`ServerFrame::Scan`].
+    Notice(NoticeNote),
+    /// A switch changed, from whichever client. Every client that shows them
+    /// has to move at once: three surfaces with one setting is the point.
+    NotificationSwitches(NotificationSwitches),
     /// A frame this client does not know, sent by a newer daemon.
     ///
     /// Two or more artefacts update separately, so a daemon can learn a frame
@@ -450,6 +463,23 @@ pub enum Request {
     /// Automatic mode's preferences changed on disk (on, off, an interval): read
     /// them again and, when it is on, scan and sweep right away.
     AutomaticChanged,
+    /// The notification switches. Answers [`Payload::NotificationSwitches`].
+    NotificationSwitches,
+    /// Flip one switch. One and not the whole set, so two clients moving
+    /// different switches at the same moment cannot undo each other. The service
+    /// is the only writer, and every client is told through
+    /// [`ServerFrame::NotificationSwitches`].
+    SetNotificationSwitch {
+        switch: NotificationSwitch,
+        enabled: bool,
+    },
+    /// While this connection lives and `active` holds, notices come here instead
+    /// of going to the OS. For a screen the OS cannot reach: gamescope shows no
+    /// desktop notifications, so in Game Mode the Decky plugin is the only way
+    /// to a person's eyes. Needs a subscription on the same connection.
+    ClaimNotices {
+        active: bool,
+    },
     /// A request this daemon does not know, sent by a newer client.
     ///
     /// Without this variant the first unknown request would be a *framing* error,
@@ -485,6 +515,50 @@ pub enum HoldState {
     NotWatched,
     /// Let go.
     Released,
+}
+
+/// How serious a [`NoticeNote`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NoticeLevel {
+    Ok,
+    Info,
+    Warn,
+    Error,
+}
+
+/// A notification with the deciding already done. Rendered in the user's language
+/// by the service, so a client with no translations of its own (the Decky plugin,
+/// in Python) says exactly what the others say.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoticeNote {
+    pub title: String,
+    pub body: String,
+    pub level: NoticeLevel,
+}
+
+/// One kind of news, as the user sees it. They are the same in the app, the CLI
+/// and the Decky plugin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NotificationSwitch {
+    BackupSuccess,
+    BackupProblems,
+    RestoreSuccess,
+    RestoreProblems,
+    GameActivity,
+    Updates,
+}
+
+/// Where the switches stand on this machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotificationSwitches {
+    pub backup_success: bool,
+    pub backup_problems: bool,
+    pub restore_success: bool,
+    pub restore_problems: bool,
+    pub game_activity: bool,
+    pub updates: bool,
 }
 
 /// The payload of a successful reply.
@@ -528,6 +602,9 @@ pub enum Payload {
     /// The catalogue in use (answer to [`Request::CatalogStatus`] and
     /// [`Request::CatalogRefresh`]).
     Catalog(CatalogInfo),
+    /// Where the switches stand (answer to [`Request::NotificationSwitches`] and
+    /// to [`Request::SetNotificationSwitch`]).
+    NotificationSwitches(NotificationSwitches),
 }
 
 /// What a detection pass reports while it runs (see [`ServerFrame::Scan`]).
@@ -805,15 +882,10 @@ pub struct DaemonStatus {
     pub uptime_secs: u64,
     /// The journal cursor, for starting a subscription with no backlog.
     pub cursor: u64,
-    /// The service sends the OS's native notifications itself (ADR 0021 D.14.1).
-    /// A client reading `true` must not send its own, or the user sees every
-    /// notice twice with the app open.
-    ///
-    /// `false` means "this daemon build cannot notify on this platform yet"
-    /// (today: Windows and macOS), and then the notice is still the frontend's,
-    /// which is exactly how it used to work. A new field with a `default`, so an
-    /// older client reads `false` and keeps notifying as before (C.6, append
-    /// only).
+    /// The service reaches the OS's notifications by itself on this platform
+    /// (ADR 0021 D.14.1). `false` means it cannot here (today: macOS), and then
+    /// it hands each notice to the app, which only works with the app open. Either
+    /// way the service decides; a client reads this to say so, not to act on it.
     #[serde(default)]
     pub notifications: bool,
     pub engine: EngineStatus,

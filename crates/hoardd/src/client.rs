@@ -33,8 +33,9 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use hoard_core::ipc::{
-    AdoptedSession, Backlog, ClientFrame, CloudToken, DaemonStatus, Hello, JournalEntry, Payload,
-    Reply, Request, ScanNote, ServerFrame, ServerSession, Welcome, PROTOCOL_VERSION,
+    AdoptedSession, Backlog, ClientFrame, CloudToken, DaemonStatus, Hello, JournalEntry,
+    NoticeNote, NotificationSwitches, Payload, Reply, Request, ScanNote, ServerFrame,
+    ServerSession, Welcome, PROTOCOL_VERSION,
 };
 use tokio::io::{ReadHalf, WriteHalf};
 
@@ -96,6 +97,10 @@ pub enum Push {
     Goodbye { reason: String },
     /// How a detection pass is going (Slice 8). Ephemeral, not a journal row.
     Scan(ScanNote),
+    /// A notification for this client to put on screen.
+    Notice(NoticeNote),
+    /// A notification switch moved, from this client or another.
+    NotificationSwitches(NotificationSwitches),
 }
 
 /// A connection to the daemon.
@@ -245,6 +250,10 @@ impl Client {
                     self.pushes.push_back(Push::Resync { cursor, dropped })
                 }
                 Some(ServerFrame::Scan(note)) => self.pushes.push_back(Push::Scan(note)),
+                Some(ServerFrame::Notice(note)) => self.pushes.push_back(Push::Notice(note)),
+                Some(ServerFrame::NotificationSwitches(switches)) => {
+                    self.pushes.push_back(Push::NotificationSwitches(switches))
+                }
                 // The farewell is noted **right here**, not when the push is
                 // consumed: this connection is about to close and whoever was waiting
                 // for a response may never get to read the queue.
@@ -362,6 +371,10 @@ impl Client {
                     return Ok(Some(Push::Resync { cursor, dropped }))
                 }
                 Some(ServerFrame::Scan(note)) => return Ok(Some(Push::Scan(note))),
+                Some(ServerFrame::Notice(note)) => return Ok(Some(Push::Notice(note))),
+                Some(ServerFrame::NotificationSwitches(switches)) => {
+                    return Ok(Some(Push::NotificationSwitches(switches)))
+                }
                 Some(ServerFrame::Goodbye { reason }) => {
                     note_farewell(&reason);
                     return Ok(Some(Push::Goodbye { reason }));

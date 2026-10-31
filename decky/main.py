@@ -3,8 +3,11 @@
 Game Mode has no desktop notifications: gamescope does not show them, so a
 backup that failed at 3 a.m. on a handheld simply never reaches anyone. This
 backend talks to the user's `hoardd` over its local socket, the same way the
-desktop app and `hoard sync run` do, and forwards what matters to the frontend,
-which turns it into Steam toasts and a panel in the Quick Access Menu.
+desktop app and `hoard sync run` do. hoardd decides every notification; in Game
+Mode this plugin claims them and the frontend shows them as Steam toasts, and
+outside it they stay on the system's own road, so nothing appears twice. The
+switches live in hoardd too, and are the same ones the app and the CLI move. The
+journal fills the Recent panel in the Quick Access Menu.
 
 Protocol (hoard-core `ipc`): every frame is a big-endian u32 length plus JSON.
 The client says `hello`, the daemon answers `welcome` with its journal cursor,
@@ -28,6 +31,9 @@ RECENT = 30
 RETRY_SECS = 5
 STATUS_POLL_SECS = 10
 MAX_FRAME = 8 * 1024 * 1024
+CAP_NOTICES = "notices"
+SWITCHES = ("backup_success", "backup_problems", "restore_success",
+            "restore_problems", "game_activity", "updates")
 
 
 FLATPAK_ID = "services.hoard.saves"
@@ -61,7 +67,7 @@ async def read_frame(reader: asyncio.StreamReader) -> dict:
 
 async def handshake(reader, writer) -> dict:
     await write_frame(
-        writer, {"frame": "hello", "protocol": PROTOCOL, "client": CLIENT, "caps": []}
+        writer, {"frame": "hello", "protocol": PROTOCOL, "client": CLIENT, "caps": [CAP_NOTICES]}
     )
     frame = await read_frame(reader)
     if frame.get("frame") == "rejected":
@@ -99,8 +105,28 @@ async def _request(op: dict) -> dict:
         writer.close()
 
 
-def settings_path() -> str:
-    return os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
+def game_mode() -> bool:
+    """Is Steam running inside gamescope? The test the desktop app makes on its
+    own environment, on Steam's: this backend is started by Decky's service, long
+    before any session, so its own says nothing, and it outlives the switch between
+    Game Mode and Desktop Mode."""
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/comm") as f:
+                if f.read().strip() != "steam":
+                    continue
+            with open(f"/proc/{pid}/environ", "rb") as f:
+                env = f.read().split(b"\0")
+        except OSError:
+            continue
+        for var in env:
+            if var.startswith(b"GAMESCOPE_WAYLAND_DISPLAY="):
+                return True
+            if var.startswith(b"XDG_CURRENT_DESKTOP=") and b"gamescope" in var.lower():
+                return True
+    return False
 
 
 def plain_error(error: str) -> str:
@@ -163,7 +189,10 @@ class Plugin:
         self.recent: list[dict] = []
         self.unnamed: set[str] = set()
         self.epoch = ""
-        self.debug_toasts = False
+        self.switches: dict | None = None
+        self.can_notice = False
+        self.claiming = False
+        self.writer: asyncio.StreamWriter | None = None
 
     # ---- naming
 
@@ -180,12 +209,10 @@ class Plugin:
         label = ev.get("label") or ""
         return f"{game} ({label})" if label and label != "main" and label not in game else game
 
-    def describe(self, ev: dict) -> tuple[str, str, str, bool] | None:
-        """(level, title, body, toast) for an AgentEvent, or None to drop it.
-
-        Toasts are for what someone in a game wants to know without asking:
-        a save landed, failed, came back. The rest only goes to the panel,
-        where it helps answer "did Hoard even see my game?".
+    def describe(self, ev: dict) -> tuple[str, str, str] | None:
+        """(level, title, body) of an AgentEvent's row in the panel, or None to
+        drop it. The panel answers "did Hoard even see my game?"; what deserves
+        a toast is hoardd's call, not this list's.
         """
         kind = ev.get("type")
         name = self.name_of(ev)
@@ -194,61 +221,61 @@ class Plugin:
             return None
         if kind == "backup_success":
             if ev.get("already_landed"):
-                return ("info", "Already up to date", name, False)
-            return ("ok", "Save backed up", name, True)
+                return ("info", "Already up to date", name)
+            return ("ok", "Save backed up", name)
         if kind == "backup_failed":
             retry = " Hoard will retry." if ev.get("will_retry") else ""
-            return ("error", "Backup failed", f"{name}: {plain_error(ev.get('error', ''))}.{retry}", True)
+            return ("error", "Backup failed", f"{name}: {plain_error(ev.get('error', ''))}.{retry}")
         if kind == "backup_throttled":
-            return ("warn", "Backup delayed", f"{name}, retrying in {ev.get('retry_after_secs')} s", False)
+            return ("warn", "Backup delayed", f"{name}, retrying in {ev.get('retry_after_secs')} s")
         if kind == "backup_too_large":
             body = f"{name} is {size(ev.get('actual_bytes', 0))}, the limit is {size(ev.get('limit_bytes', 0))}"
-            return ("error", "Save too large", body, True)
+            return ("error", "Save too large", body)
         if kind == "backup_quota_full":
-            return ("error", "Storage full", f"{name} was not uploaded", True)
+            return ("error", "Storage full", f"{name} was not uploaded")
         if kind == "backup_trimmed":
-            return ("warn", "Partial backup", f"{name}: {ev.get('omitted_files')} files left out", True)
+            return ("warn", "Partial backup", f"{name}: {ev.get('omitted_files')} files left out")
         if kind == "backup_files_unreadable":
-            return ("warn", "Some files could not be read", f"{name}: {ev.get('count')} files", True)
+            return ("warn", "Some files could not be read", f"{name}: {ev.get('count')} files")
         if kind == "backup_needs_attention":
-            return ("error", "Backup needs attention", f"{name}: {plain_error(ev.get('error', ''))}", True)
+            return ("error", "Backup needs attention", f"{name}: {plain_error(ev.get('error', ''))}")
         if kind == "backup_attention_cleared":
-            return ("ok", "Backup back to normal", name, False)
+            return ("ok", "Backup back to normal", name)
         if kind == "backup_skipped_empty":
             if ev.get("likely_wrong_path"):
-                return ("warn", "Nothing to back up", f"{name}: the save folder may be the wrong one", True)
-            return ("info", "Nothing to back up", name, False)
+                return ("warn", "Nothing to back up", f"{name}: the save folder may be the wrong one")
+            return ("info", "Nothing to back up", name)
         if kind == "save_auto_restored":
-            return ("ok", "Save restored", name, True)
+            return ("ok", "Save restored", name)
         if kind in ("save_auto_restore_failed", "save_auto_restore_stuck"):
-            return ("error", "Restore failed", f"{name}: {plain_error(ev.get('error', ''))}", True)
+            return ("error", "Restore failed", f"{name}: {plain_error(ev.get('error', ''))}")
         if kind == "save_auto_restore_recovered":
-            return ("ok", "Restore back to normal", name, False)
+            return ("ok", "Restore back to normal", name)
         if kind == "restore_deferred":
-            return ("info", "Restore waiting", f"{name}: {ev.get('reason')}", False)
+            return ("info", "Restore waiting", f"{name}: {ev.get('reason')}")
         if kind == "save_conflicts_backed_up":
-            return ("warn", "Conflicting files kept aside", f"{name}: {ev.get('count')} files", True)
+            return ("warn", "Conflicting files kept aside", f"{name}: {ev.get('count')} files")
         if kind == "game_started":
-            return ("info", "Game detected", name, self.debug_toasts)
+            return ("info", "Game detected", name)
         if kind == "game_stopped":
-            return ("info", "Game closed", name, self.debug_toasts)
+            return ("info", "Game closed", name)
         if kind == "heavy_process_detected":
             # hoardd's hint to run a detection scan now. Internal, and its
             # "looks like a game" guess also catches system tools, so it only
             # shows up when the user asked to see detection.
-            if not self.debug_toasts:
+            if not (self.switches or {}).get("game_activity"):
                 return None
-            return ("info", "Possible new game spotted", ev.get("name", ""), False)
+            return ("info", "Possible new game spotted", ev.get("name", ""))
         if kind == "backup_scheduled":
             return None
-        return ("info", kind or "event", name, False)
+        return ("info", kind or "event", name)
 
     # ---- event stream
 
     async def emit_state(self):
         await decky.emit("hoard_state", await self.get_state())
 
-    async def handle(self, entry: dict, quiet: bool = False):
+    async def handle(self, entry: dict):
         ev = entry.get("event") or {}
         sid = ev.get("save_id")
         if sid and ev.get("game_slug"):
@@ -266,7 +293,7 @@ class Plugin:
         described = self.describe(ev)
         if described is None:
             return
-        level, title, body, toast = described
+        level, title, body = described
         # The journal's seq restarts with every hoardd run, so it only identifies
         # an event together with the run's epoch. Keyed on seq alone, a restarted
         # daemon's first events matched old ones and were dropped in silence.
@@ -274,7 +301,7 @@ class Plugin:
         if any(r["key"] == key for r in self.recent):
             return
         item = {"key": key, "at": entry.get("at"), "level": level,
-                "title": title, "body": body, "toast": toast and not quiet}
+                "title": title, "body": body}
         self.recent.insert(0, item)
         del self.recent[RECENT:]
         decky.logger.info(f"event {ev.get('type')}: {title} / {body}")
@@ -300,27 +327,48 @@ class Plugin:
             if s.get("display_name"):
                 self.names[s["save_id"]] = s["display_name"]
 
+    async def refresh_switches(self):
+        if not self.can_notice:
+            self.switches = None
+            return
+        reply = await request({"op": "notification_switches"})
+        self.switches = {name: bool(reply.get(name)) for name in SWITCHES}
+
+    async def sync_claim(self, force: bool = False):
+        """Tell hoardd whether notices have to come here. Only in Game Mode:
+        anywhere else the system shows them, and claiming would hide them."""
+        wanted = self.can_notice and game_mode()
+        if self.writer is None or (wanted == self.claiming and not force):
+            return
+        # The reply is not worth waiting for: a refused claim leaves the notices
+        # on the system's road, which is where they were.
+        await write_frame(self.writer, {"frame": "request", "id": 3,
+                                        "request": {"op": "claim_notices", "active": wanted}})
+        self.claiming = wanted
+        decky.logger.info(f"notices {'claimed' if wanted else 'released'}")
+
     async def follow(self):
-        epoch, cursor, replay_until = None, None, 0
+        epoch, cursor = None, None
         while True:
             try:
                 reader, writer = await asyncio.open_unix_connection(socket_path())
                 try:
                     welcome = await handshake(reader, writer)
+                    self.can_notice = CAP_NOTICES in (welcome.get("caps") or [])
                     # Same daemon run: pick up where we left. A new run (or the
-                    # first connection) backs up a little to fill the panel, and
-                    # that backlog is shown but never toasted: a reconnect must
-                    # not replay an hour of notifications.
+                    # first connection) backs up a little to fill the panel.
                     fresh = welcome.get("epoch") != epoch
                     since = max(0, welcome.get("cursor", 0) - RECENT) if fresh else cursor
-                    replay_until = welcome.get("cursor", 0) if fresh else 0
                     epoch = welcome.get("epoch")
                     self.epoch = epoch or ""
                     await write_frame(writer, {"frame": "request", "id": 1,
                                                "request": {"op": "subscribe", "since": since}})
                     self.connected, self.error = True, ""
+                    self.writer = writer
+                    await self.sync_claim(force=True)
                     try:
                         await self.refresh_status()
+                        await self.refresh_switches()
                     except Exception as e:  # status is a nicety, events are the point
                         decky.logger.warning(f"status: {e}")
                     await self.emit_state()
@@ -329,24 +377,30 @@ class Plugin:
                         kind = frame.get("frame")
                         if kind == "event":
                             cursor = frame.get("seq", cursor)
-                            await self.handle(frame, quiet=frame.get("seq", 0) <= replay_until)
+                            await self.handle(frame)
                         elif kind == "reply" and frame.get("reply", {}).get("payload") == "backlog":
                             reply = frame["reply"]
                             for entry in reply.get("entries") or []:
-                                await self.handle(entry, quiet=entry.get("seq", 0) <= replay_until)
+                                await self.handle(entry)
                             cursor = reply.get("cursor", cursor)
+                        elif kind == "notice":
+                            await decky.emit("hoard_notice", {
+                                "title": frame.get("title"), "body": frame.get("body"),
+                                "level": frame.get("level")})
+                        elif kind == "notification_switches":
+                            self.switches = {name: bool(frame.get(name)) for name in SWITCHES}
+                            await self.emit_state()
                         elif kind == "resync":
                             # The push dropped rows. Asked again from our own cursor,
                             # the journal hands them over; from the daemon's (the
-                            # frame's) they would be skipped. Shown, not toasted: it
-                            # takes hundreds of rows in a burst to get here.
+                            # frame's) they would be skipped.
                             decky.logger.warning(f"hoardd: {frame.get('dropped')} events behind, re-reading the journal")
-                            replay_until = frame.get("cursor") or 0
                             await write_frame(writer, {"frame": "request", "id": 2,
                                                        "request": {"op": "subscribe", "since": cursor}})
                         elif kind == "goodbye":
                             raise ConnectionError(frame.get("reason") or "goodbye")
                 finally:
+                    self.writer, self.claiming = None, False
                     writer.close()
             except asyncio.CancelledError:
                 raise
@@ -367,6 +421,11 @@ class Plugin:
             await asyncio.sleep(STATUS_POLL_SECS)
             if not self.connected:
                 continue
+            # Going between Game Mode and Desktop Mode restarts Steam, not us.
+            try:
+                await self.sync_claim()
+            except Exception as e:
+                decky.logger.warning(f"claim: {e}")
             before = (self.watched, self.server, self.slots, self.running, self.problem)
             try:
                 await self.refresh_status()
@@ -389,7 +448,7 @@ class Plugin:
             "watched": self.watched,
             "slots": self.slots,
             "recent": self.recent,
-            "debug_toasts": self.debug_toasts,
+            "switches": self.switches,
         }
 
     async def refresh(self) -> dict:
@@ -413,26 +472,18 @@ class Plugin:
         except Exception as e:
             return str(e)
 
-    async def set_debug_toasts(self, enabled: bool) -> None:
-        self.debug_toasts = bool(enabled)
+    async def set_switch(self, name: str, enabled: bool) -> str:
+        # hoardd writes it and tells every client, this one included.
         try:
-            os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
-            with open(settings_path(), "w") as f:
-                json.dump({"debug_toasts": self.debug_toasts}, f)
+            await request({"op": "set_notification_switch", "switch": name,
+                           "enabled": bool(enabled)})
+            return ""
         except Exception as e:
-            decky.logger.warning(f"settings: {e}")
+            return str(e)
 
     # ---- lifecycle
 
     async def _main(self):
-        try:
-            with open(settings_path()) as f:
-                self.debug_toasts = bool(json.load(f).get("debug_toasts"))
-        except Exception as e:
-            # A missing or unreadable file just means the default; nothing here
-            # may keep the plugin from following hoardd.
-            if not isinstance(e, FileNotFoundError):
-                decky.logger.warning(f"settings: {e}")
         loop = asyncio.get_event_loop()
         self.task = loop.create_task(self.follow())
         self.poller = loop.create_task(self.poll_status())

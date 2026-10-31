@@ -238,7 +238,7 @@ async fn service_detail() {
         if status.notifications {
             "the service sends them (even with the app closed)"
         } else {
-            "the app sends them while it's open (no service backend on this OS yet)"
+            "the app shows them while it's open (the service can't reach this OS yet)"
         }
     );
 }

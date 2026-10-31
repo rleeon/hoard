@@ -95,6 +95,13 @@ enum Commands {
     /// save, or rows named after an installer, and print the command that fixes
     /// each. Local and offline; changes nothing.
     Doctor,
+    /// See and change which notifications this machine gets. The same switches
+    /// as the app's Settings and the Decky plugin: the service sends them, not
+    /// this terminal.
+    Notifications {
+        #[command(subcommand)]
+        command: Option<commands::notifications::NotificationsCommand>,
+    },
     /// Configuration file management
     Config {
         #[command(subcommand)]
@@ -325,6 +332,7 @@ fn supports_json(cmd: &Commands) -> bool {
         | Commands::Status
         | Commands::Devices
         | Commands::Doctor
+        | Commands::Notifications { .. }
         | Commands::Whoami
         | Commands::Scan { .. }
         | Commands::Restore { .. } => true,
@@ -392,6 +400,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Status => commands::status::run().await,
         Commands::Devices => commands::devices::run().await,
         Commands::Doctor => commands::doctor::run().await,
+        Commands::Notifications { command } => commands::notifications::run(command).await,
         Commands::Config { action } => commands::config::run(action),
         Commands::Login {
             token,

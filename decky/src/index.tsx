@@ -24,8 +24,24 @@ interface Item {
   level: Level;
   title: string;
   body: string;
-  toast: boolean;
 }
+
+interface Notice {
+  title: string;
+  body: string;
+  level: Level;
+}
+
+const SWITCHES = [
+  ["backup_success", "Notify on successful backup"],
+  ["backup_problems", "Notify on backup problems"],
+  ["restore_success", "Notify when a save downloads from the cloud"],
+  ["restore_problems", "Notify on download problems"],
+  ["game_activity", "Notify when a game starts or stops"],
+  ["updates", "Notify when an update needs you"],
+] as const;
+
+type SwitchName = (typeof SWITCHES)[number][0];
 
 interface Slot {
   save_id: string;
@@ -34,6 +50,8 @@ interface Slot {
   running: boolean;
   armed: boolean;
 }
+
+type Switches = Record<SwitchName, boolean>;
 
 interface State {
   connected: boolean;
@@ -45,12 +63,13 @@ interface State {
   watched: number;
   slots: Slot[];
   recent: Item[];
-  debug_toasts: boolean;
+  // Null when the service is too old to keep them.
+  switches: Switches | null;
 }
 
 const refresh = callable<[], State>("refresh");
 const syncNow = callable<[], string>("sync_now");
-const setDebugToasts = callable<[enabled: boolean], void>("set_debug_toasts");
+const setSwitch = callable<[name: SwitchName, enabled: boolean], string>("set_switch");
 
 function ago(at: string): string {
   const secs = Math.max(0, (Date.now() - Date.parse(at)) / 1000);
@@ -157,29 +176,32 @@ function Content() {
         )}
       </PanelSection>
 
-      <PanelSection>
-        <PanelSectionRow>
-          <ToggleField
-            label="Notify when a game starts or stops"
-            checked={state.debug_toasts}
-            onChange={async (value: boolean) => {
-              await setDebugToasts(value);
-              setState({ ...state, debug_toasts: value });
-            }}
-          />
-        </PanelSectionRow>
-      </PanelSection>
+      {state.switches && (
+        <PanelSection title="Notifications">
+          {SWITCHES.map(([name, label]) => (
+            <PanelSectionRow key={name}>
+              <ToggleField
+                label={label}
+                checked={state.switches![name]}
+                onChange={async (value: boolean) => {
+                  const error = await setSwitch(name, value);
+                  if (error) toaster.toast({ title: "Hoard", body: error });
+                }}
+              />
+            </PanelSectionRow>
+          ))}
+        </PanelSection>
+      )}
     </>
   );
 }
 
 export default definePlugin(() => {
-  const listener = addEventListener<[Item]>("hoard_event", (item) => {
-    if (!item.toast) return;
+  const listener = addEventListener<[Notice]>("hoard_notice", (notice) => {
     toaster.toast({
-      title: item.title,
-      body: item.body,
-      critical: item.level === "error",
+      title: notice.title,
+      body: notice.body,
+      critical: notice.level === "error",
     });
   });
 
@@ -189,7 +211,7 @@ export default definePlugin(() => {
     content: <Content />,
     icon: <FaSave />,
     onDismount() {
-      removeEventListener("hoard_event", listener);
+      removeEventListener("hoard_notice", listener);
     },
   };
 });

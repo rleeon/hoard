@@ -589,11 +589,28 @@
     }
   }
 
+  /** Rows the service owns: the CLI and the Decky plugin move them too, so they
+   *  go to it one by one instead of through the whole-file save below. */
+  const NOTIFICATION_SWITCHES: Partial<
+    Record<keyof api.Prefs, api.NotificationSwitch>
+  > = {
+    notify_on_success: "backup_success",
+    notify_on_failure: "backup_problems",
+    notify_on_restore_success: "restore_success",
+    notify_on_restore_failure: "restore_problems",
+    notify_on_game_activity: "game_activity",
+    notify_on_update: "updates",
+  };
+
   async function toggle(field: keyof api.Prefs, value: boolean) {
     if (!$prefs) return;
     saving = field;
     try {
-      if (field === "autostart") {
+      const notification = NOTIFICATION_SWITCHES[field];
+      if (notification) {
+        await api.setNotificationSwitch(notification, value);
+        await hydratePrefs();
+      } else if (field === "autostart") {
         const actual = await api.setAutostart(value);
         if (actual !== value) {
           toastError($_("settings.autostart_rejected"));
@@ -765,6 +782,24 @@
       field: "notify_on_restore_failure",
       label: $_("settings.notify_restore_failure_label"),
       description: $_("settings.notify_restore_failure_desc"),
+      icon: BellRing,
+      iconOff: BellOff,
+      anim: "ring",
+      animBothWays: true,
+    },
+    {
+      field: "notify_on_game_activity",
+      label: $_("settings.notify_game_label"),
+      description: $_("settings.notify_game_desc"),
+      icon: BellRing,
+      iconOff: BellOff,
+      anim: "ring",
+      animBothWays: true,
+    },
+    {
+      field: "notify_on_update",
+      label: $_("settings.notify_update_label"),
+      description: $_("settings.notify_update_desc"),
       icon: BellRing,
       iconOff: BellOff,
       anim: "ring",

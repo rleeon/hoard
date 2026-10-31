@@ -15,6 +15,7 @@
 //! (opt-out in Settings).
 
 use anyhow::{Context, Result};
+use hoard_core::ipc::{NotificationSwitch, NotificationSwitches};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -83,6 +84,17 @@ pub struct Prefs {
     /// about restores after an update.
     #[serde(default = "default_true")]
     pub notify_on_restore_failure: bool,
+
+    /// When `true`, notify when a tracked game opens or closes. Off by default:
+    /// it says something you just did, and is mostly how you check Hoard saw it.
+    #[serde(default)]
+    pub notify_on_game_activity: bool,
+
+    /// When `true`, notify about an update this machine cannot install by itself.
+    /// A file written before this field existed inherits
+    /// [`Self::notify_on_failure`], which governed this notice until then.
+    #[serde(default = "default_true")]
+    pub notify_on_update: bool,
 
     /// When `true`, the launcher integration opens **the window** at login. We
     /// don't read this directly (the autostart plugin owns the truth) but we
@@ -172,17 +184,6 @@ pub struct Prefs {
     /// opt out. Defaults to `false`.
     #[serde(default)]
     pub global_sync: bool,
-
-    /// Last desktop-client version we already nudged the user about via a
-    /// native OS notification. The update poller checks this before firing
-    /// `sendNotification` so the user doesn't get banner-spammed every 30
-    /// minutes that 1.5.0 is out. Once they've seen the notification for a
-    /// given version we leave them alone (the amber sidebar badge still
-    /// shows). Reset to `None` after the user installs an update (the new
-    /// client doesn't match this string anymore, so the next *newer* release
-    /// will notify again).
-    #[serde(default)]
-    pub last_update_notified_version: Option<String>,
 
     /// When `true`, the sidebar's automatic-mode toggle is on. The desktop
     /// app keeps two background schedulers alive: a cheap detection scan
@@ -296,6 +297,8 @@ impl Default for Prefs {
             notify_on_failure: true,
             notify_on_restore_success: false,
             notify_on_restore_failure: true,
+            notify_on_game_activity: false,
+            notify_on_update: true,
             // Default on: Hoard registers itself at login and boots silently
             // (only the tray icon). The desktop applies the real OS autostart
             // entry on first run and only hides the window when launched via
@@ -318,7 +321,6 @@ impl Default for Prefs {
             language: None,
             auto_restore: false,
             global_sync: false,
-            last_update_notified_version: None,
             automatic_mode: false,
             automatic_scan_interval_secs: default_scan_interval_secs(),
             automatic_backup_interval_secs: default_backup_interval_secs(),
@@ -399,7 +401,7 @@ impl Prefs {
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
         match serde_json::from_str::<Self>(&text) {
             Ok(mut p) => {
-                p.inherit_restore_failure(&text);
+                p.inherit_failure_switch(&text);
                 Ok(p)
             }
             Err(e) => {
@@ -411,13 +413,50 @@ impl Prefs {
 
     /// A serde default cannot look at another field, so the inheritance from
     /// `notify_on_failure` happens here, and only when the key is absent.
-    fn inherit_restore_failure(&mut self, text: &str) {
-        let has_key = serde_json::from_str::<serde_json::Value>(text)
-            .ok()
-            .is_some_and(|v| v.get("notify_on_restore_failure").is_some());
-        if !has_key {
+    fn inherit_failure_switch(&mut self, text: &str) {
+        let keys = serde_json::from_str::<serde_json::Value>(text).ok();
+        let has = |key: &str| keys.as_ref().is_some_and(|v| v.get(key).is_some());
+        if !has("notify_on_restore_failure") {
             self.notify_on_restore_failure = self.notify_on_failure;
         }
+        if !has("notify_on_update") {
+            self.notify_on_update = self.notify_on_failure;
+        }
+    }
+
+    pub fn notification_switches(&self) -> NotificationSwitches {
+        NotificationSwitches {
+            backup_success: self.notify_on_success,
+            backup_problems: self.notify_on_failure,
+            restore_success: self.notify_on_restore_success,
+            restore_problems: self.notify_on_restore_failure,
+            game_activity: self.notify_on_game_activity,
+            updates: self.notify_on_update,
+        }
+    }
+
+    pub fn set_notification_switch(&mut self, switch: NotificationSwitch, enabled: bool) {
+        let field = match switch {
+            NotificationSwitch::BackupSuccess => &mut self.notify_on_success,
+            NotificationSwitch::BackupProblems => &mut self.notify_on_failure,
+            NotificationSwitch::RestoreSuccess => &mut self.notify_on_restore_success,
+            NotificationSwitch::RestoreProblems => &mut self.notify_on_restore_failure,
+            NotificationSwitch::GameActivity => &mut self.notify_on_game_activity,
+            NotificationSwitch::Updates => &mut self.notify_on_update,
+        };
+        *field = enabled;
+    }
+
+    /// Leaves the switches as `current` has them. The window saves its whole
+    /// `Prefs` from a copy in memory, and the service owns these fields: a save
+    /// that carried them would undo what the CLI or the Decky plugin just changed.
+    pub fn keep_notification_switches(&mut self, current: &Prefs) {
+        self.notify_on_success = current.notify_on_success;
+        self.notify_on_failure = current.notify_on_failure;
+        self.notify_on_restore_success = current.notify_on_restore_success;
+        self.notify_on_restore_failure = current.notify_on_restore_failure;
+        self.notify_on_game_activity = current.notify_on_game_activity;
+        self.notify_on_update = current.notify_on_update;
     }
 
     /// Convenience that picks the standard path automatically.
@@ -529,6 +568,65 @@ mod tests {
         let parsed: Prefs = serde_json::from_str(legacy).expect("legacy prefs parse");
         assert!(parsed.autostart, "a missing key must mean the default");
         assert_eq!(parsed.autostart, Prefs::default().autostart);
+    }
+
+    #[test]
+    fn a_switch_moves_its_own_field_and_no_other() {
+        use NotificationSwitch::*;
+        for switch in [
+            BackupSuccess,
+            BackupProblems,
+            RestoreSuccess,
+            RestoreProblems,
+            GameActivity,
+            Updates,
+        ] {
+            let mut on = Prefs::default();
+            on.set_notification_switch(switch, true);
+            let mut off = Prefs::default();
+            off.set_notification_switch(switch, false);
+            assert_ne!(on.notification_switches(), off.notification_switches());
+            let mut again = on.clone();
+            again.set_notification_switch(switch, false);
+            assert_eq!(again.notification_switches(), off.notification_switches());
+        }
+    }
+
+    /// The window saves from a copy in memory. If that copy is older than a
+    /// change made from the CLI or the Decky plugin, the change has to survive.
+    #[test]
+    fn a_save_from_the_window_keeps_the_services_switches() {
+        let mut current = Prefs::default();
+        current.set_notification_switch(NotificationSwitch::GameActivity, true);
+        current.set_notification_switch(NotificationSwitch::Updates, false);
+        let mut stale = Prefs {
+            close_to_tray: !current.close_to_tray,
+            ..Prefs::default()
+        };
+        stale.keep_notification_switches(&current);
+        assert_eq!(
+            stale.notification_switches(),
+            current.notification_switches()
+        );
+        assert_ne!(stale.close_to_tray, current.close_to_tray);
+    }
+
+    /// The update notice used to ride on `notify_on_failure`, like the stuck
+    /// restore below.
+    #[test]
+    fn update_notices_inherit_the_old_failure_switch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prefs.json");
+        std::fs::write(&path, r#"{ "notify_on_failure": false }"#).unwrap();
+        assert!(!Prefs::load(&path).unwrap().notify_on_update);
+        std::fs::write(&path, r#"{ "notify_on_failure": true }"#).unwrap();
+        assert!(Prefs::load(&path).unwrap().notify_on_update);
+        std::fs::write(
+            &path,
+            r#"{ "notify_on_failure": false, "notify_on_update": true }"#,
+        )
+        .unwrap();
+        assert!(Prefs::load(&path).unwrap().notify_on_update);
     }
 
     /// The stuck-restore notice used to ride on `notify_on_failure`. A file from

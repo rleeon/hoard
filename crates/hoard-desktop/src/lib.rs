@@ -303,6 +303,7 @@ pub fn run() {
             commands::agent::agent_status,
             commands::prefs::get_prefs,
             commands::prefs::save_prefs,
+            commands::prefs::set_notification_switch,
             commands::prefs::set_autostart,
             commands::prefs::is_autostart_enabled,
             commands::prefs::app_autostart_available,

@@ -10,7 +10,7 @@
 //! the user disabled the launcher entry from outside Hoard.
 
 use hoard_agent::prefs::{Prefs, SyncMode};
-use hoard_core::ipc::Request;
+use hoard_core::ipc::{NotificationSwitch, Request};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -27,6 +27,23 @@ pub fn get_prefs() -> Result<Prefs, String> {
     Ok(prefs)
 }
 
+/// Flips a notification switch. It goes to the service and not through
+/// [`save_prefs`] because the CLI and the Decky plugin move the same switches: one
+/// writer is what keeps a window with an old copy from undoing them.
+#[tauri::command]
+pub async fn set_notification_switch(
+    state: State<'_, AppState>,
+    switch: NotificationSwitch,
+    enabled: bool,
+) -> Result<(), String> {
+    state
+        .daemon
+        .set_notification_switch(switch, enabled)
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("{e:#}"))
+}
+
 /// Persist a new prefs object. We replace wholesale rather than merging
 /// individual fields: the form on the frontend always submits the full
 /// object so there's nothing to lose, and partial-update semantics tend to
@@ -39,9 +56,12 @@ pub fn get_prefs() -> Result<Prefs, String> {
 /// behaviour. Failures here are non-fatal: prefs.json is already saved, and
 /// the service reads the same file the next time it starts its engine.
 #[tauri::command]
-pub async fn save_prefs(state: State<'_, AppState>, prefs: Prefs) -> Result<Prefs, String> {
+pub async fn save_prefs(state: State<'_, AppState>, mut prefs: Prefs) -> Result<Prefs, String> {
     let path = Prefs::default_path().map_err(|e| e.to_string())?;
     let prev = Prefs::load(&path).ok();
+    if let Some(current) = &prev {
+        prefs.keep_notification_switches(current);
+    }
     prefs.save(&path).map_err(|e| e.to_string())?;
 
     let auto_restore_changed = match &prev {

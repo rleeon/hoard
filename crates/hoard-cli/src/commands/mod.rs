@@ -11,6 +11,7 @@ pub mod games;
 pub mod install;
 pub mod launch;
 pub mod link;
+pub mod notifications;
 pub mod restore;
 pub mod saves;
 pub mod scan;

@@ -37,14 +37,14 @@ uuid = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Native notifications over the session bus (ADR 0021 D.14.1). It is the same library
-# Tauri's notification plugin uses underneath, so the service's notice looks the same
-# as the one the desktop used to send. Linux only: the Windows and macOS backends go
-# behind the same interface (`notify::Sink`), and until then the frontend keeps
-# notifying there.
-[target.'cfg(target_os = "linux")'.dependencies]
+# Native notifications (ADR 0021 D.14.1): the session bus on Linux, a toast on
+# Windows. It is the same library Tauri's notification plugin uses underneath, so the
+# service's notice looks the same as the one the desktop used to send. macOS has no
+# backend yet (`notify::Sink`), and there the app paints what the service hands it.
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
 notify-rust = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
 # The XDG portals' client. It is only used inside a Flatpak, where starting at login
 # cannot go through systemd: `background` is the only
 # interfaz sancionada para pedirlo, y el resto de portales no se compilan.

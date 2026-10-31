@@ -56,7 +56,8 @@ use hoard_agent::state::CliState;
 use hoard_agent::supervisor::{self, Finished};
 use hoard_core::ipc::{
     AdoptedSession, AgentSlotStatus, CloudToken, DaemonStatus, EngineDownReason, IpcError,
-    KeyringFault, Payload, Request, ScanNote, ServerSession, UpdateState, CAP_DETECTION,
+    KeyringFault, NotificationSwitch, NotificationSwitches, Payload, Request, ScanNote,
+    ServerSession, UpdateState, CAP_DETECTION, CAP_NOTICES,
 };
 use hoardd::client::{Client, Push};
 use hoardd::endpoint::Endpoint;
@@ -72,10 +73,10 @@ fn client_name(role: &str) -> String {
 }
 
 /// What this desktop tells the service it can do beyond protocol 1: leave
-/// detection, automatic mode and the catalogue to it (ADR 0021, Slice 8). Every
-/// connection says so, or the service would take that one for an older desktop
-/// and stand aside.
-const CAPS: &[&str] = &[CAP_DETECTION];
+/// detection, automatic mode and the catalogue to it (ADR 0021, Slice 8), and paint
+/// the notices it is handed. Every connection says so, or the service would take
+/// that one for an older desktop and stand aside.
+const CAPS: &[&str] = &[CAP_DETECTION, CAP_NOTICES];
 
 /// Who runs detection, as the last welcome said (see [`DaemonLink::owns_detection`]).
 const DETECTION_UNKNOWN: u8 = 0;
@@ -115,12 +116,6 @@ const STATUS_EVERY: Duration = Duration::from_secs(20);
 pub struct AgentStatus {
     pub running: bool,
     pub watched_count: usize,
-    /// The service sends the OS's native notifications itself (ADR 0021 D.14.1),
-    /// so the UI must **not** send its own or the user would see the notice twice
-    /// with the app open. On a platform where the service cannot notify yet
-    /// (Windows, macOS) this arrives as `false` and the notice stays the
-    /// frontend's.
-    pub service_notifies: bool,
     /// **Why** there is no engine, when there is none. This used to die here: the
     /// daemon had it typed, this struct threw it away, and the window could only say
     /// "the service is disconnected", which left two self-hosted users days without
@@ -139,15 +134,10 @@ pub struct AgentStatus {
 
 impl AgentStatus {
     /// What the UI should paint when we know nothing about the engine.
-    ///
-    /// `service_notifies: false` is the safe default: with no service no events
-    /// arrive either, so there is nothing to duplicate, and the worst possible case
-    /// is a repeated notice, never a lost one.
     pub fn down() -> Self {
         Self {
             running: false,
             watched_count: 0,
-            service_notifies: false,
             // We never reached the service, so we don't know whether the engine
             // is up either: `Unreachable` says that and nothing more. This used
             // to be `Unknown`, which in the window is the sentence "the sync
@@ -167,7 +157,6 @@ impl AgentStatus {
         Self {
             running: status.engine.running,
             watched_count: status.slots.len().max(status.engine.watched),
-            service_notifies: status.notifications,
             reason: status.engine.reason,
             // Only when something is broken: the last error of an engine that is
             // already up is noise the window must not show.
@@ -448,6 +437,19 @@ impl DaemonLink {
     /// whole difference: with a human at the keyboard the service can open the
     /// privilege dialog its background cycle cannot. It returns straight away;
     /// applying carries on and is followed with `update_state`.
+    /// Flips a notification switch on the service, the only writer of them.
+    pub async fn set_notification_switch(
+        &self,
+        switch: NotificationSwitch,
+        enabled: bool,
+    ) -> Result<NotificationSwitches> {
+        let request = Request::SetNotificationSwitch { switch, enabled };
+        match self.request(request).await? {
+            Payload::NotificationSwitches(switches) => Ok(switches),
+            other => anyhow::bail!("unexpected answer about the notifications: {other:?}"),
+        }
+    }
+
     pub async fn apply_update(&self, version: Option<String>) -> Result<UpdateState> {
         match self.request(Request::ApplyUpdate { version }).await? {
             Payload::Update(state) => Ok(state),
@@ -773,6 +775,13 @@ async fn pump_once(app: &AppHandle) -> Result<()> {
             // Detection's progress. Never in the journal: a window that wasn't
             // listening has nothing to catch up on, the cache on disk says the rest.
             Push::Scan(note) => relay_scan(app, note),
+            // The service picked this window as the way out; it has decided already.
+            Push::Notice(note) => {
+                let _ = app.emit("agent://notice", note);
+            }
+            Push::NotificationSwitches(switches) => {
+                let _ = app.emit("agent://notification-switches", switches);
+            }
         }
     }
     Ok(())
