@@ -27,7 +27,7 @@ crates/
 
 **All prose in English.** Comments, doc comments, commit subjects and bodies, public docs. No retroactive mass translation: translate a file only when you are already editing it for another reason, and include the translation in the same commit. Never a translate-only commit — it breaks `git blame` and buys nothing.
 
-**Commits: name only.** No `Co-Authored-By`, no mention of AI tools anywhere. Short subject, imperative, lowercase, English, no conventional-commit prefixes.
+**Commits: name only.** No `Co-Authored-By`, you need mention if you use ai tools or not and what model. Short subject, imperative, lowercase, English, no conventional-commit prefixes.
 
 **User-provided text goes as-is.** If you want to suggest different wording, ask first; do not rewrite on your own.
 
