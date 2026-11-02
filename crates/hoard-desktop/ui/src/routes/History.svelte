@@ -814,7 +814,7 @@
           </div>
           <p class="mt-2 flex items-center gap-2 text-sm text-zinc-400">
             <Folder size={14} class="text-zinc-500" />
-            <span class="truncate font-mono text-xs">{save.local_path}</span>
+            <span class="truncate font-mono text-xs" title={save.local_path}>{save.local_path}</span>
           </p>
           <p class="mt-2 text-xs text-zinc-500">
             {$_("history.versions_count", {
@@ -1315,6 +1315,7 @@
                                 insight?.p
                                   ? 'text-zinc-100'
                                   : 'text-zinc-300'}"
+                                title={f.relative_path}
                               >
                                 {f.relative_path}
                               </span>

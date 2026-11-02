@@ -92,6 +92,7 @@
     eyeOpen,
     notifOpen,
     openRepoPage,
+    setLiveActivityShown,
     toggleEye,
     toggleLiveActivity,
     toggleNotif,
@@ -143,6 +144,10 @@
   import { prefs, hydratePrefs } from "./lib/stores/prefs";
   import { initGameOverlay } from "./lib/stores/gameOverlay";
   import { hydrateCardSizes } from "./lib/stores/cardSizes.svelte";
+  import {
+    hydrateLiveActivityLayout,
+    liveActivityLayout,
+  } from "./lib/stores/liveActivityLayout.svelte";
   import * as api from "./lib/api";
   import {
     checkForUpdates,
@@ -545,6 +550,7 @@
     // own errors and falls back to pessimistic defaults.
     await hydratePrefs();
     await hydrateCardSizes();
+    await hydrateLiveActivityLayout();
     // `automaticMode` / `globalSync` are $derived from `$prefs` above, so they
     // populate on their own once hydratePrefs resolves, no manual seed here.
 
@@ -898,6 +904,7 @@
              hidden so the affordance reads as "off". -->
         <button
           type="button"
+          data-activity-toggle
           onclick={toggleLiveActivity}
           aria-label={$_("activity.toggle_label")}
           title={$_("activity.toggle_label")}
@@ -1312,16 +1319,21 @@
 
 <!-- Bottom-right stack. The storage banner rides above the activity panel and
      survives it being closed: a full account is the one state that has to stay
-     on screen, since nothing gets backed up until it clears. -->
+     on screen, since nothing gets backed up until it clears. A docked panel
+     the user widened takes the stack with it. -->
 {#if isAppRoute}
+  {@const panel = liveActivityLayout()}
   <div
     data-nav-hint-avoid
     class="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[min(22rem,calc(100vw-2rem))] flex-col items-stretch gap-2"
+    style:width={panel.docked && panel.width !== null
+      ? `min(${panel.width}px, calc(100vw - 2rem))`
+      : undefined}
   >
     <StorageFullBanner />
     <PassReminderBanner />
     {#if $prefs?.live_activity_visible ?? true}
-      <ActivityFeed onClose={() => toggleLiveActivity()} />
+      <ActivityFeed onClose={() => void setLiveActivityShown(false)} />
     {/if}
   </div>
 {/if}

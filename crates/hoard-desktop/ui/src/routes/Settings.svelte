@@ -1713,7 +1713,7 @@
                             {/if}
                           </span>
                         </div>
-                        <p class="mt-1 truncate text-[11px] text-zinc-500">
+                        <p class="mt-1 truncate text-[11px] text-zinc-500" title={slot.path}>
                           {slot.path}
                         </p>
                         <dl

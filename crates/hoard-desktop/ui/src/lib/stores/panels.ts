@@ -9,6 +9,7 @@
  */
 import { get, writable } from "svelte/store";
 
+import { byKeys } from "../actions/spatialNav";
 import * as api from "../api";
 import { openExternal } from "./cloud";
 import { showError } from "./error_dialog";
@@ -45,14 +46,31 @@ export async function openRepoPage(): Promise<void> {
   }
 }
 
-/** Show or hide the live activity panel. The sidebar's scroll button and, on
- *  Windows, the title bar's both call this. */
-export async function toggleLiveActivity(): Promise<void> {
-  const visible = !(get(prefs)?.live_activity_visible ?? true);
+/** A request from the keys to go into the live activity panel, and the control
+ *  to come back to. `ActivityFeed` takes it, also when it mounts after it. */
+export const liveActivityEnter = writable<{ opener: HTMLElement | null } | null>(null);
+
+export async function setLiveActivityShown(visible: boolean): Promise<void> {
   try {
     const updated = await api.setLiveActivityVisible(visible);
     prefs.set(updated);
   } catch (e) {
     showError(e);
   }
+}
+
+/** The sidebar's scroll button and, on Windows, the title bar's. The pointer
+ *  shows or hides the panel. From the keys the button is the way into it, as
+ *  the bell's is, and opens it first if it was hidden: the panel sits over the
+ *  page, where no arrow reaches it, and hiding it from there left no way in.
+ *  The keys hide it with its own close button. */
+export async function toggleLiveActivity(): Promise<void> {
+  const visible = get(prefs)?.live_activity_visible ?? true;
+  if (byKeys()) {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!visible) await setLiveActivityShown(true);
+    liveActivityEnter.set({ opener });
+    return;
+  }
+  await setLiveActivityShown(!visible);
 }

@@ -318,7 +318,7 @@
                     {confidenceLabel(game.confidence)}
                   </span>
                 </p>
-                <p class="truncate font-mono text-[11px] text-zinc-500">
+                <p class="truncate font-mono text-[11px] text-zinc-500" title={game.found_paths[0]}>
                   {game.found_paths[0]}
                 </p>
               </div>

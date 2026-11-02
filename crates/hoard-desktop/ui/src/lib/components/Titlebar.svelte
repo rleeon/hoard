@@ -206,6 +206,7 @@
     </button>
     <button
       type="button"
+      data-activity-toggle
       onclick={toggleLiveActivity}
       aria-label={$_("activity.toggle_label")}
       title={$_("activity.toggle_label")}
