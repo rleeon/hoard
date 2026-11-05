@@ -2,7 +2,7 @@
 title: "Alternativa à Steam Cloud: sincroniza e guarda os saves que a Steam não guarda"
 description: "O Steam Cloud deixa muitos jogos de fora e não guarda histórico. Sincroniza e faz backup de todos, de qualquer launcher, entre PCs e a Steam Deck, com versões."
 order: 7
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 A Steam Cloud faz muito bem o trabalho estreito que faz, e a maioria das pessoas só lhe descobre os limites no dia em que perde alguma coisa. Este guia explica onde estão esses limites e o que fazer com os jogos que ficam de fora.
@@ -26,7 +26,7 @@ Quando funciona é invisível e excelente: fechas o jogo num PC, abres noutro, e
 
 ## O que o Hoard acrescenta
 
-O Hoard vigia a pasta onde o jogo realmente escreve e captura uma **versão nova sempre que acabas de jogar**:
+O Hoard vigia a pasta onde o jogo realmente escreve e captura uma **versão nova sempre que o jogo grava**:
 
 - **Não lhe interessa de onde veio o jogo.** Steam, GOG, Epic, itch, emuladores ou uma pasta que lhe apontes à mão.
 - **Todas as versões ficam guardadas**, por isso recuperar de um save corrompido ou de uma má decisão são dois cliques e não uma campanha perdida.
@@ -73,7 +73,7 @@ Sim, e é boa parte do sentido. Localiza os saves através de uma base de dados 
 
 ### Ter os dois a correr provoca conflitos?
 
-Não. O Hoard captura uma versão depois de parares e de a pasta ficar quieta, e nunca escreve por cima sem capturar primeiro aquilo que substitui.
+Não. O Hoard captura uma versão depois de o jogo acabar de escrever e de a pasta ficar quieta, e nunca escreve por cima sem capturar primeiro aquilo que substitui.
 
 ### Posso manter os meus saves fora das duas nuvens?
 

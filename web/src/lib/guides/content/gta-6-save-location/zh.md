@@ -2,7 +2,7 @@
 title: "GTA 6 存档位置：PS5、Xbox 与 PC（目前已知的信息）"
 description: "GTA 6 将于 2026 年 11 月 19 日登陆 PS5 和 Xbox，暂无 PC 版。主机存档在哪里、如何保护，以及 PC 版可以期待什么。"
 order: 25
-updated: 2026-10-17
+updated: 2026-11-05
 ---
 
 GTA 6 将于 **2026 年 11 月 19 日发售，仅限 PS5 和 Xbox Series X|S**。目前还没有 PC 版：Rockstar 没有公布日期，唯一流传的时间来自 2026 年 10 月一份未经证实的报道，称是 2027 年初。在那之前，GTA 6 的存档保存在主机和主机的云端，而不是一个你能打开的文件夹里。下面介绍这些存档如何保存、如何保护，以及参照 Rockstar 最近的 PC 作品，PC 版存档最可能放在哪里。PC 版一推出，这一页就会写上真实路径。
@@ -40,7 +40,7 @@ Rockstar 还没说 GTA 6 在 PC 上会如何处理存档。沿用同一个启动
 
 ## 用 Hoard 为 PC 版做好准备
 
-[Hoard](/download) 会在你每次停止游戏时备份存档文件夹，并保留每一个版本，所以存档损坏了，或者想重打某个任务，恢复一次就能回去。它还会在你的 PC 和 Steam Deck 之间保持文件夹同步，而且已经支持 GTA V 和 Red Dead Redemption 2。
+[Hoard](/download) 会在游戏每次存档时以及你退出时备份存档文件夹，并保留每一个版本，所以存档损坏了，或者想重打某个任务，恢复一次就能回去。它还会在你的 PC 和 Steam Deck 之间保持文件夹同步，而且已经支持 GTA V 和 Red Dead Redemption 2。
 
 GTA 6 登陆 PC 时：
 

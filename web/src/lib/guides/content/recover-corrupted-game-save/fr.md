@@ -2,7 +2,7 @@
 title: "Sauvegarde corrompue ? Comment la récupérer"
 description: "Une sauvegarde illisible n'est pas toujours perdue. Où trouver une copie saine (backups du jeu, Steam Cloud, Windows, OneDrive) et comment ne plus être coincé."
 order: 12
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Une sauvegarde qui ne se charge plus est rarement perdue pour de bon. La plupart du temps, une copie saine existe quelque part : un backup fait par le jeu lui-même, la copie de Steam Cloud, une version précédente gardée par Windows ou OneDrive, ou la sauvegarde d'un autre PC. Mais l'ordre compte, car une mauvaise manipulation peut écraser la bonne copie avec la mauvaise. Commencez ici.
@@ -73,7 +73,7 @@ Pour quelques jeux populaires, la communauté propose des éditeurs de sauvegard
 
 ## Ne plus jamais être coincé
 
-Toutes les récupérations ci-dessus dépendent de la chance : que le jeu ait fait un backup, ou que Steam n'ait pas encore synchronisé. Une sauvegarde versionnée retire la chance de l'équation. C'est ce que fait Hoard : il sauvegarde chaque partie automatiquement après que vous avez arrêté de jouer, une fois le dossier au repos, donc une copie n'est jamais un fichier à moitié écrit. Chaque version est conservée. Quand quelque chose casse, vous ouvrez l'**Historique** du jeu et restaurez la dernière bonne version en un clic ; votre sauvegarde actuelle est copiée d'abord, donc même cela peut être annulé. Et comme Hoard garde aussi vos sauvegardes synchronisées, la copie de votre portable ou de votre Steam Deck n'est jamais une vieille copie oubliée : toutes vos machines partagent le même historique.
+Toutes les récupérations ci-dessus dépendent de la chance : que le jeu ait fait un backup, ou que Steam n'ait pas encore synchronisé. Une sauvegarde versionnée retire la chance de l'équation. C'est ce que fait Hoard : il sauvegarde chaque partie automatiquement chaque fois que le jeu l'écrit, une fois le dossier au repos, donc une copie n'est jamais un fichier à moitié écrit. Chaque version est conservée. Quand quelque chose casse, vous ouvrez l'**Historique** du jeu et restaurez la dernière bonne version en un clic ; votre sauvegarde actuelle est copiée d'abord, donc même cela peut être annulé. Et comme Hoard garde aussi vos sauvegardes synchronisées, la copie de votre portable ou de votre Steam Deck n'est jamais une vieille copie oubliée : toutes vos machines partagent le même historique.
 
 Une astuce pour repérer le moment où ça a cassé : une chute soudaine de taille entre deux versions signale généralement une sauvegarde tronquée. Plus d'infos dans [comment restaurer une ancienne sauvegarde](/guides/restore-a-game-save).
 
@@ -101,4 +101,4 @@ Le jeu a commencé à l'écrire sans jamais finir : un plantage, une coupure de 
 
 ### Comment éviter que ça se reproduise ?
 
-Avec des sauvegardes versionnées faites quand le jeu n'est pas lancé. Hoard le fait automatiquement après chaque session et garde chaque version, vous pouvez donc revenir à n'importe laquelle.
+Avec des sauvegardes versionnées qui ne sont jamais prises au milieu d'une écriture. Hoard le fait automatiquement à chaque sauvegarde du jeu, en attendant que le fichier soit terminé, et garde chaque version, vous pouvez donc revenir à n'importe laquelle.

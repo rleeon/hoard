@@ -2,8 +2,8 @@
 title: "Where are PC game saves stored? Every common location"
 description: "Where PC games keep their save files on Windows, Steam Deck, Linux and Mac, which launchers add their own folders, and how to find any game's saves fast."
 order: 11
-updated: 2026-10-09
-related: back-up-game-saves, transfer-game-saves-to-new-pc, onedrive-game-saves, sync-saves-steam-deck-pc
+updated: 2026-11-05
+related: back-up-game-saves, transfer-game-saves-to-new-pc, onedrive-game-saves, sync-saves-steam-deck-pc, where-does-steam-store-saves
 ---
 
 There's no single folder. On Windows, almost every game saves in one of six places: `Documents`, `Saved Games`, one of the three `AppData` folders, Steam's `userdata`, or its own install folder. The engine and the developer decide which, not the store you bought it from. This page lists every common location, the launchers that add a layer of their own, and a quick way to find any game's saves, even one nobody has documented.
@@ -62,7 +62,7 @@ When a game isn't on any list, three tricks find it in a couple of minutes:
 
 ## Or let something find them for you
 
-Hoard reads that same community save database, covering thousands of games, and checks every candidate path on your machine: Proton, Heroic and Lutris prefixes, OneDrive's `Documents`, emulators, portable installs. Whatever it finds is backed up automatically each time you stop playing, with every version kept, and kept in sync across your PCs and Steam Deck. Anything it misses you can add by pointing at the folder once. See [how to back up your game saves automatically](/guides/back-up-game-saves).
+Hoard reads that same community save database, covering thousands of games, and checks every candidate path on your machine: Proton, Heroic and Lutris prefixes, OneDrive's `Documents`, emulators, portable installs. Whatever it finds is backed up automatically every time the game saves, with every version kept, and kept in sync across your PCs and Steam Deck. Anything it misses you can add by pointing at the folder once. See [how to back up your game saves automatically](/guides/back-up-game-saves), or look a game up in the [save locations of hundreds of popular games](/saves).
 
 There are also pages with exact paths for a few popular games: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location), [Palworld](/guides/palworld-save-location), [Crimson Desert](/guides/crimson-desert-save-location) and [Marvel's Spider-Man 2](/guides/spider-man-2-save-location).
 

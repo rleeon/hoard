@@ -2,7 +2,7 @@
 title: "Onde ficam os saves de Baldur's Gate 3 (PC e Steam Deck)"
 description: "Onde o Baldur's Gate 3 guarda os saves no Windows, Steam Deck e Mac, o que é save e o que são mods ou definições, o modo Honra, backup e sincronização."
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 No Windows, o Baldur's Gate 3 guarda os saves em `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, uma pasta por save. É o caminho que a Larian indica no seu FAQ de suporte. Abaixo tens os caminhos na Steam Deck e no Mac, o que está ao lado dos saves, o modo Honra e como manter tudo com backup e sincronizado entre o PC e a Steam Deck.
@@ -42,13 +42,13 @@ Sim. No Steam usa o Steam Cloud, que mantém em dia os últimos saves entre máq
 
 ## Backup e sincronização automáticos com o Hoard
 
-O [Hoard](/download) faz backup da pasta de saves sempre que deixas de jogar e guarda todas as versões, por isso um save estragado pela atualização de um mod ou por um patch está a um restauro de distância. Também mantém a pasta sincronizada entre os teus PCs e uma Steam Deck.
+O [Hoard](/download) faz backup da pasta de saves sempre que o jogo grava e outra vez quando sais, e guarda todas as versões, por isso um save estragado pela atualização de um mod ou por um patch está a um restauro de distância. Também mantém a pasta sincronizada entre os teus PCs e uma Steam Deck.
 
 1. Instala o Hoard e inicia sessão, ou aponta-o para [o teu próprio servidor](/guides/self-host-hoard).
 2. Abre a **Biblioteca**. O Baldur's Gate 3 é detetado a partir da tua biblioteca Steam e da base de dados comunitária de saves.
 3. Joga. Ao sair, a primeira versão aparece no histórico.
 
-Cada sessão junta uma versão com todos os saves lá dentro. Para voltar atrás, abre o histórico e [restaura uma versão anterior](/guides/restore-a-game-save); o que tens agora no PC é copiado antes, por isso experimentar uma antiga nunca é uma viagem sem volta.
+Cada backup junta uma versão com todos os saves lá dentro. Para voltar atrás, abre o histórico e [restaura uma versão anterior](/guides/restore-a-game-save); o que tens agora no PC é copiado antes, por isso experimentar uma antiga nunca é uma viagem sem volta.
 
 <!-- faq -->
 

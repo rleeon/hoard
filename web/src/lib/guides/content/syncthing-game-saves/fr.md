@@ -2,7 +2,7 @@
 title: "Syncthing pour les sauvegardes de jeux : ce qui marche et ce qui casse"
 description: "Syncthing est un excellent outil de synchro, mais les sauvegardes de jeu cassent trois de ses hypothèses. Ce qui casse, les parades, et quand changer d'outil."
 order: 9
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Syncthing est la réponse vers laquelle beaucoup se tournent d'abord, et à raison : gratuit, open source, pair-à-pair, et ça marche. Mais les sauvegardes de jeux brisent trois hypothèses sur lesquelles repose un synchroniseur généraliste, et les échecs sont silencieux. Ce guide parle de ce qui déraille vraiment, et du moment où un outil qui sait ce qu'est une sauvegarde devient utile.
@@ -27,7 +27,7 @@ Rien de tout cela n'est insoluble. On s'en sort avec des motifs d'exclusion par 
 
 ## Ce que fait à la place un outil qui connaît les sauvegardes
 
-Hoard capture **après que vous avez arrêté de jouer**, une fois le dossier calmé : un instantané n'est donc jamais un fichier à moitié écrit. Chaque capture est une version de la sauvegarde entière, pas de fichiers isolés, donc restaurer se fait en un clic et remet tout ensemble. Il sait quel dossier appartient à quel jeu — il lit le même manifeste communautaire d'emplacements que partage l'écosystème open source, couvrant plus de 20 000 titres — donc aucun chemin à maintenir, et il suit `<AppID>/remote/` plutôt que le dossier au-dessus.
+Hoard capture **chaque fois que le jeu a fini d'écrire une sauvegarde**, une fois le dossier calmé : un instantané n'est donc jamais un fichier à moitié écrit. Chaque capture est une version de la sauvegarde entière, pas de fichiers isolés, donc restaurer se fait en un clic et remet tout ensemble. Il sait quel dossier appartient à quel jeu — il lit le même manifeste communautaire d'emplacements que partage l'écosystème open source, couvrant plus de 20 000 titres — donc aucun chemin à maintenir, et il suit `<AppID>/remote/` plutôt que le dossier au-dessus.
 
 ## Quand Syncthing est la meilleure réponse
 

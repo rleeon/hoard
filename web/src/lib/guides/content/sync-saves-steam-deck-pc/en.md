@@ -2,8 +2,8 @@
 title: "How to sync saves between Steam Deck and PC"
 description: "Keep Steam Deck and PC saves in sync automatically, including non-Steam games, emulators and games without Steam Cloud. Setup, paths and traps."
 order: 10
-updated: 2026-10-09
-related: sync-game-saves-across-pcs, retroarch-save-sync, steam-cloud-alternative, where-are-pc-game-saves-stored, rog-ally-legion-go-save-sync, dual-boot-game-saves
+updated: 2026-11-05
+related: sync-game-saves-across-pcs, retroarch-save-sync, steam-cloud-alternative, where-are-pc-game-saves-stored, rog-ally-legion-go-save-sync, dual-boot-game-saves, where-does-steam-store-saves
 ---
 
 For Steam games with Steam Cloud, your Deck and your PC already share saves. Everything else needs help: games where the developer never turned Steam Cloud on, Epic and GOG games running through Heroic, emulators, and anything you added as a non-Steam game. Hoard covers all of them automatically. When you quit a game on one machine it backs up the save, and the other machine pulls it down, with every earlier version kept in case something goes wrong.
@@ -45,7 +45,7 @@ Hoard Setup puts the app in your home folder and the sync engine in a background
 
 ## What a normal day looks like
 
-You play on the PC in the evening and quit. Hoard waits until the game has closed and the save has stopped changing, then uploads it. The next morning you pick up the Deck. Once it's online, Hoard sees the newer version and writes it into the Proton prefix. You launch the game and carry on. When you quit on the Deck, the same thing happens in reverse.
+You play on the PC in the evening. Every time the game saves, Hoard uploads it a few seconds later, and once more when you quit. The next morning you pick up the Deck. Once it's online, Hoard sees the newer version and writes it into the Proton prefix. You launch the game and carry on. When you quit on the Deck, the same thing happens in reverse.
 
 Neither machine has to be on at the same time as the other. The save waits on the server until the other machine asks for it.
 
@@ -53,7 +53,7 @@ Neither machine has to be on at the same time as the other. The save waits on th
 
 ### Suspending is not quitting
 
-The Deck makes it very easy to press the power button and walk away with the game still open. Hoard only backs up a save once the game has closed, because a game that's still running may be halfway through writing it. It also never swaps a save under a running game. So if you suspend on the Deck and then play on the PC, the Deck's progress isn't uploaded yet, and the PC's new save waits until you close the game on the Deck.
+The Deck makes it very easy to press the power button and walk away with the game still open. Hoard uploads each save a few seconds after the game writes it, while you play too, so what you saved before suspending is normally on the server already, as long as the Deck was online. What it never does is swap a save under a running game. So if you suspend on the Deck and then play on the PC, the PC's new save waits until you close the game on the Deck.
 
 The habit that avoids all of it: **quit the game before you switch machines.** If Proton leaves a dead process behind after you quit, which happens often, Hoard notices that the game is gone and carries on.
 

@@ -2,7 +2,7 @@
 title: "Sincronizar partidas entre ROG Ally, Legion Go, MSI Claw y tu PC"
 description: "Las portátiles con Windows como ROG Ally, Legion Go y MSI Claw son PC. Sincroniza sus partidas con tu sobremesa de forma automática, con historial de versiones."
 order: 19
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 La ROG Ally, la Legion Go y la MSI Claw funcionan con Windows, así que para un juego son un PC más. Y ese es justo el problema: tu sobremesa y tu portátil guardan cada uno sus propias partidas. Steam Cloud cubre parte de tu biblioteca y las partidas en la nube de Xbox cubren Game Pass, pero todo lo demás se queda en la máquina donde jugaste. Hoard mantiene tus partidas sincronizadas entre la portátil y el sobremesa de forma automática: dejas de jugar en una y el juego te espera en la otra, con todas las versiones anteriores guardadas.
@@ -28,7 +28,7 @@ El motor de sincronización es un servicio en segundo plano que arranca con Wind
 
 ### Suspender no es cerrar
 
-En una portátil es muy fácil pulsar el botón de encendido y guardarla con el juego abierto. Hoard solo respalda cuando el juego se ha cerrado, porque un juego en marcha puede estar a medio escribir la partida, y nunca cambia la partida de un juego abierto. Si suspendes la portátil y luego juegas en el sobremesa, el progreso de la portátil todavía no se ha subido. **Cierra el juego antes de cambiar de máquina.**
+En una portátil es muy fácil pulsar el botón de encendido y guardarla con el juego abierto. Hoard sube cada partida unos segundos después de que el juego la escriba, también mientras juegas, pero nunca cambia la partida de un juego abierto. Si suspendes la portátil con el juego abierto y luego juegas en el sobremesa, la portátil no recogerá la partida más nueva del sobremesa hasta que cierres el juego en ella. **Cierra el juego antes de cambiar de máquina.**
 
 ### Juegos en la microSD
 

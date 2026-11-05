@@ -2,7 +2,7 @@
 title: "Saves na nuvem da Epic e da GOG: o que cobrem e como sincronizar o resto"
 description: "A nuvem da Epic e da GOG só funciona para alguns jogos, só no seu launcher e sem histórico. O que cobre e como sincronizar o resto automaticamente."
 order: 19.5
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Tanto a Epic como a GOG têm saves na nuvem, com as mesmas limitações do Steam: o programador tem de os suportar jogo a jogo, só funcionam através do launcher da própria loja e guardam a última cópia em vez de um histórico. Aqui tens o que cada uma cobre, onde estão as falhas e como manter todos os teus jogos sincronizados entre os teus PCs e uma Steam Deck, comprados onde forem.
@@ -35,13 +35,13 @@ O Ubisoft Connect e a app da EA têm saves na nuvem para muitos dos seus própri
 
 ## Sincronizar o resto
 
-O Hoard trabalha por jogo, não por loja. Encontra a pasta de saves de cada jogo com uma base de dados comunitária que cobre milhares de títulos, venha o jogo de onde vier, faz backup dela automaticamente quando deixas de jogar e sincroniza-a com os teus outros PCs e a tua Steam Deck, guardando todas as versões.
+O Hoard trabalha por jogo, não por loja. Encontra a pasta de saves de cada jogo com uma base de dados comunitária que cobre milhares de títulos, venha o jogo de onde vier, faz backup dela automaticamente sempre que o jogo grava e sincroniza-a com os teus outros PCs e a tua Steam Deck, guardando todas as versões.
 
 Isso cobre as falhas acima:
 
 - **Qualquer launcher, ou nenhum.** Epic, GOG, Galaxy ou o instalador offline, o Heroic no Linux, um jogo que descompactaste numa pasta.
 - **Entre lojas.** A maioria dos jogos guarda no mesmo sítio seja qual for a loja que os vendeu, normalmente em `AppData` ou `Documents`, por isso uma instalação da GOG num PC e uma do Steam noutro podem partilhar um save. Alguns acrescentam uma pasta com o ID da conta ou mudam de nome consoante a loja; confirma antes de contares com isso.
-- **Um histórico.** Cada sessão é uma versão para onde podes voltar.
+- **Um histórico.** Cada gravação é uma versão para onde podes voltar.
 
 Onde a nuvem de um launcher já sincroniza um jogo, deixa-a continuar. O Hoard acrescenta o histórico e sincroniza tudo o resto.
 

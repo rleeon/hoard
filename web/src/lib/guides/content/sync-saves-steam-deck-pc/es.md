@@ -2,7 +2,7 @@
 title: "Cómo sincronizar partidas entre Steam Deck y PC"
 description: "Sincroniza tus partidas entre Steam Deck y PC de forma automática, también juegos fuera de Steam, emuladores y juegos sin Steam Cloud. Pasos, rutas y trampas."
 order: 10
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 En los juegos de Steam con Steam Cloud, tu Deck y tu PC ya comparten las partidas. Todo lo demás necesita ayuda: juegos en los que el desarrollador nunca activó Steam Cloud, juegos de Epic y GOG que lanzas con Heroic, emuladores y cualquier cosa que hayas añadido como juego ajeno a Steam. Hoard los cubre todos de forma automática. Cuando cierras un juego en una máquina, respalda la partida, y la otra máquina la descarga, con todas las versiones anteriores guardadas por si algo sale mal.
@@ -44,7 +44,7 @@ Hoard Setup deja la app en tu carpeta personal y el motor de sincronización en 
 
 ## Cómo es un día normal
 
-Juegas en el PC por la noche y cierras el juego. Hoard espera a que se haya cerrado y a que la partida deje de cambiar, y entonces la sube. A la mañana siguiente coges el Deck. En cuanto tiene conexión, Hoard ve la versión más nueva y la escribe en el prefijo de Proton. Abres el juego y sigues. Cuando lo cierras en el Deck, pasa lo mismo en sentido contrario.
+Juegas en el PC por la noche. Cada vez que el juego guarda, Hoard sube la partida unos segundos después, y otra vez al salir. A la mañana siguiente coges el Deck. En cuanto tiene conexión, Hoard ve la versión más nueva y la escribe en el prefijo de Proton. Abres el juego y sigues. Cuando lo cierras en el Deck, pasa lo mismo en sentido contrario.
 
 Ninguna de las dos máquinas tiene que estar encendida a la vez que la otra. La partida espera en el servidor hasta que la otra la pide.
 
@@ -52,7 +52,7 @@ Ninguna de las dos máquinas tiene que estar encendida a la vez que la otra. La 
 
 ### Suspender no es cerrar
 
-El Deck pone muy fácil pulsar el botón de encendido y dejar el juego abierto. Hoard solo respalda una partida cuando el juego se ha cerrado, porque un juego en marcha puede estar a medio escribirla. Y nunca cambia la partida de un juego que está abierto. Así que si suspendes el Deck y luego juegas en el PC, el progreso del Deck todavía no se ha subido, y la partida nueva del PC espera hasta que cierres el juego en el Deck.
+El Deck pone muy fácil pulsar el botón de encendido y dejar el juego abierto. Hoard sube cada partida unos segundos después de que el juego la escriba, también mientras juegas, así que lo que guardaste antes de suspender normalmente ya está en el servidor, siempre que el Deck tuviera conexión. Lo que nunca hace es cambiar la partida de un juego que está abierto. Así que si suspendes el Deck y luego juegas en el PC, la partida nueva del PC espera hasta que cierres el juego en el Deck.
 
 La costumbre que lo evita todo: **cierra el juego antes de cambiar de máquina.** Si Proton deja un proceso muerto al salir, cosa que pasa a menudo, Hoard se da cuenta de que el juego ya no está y sigue.
 

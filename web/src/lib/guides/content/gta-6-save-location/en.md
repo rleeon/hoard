@@ -2,7 +2,7 @@
 title: "GTA 6 save location: PS5, Xbox and PC (what we know)"
 description: "GTA 6 launches on PS5 and Xbox on November 19, 2026, with no PC version yet. Where console saves live, how to back them up, and what to expect on PC."
 order: 25
-updated: 2026-10-17
+updated: 2026-11-05
 related: where-are-pc-game-saves-stored, back-up-game-saves, sync-game-saves-across-pcs
 ---
 
@@ -41,7 +41,7 @@ Rockstar hasn't said how GTA 6 will handle saves on PC. Using the same launcher 
 
 ## Get ready for the PC version with Hoard
 
-[Hoard](/download) backs up a save folder each time you stop playing and keeps every version, so a corrupted save or a mission you'd rather replay is one restore away. It also keeps the folder in sync between your PCs and a Steam Deck, and it already works with GTA V and Red Dead Redemption 2.
+[Hoard](/download) backs up a save folder every time the game saves and again when you quit and keeps every version, so a corrupted save or a mission you'd rather replay is one restore away. It also keeps the folder in sync between your PCs and a Steam Deck, and it already works with GTA V and Red Dead Redemption 2.
 
 When GTA 6 reaches PC:
 

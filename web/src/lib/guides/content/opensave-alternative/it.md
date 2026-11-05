@@ -2,7 +2,7 @@
 title: "Alternativa a OpenSave: diretto tra macchine o con un server tuo"
 description: "OpenSave sincronizza peer-to-peer; Hoard passa da un server, il nostro o il tuo, e tiene ogni versione. Uno sguardo onesto su quando vince ciascuno."
 order: 8
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 I due strumenti risolvono lo stesso problema e non sono d'accordo sull'architettura, che è l'unica cosa che valga la pena confrontare. Questa pagina mette i due approcci uno accanto all'altro, compresi i casi in cui l'altro è la risposta migliore.
@@ -11,14 +11,14 @@ I due strumenti risolvono lo stesso problema e non sono d'accordo sull'architett
 
 **OpenSave** è peer-to-peer. Le tue macchine si parlano direttamente e in mezzo non c'è nulla. Nessun account e nessuno spazio da pagare, e in opzione può replicare una copia su un cloud che hai già.
 
-**Hoard** sincronizza attraverso un server. Quel server è Hoard One, gestito da noi, oppure `hoard-server` sul tuo PC o sul tuo NAS. Il salvataggio sale quando smetti di giocare e scende quando un'altra macchina lo chiede.
+**Hoard** sincronizza attraverso un server. Quel server è Hoard One, gestito da noi, oppure `hoard-server` sul tuo PC o sul tuo NAS. Il salvataggio sale ogni volta che il gioco lo scrive, e scende quando un'altra macchina lo chiede.
 
 Tutto il resto discende da questa singola scelta.
 
 ## Cosa ti dà un server
 
 - **L'altra macchina non deve essere accesa.** Finisci sul fisso, il portatile resta chiuso una settimana, e all'apertura l'ultimo salvataggio è lì ad aspettare. Il peer-to-peer vuole entrambi i capi svegli nello stesso momento: ottimo alla scrivania, scomodo con una portatile che prendi in mano due volte al mese.
-- **Una cronologia, non solo l'ultimo stato.** Ogni sessione diventa una versione a cui tornare. È la parte che conta il giorno in cui una mod ti mangia il mondo o un salvataggio finisce scritto a metà: una sincronizzazione diretta copia fedelmente il file rotto sull'altro PC.
+- **Una cronologia, non solo l'ultimo stato.** Ogni salvataggio diventa una versione a cui tornare. È la parte che conta il giorno in cui una mod ti mangia il mondo o un salvataggio finisce scritto a metà: una sincronizzazione diretta copia fedelmente il file rotto sull'altro PC.
 - **Una copia che sopravvive all'hardware.** Che entrambi i PC muoiano nella stessa casa non è uno scenario esotico. Un salvataggio esistito solo su quelle due macchine muore con loro.
 - **Niente da sistemare sulla rete.** Nessun NAT da attraversare, nessuna porta da aprire, nessun vincolo di stare sulla stessa LAN.
 
@@ -66,11 +66,11 @@ Sì. Fai girare `hoard-server` su un PC o un NAS e i salvataggi vanno dalla tua 
 
 ### Servono entrambi i PC online nello stesso momento?
 
-No, ed è il vantaggio pratico di passare da un server. Il salvataggio viene caricato quando smetti di giocare e scaricato quando l'altra macchina lo richiede.
+No, ed è il vantaggio pratico di passare da un server. Il salvataggio viene caricato ogni volta che il gioco lo scrive e scaricato quando l'altra macchina lo richiede.
 
 ### Un trasferimento diretto tiene una cronologia?
 
-Non di per sé: copiare un file su un'altra macchina ti dà lo stato attuale su entrambe. Hoard cattura ogni sessione come una versione, ed è questo a rendere possibile tornare indietro da un salvataggio corrotto.
+Non di per sé: copiare un file su un'altra macchina ti dà lo stato attuale su entrambe. Hoard conserva ogni salvataggio come una versione, ed è questo a rendere possibile tornare indietro da un salvataggio corrotto.
 
 ### Anche Hoard è open source?
 

@@ -2,7 +2,7 @@
 title: "Wo werden PC-Spielstände gespeichert? Alle üblichen Orte"
 description: "Wo PC-Spiele ihre Spielstände unter Windows, Steam Deck, Linux und Mac ablegen, welche Launcher eigene Ordner anlegen und wie du die Saves jedes Spiels findest."
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Es gibt nicht den einen Ordner. Unter Windows speichert fast jedes Spiel an einem von sechs Orten: `Documents`, `Saved Games`, einer der drei `AppData`-Ordner, Steams `userdata` oder der eigene Installationsordner. Das entscheiden Engine und Entwickler, nicht der Shop, in dem du es gekauft hast. Hier stehen alle üblichen Orte, die Launcher mit einer eigenen Ebene und ein schneller Weg, die Spielstände jedes Spiels zu finden, auch eines, das niemand dokumentiert hat.
@@ -61,7 +61,7 @@ Steht ein Spiel auf keiner Liste, finden es drei Tricks in ein paar Minuten:
 
 ## Oder lass sie für dich finden
 
-Hoard liest dieselbe Community-Datenbank, die Tausende Spiele abdeckt, und prüft jeden infrage kommenden Pfad auf deinem Rechner: Präfixe von Proton, Heroic und Lutris, OneDrives `Dokumente`, Emulatoren, portable Installationen. Was es findet, wird automatisch gesichert, sobald du aufhörst zu spielen, mit jeder Version, und zwischen deinen PCs und dem Steam Deck synchron gehalten. Was ihm entgeht, fügst du hinzu, indem du einmal auf den Ordner zeigst. Siehe [Spielstände automatisch sichern](/guides/back-up-game-saves).
+Hoard liest dieselbe Community-Datenbank, die Tausende Spiele abdeckt, und prüft jeden infrage kommenden Pfad auf deinem Rechner: Präfixe von Proton, Heroic und Lutris, OneDrives `Dokumente`, Emulatoren, portable Installationen. Was es findet, wird bei jedem Speichern automatisch gesichert, mit jeder Version, und zwischen deinen PCs und dem Steam Deck synchron gehalten. Was ihm entgeht, fügst du hinzu, indem du einmal auf den Ordner zeigst. Siehe [Spielstände automatisch sichern](/guides/back-up-game-saves), oder schlag ein Spiel in den [Speicherorten Hunderter beliebter Spiele](/saves) nach.
 
 Für einige beliebte Spiele gibt es außerdem Seiten mit den genauen Pfaden: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location), [Palworld](/guides/palworld-save-location), [Crimson Desert](/guides/crimson-desert-save-location) und [Marvel's Spider-Man 2](/guides/spider-man-2-save-location).
 

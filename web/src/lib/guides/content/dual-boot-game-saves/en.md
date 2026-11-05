@@ -2,7 +2,7 @@
 title: "Sync game saves between Windows and Linux on a dual-boot PC"
 description: "Same PC, two systems, two save folders. Keep game saves in sync between Windows and Linux automatically, why a shared NTFS folder breaks, and the traps."
 order: 18
-updated: 2026-10-09
+updated: 2026-11-05
 related: sync-saves-steam-deck-pc, sync-game-saves-across-pcs, where-are-pc-game-saves-stored, steam-cloud-alternative
 ---
 
@@ -42,7 +42,7 @@ Letting each system keep its saves where the game expects them, and syncing betw
 
 On two separate PCs, the save waits on the server until the other machine asks for it. On a dual-boot PC, the "other machine" is the same computer after a reboot, and that changes one habit.
 
-Hoard uploads a save once the game has closed and the folder has gone quiet. **If you quit the game and reboot straight away, the upload may not have happened yet**, and the other system boots without your latest progress. It will catch up the next time you boot back, but by then you may have played on the old save.
+Hoard uploads a save a few seconds after the game writes it, once the folder has gone quiet. **If you save and reboot straight away, the upload may not have happened yet**, and the other system boots without your latest progress. It will catch up the next time you boot back, but by then you may have played on the old save.
 
 So: quit the game, give Hoard a moment, check in the app that the save is up to date, and then reboot.
 

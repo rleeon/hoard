@@ -2,7 +2,7 @@
 title: "So synchronisierst du Spielstände über mehrere PCs"
 description: "Spiele auf Desktop, Laptop und Steam Deck ohne Fortschrittsverlust: Spielstände automatisch zwischen PCs synchronisieren, mit Versionsverlauf."
 order: 2
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Wenn du an mehr als einem Computer spielst — ein Desktop zu Hause und ein Laptop unterwegs — hält Hoard deine Stände synchron, damit du immer dort weitermachst, wo du aufgehört hast.
@@ -16,13 +16,13 @@ Hoard sichert jeden Stand in deine Cloud und lädt die neueste Version auf deine
 1. Installiere **Hoard** auf jedem PC, auf dem du spielst (Windows, macOS oder Linux).
 2. Melde dich mit **demselben Konto** auf jedem Gerät an oder verbinde sie mit demselben selbst gehosteten Server.
 3. Füge auf jedem PC dieselben Spiele zur **Bibliothek** hinzu. Hoard ordnet sie nach Spiel zu, sodass ein auf einem Gerät gesicherter Stand auf den anderen erscheint.
-4. Lass den **Automatikmodus** an. Hoard lädt nach dem Spielen hoch und vor dem Start die neueste Version herunter.
+4. Lass den **Automatikmodus** an. Hoard lädt bei jedem Speichern hoch und vor dem Start die neueste Version herunter.
 
 ## Wechsel von Ludusavi?
 
 Ludusavi ist ein großartiges Open-Source-Tool, um Stände lokal zu sichern und wiederherzustellen, und es kann diese Backups in eine selbst konfigurierte Cloud mit Rclone übertragen. Aber die Synchronisierung über Geräte hinweg richtest du manuell ein: Backup planen, Remote einrichten, dann auf dem anderen PC wiederherstellen, bevor du spielst.
 
-Hoard macht daraus verwaltete Synchronisierung. Es nutzt dieselben Community-Daten für Speicherorte wie Ludusavi, um deine Stände zu finden, lädt dann nach jeder Sitzung hoch und vor der nächsten die neueste Version herunter — auf jedem PC deines Kontos, mit versionierter Historie in der Cloud. Keine Rclone-Remotes, keine Skripte. Und wie Ludusavi ist Hoard Open Source und selbst hostbar. Siehe den vollständigen [Ludusavi-Alternative-Vergleich](/guides/ludusavi-alternative).
+Hoard macht daraus verwaltete Synchronisierung. Es nutzt dieselben Community-Daten für Speicherorte wie Ludusavi, um deine Stände zu finden, lädt dann bei jedem Speichern hoch und vor dem Start die neueste Version herunter, auf jedem PC deines Kontos, mit versionierter Historie in der Cloud. Keine Rclone-Remotes, keine Skripte. Und wie Ludusavi ist Hoard Open Source und selbst hostbar. Siehe den vollständigen [Ludusavi-Alternative-Vergleich](/guides/ludusavi-alternative).
 
 ## Konflikte vermeiden
 
@@ -61,7 +61,7 @@ Spielstände ja. Einstellungen standardmäßig nicht, und das ist Absicht. Das S
 
 Deshalb sortiert Hoard, was es in einem Spielstand-Ordner findet:
 
-- **Spielstände** werden in jeder Session zwischen den Rechnern synchronisiert.
+- **Spielstände** werden bei jedem Speichern zwischen den Rechnern synchronisiert.
 - **Einstellungsdateien** (`graphics.ini`, `settings.cfg` und Ähnliches) landen in jedem Backup und gehen nie verloren, aber eine Wiederherstellung schreibt sie nicht über die Dateien eines anderen Rechners. Sagt der Eintrag des Spiels in der Spielstand-Datenbank, dass eine `.ini` *der* Spielstand ist, wird sie als Spielstand behandelt.
 - **Ballast** wie Absturzberichte, temporäre Dateien, Engine-Logs wie `Player.log` und Steams eigene Buchhaltung wird gar nicht gesichert, damit das bloße Öffnen eines Spiels keine neue Version erzeugt.
 
@@ -90,11 +90,11 @@ Drei im kostenlosen Tarif, unbegrenzt mit Pro und unbegrenzt beim Selbsthosten �
 
 ### Müssen beide Geräte gleichzeitig online sein?
 
-Nein. Dein Stand geht nach dem Spielen zum Server und kommt herunter, wenn das andere Gerät danach fragt. Der zweite PC kann also eine Woche ausgeschaltet sein und bekommt beim Einschalten trotzdem die neueste Version.
+Nein. Dein Stand geht bei jedem Speichern zum Server und kommt herunter, wenn das andere Gerät danach fragt. Der zweite PC kann also eine Woche ausgeschaltet sein und bekommt beim Einschalten trotzdem die neueste Version.
 
 ### Was, wenn ich offline spiele?
 
-Kein Problem. Der Snapshot entsteht lokal, wenn du aufhörst zu spielen, und wird von selbst hochgeladen, sobald die Maschine wieder Verbindung hat.
+Kein Problem. Hoard merkt sich, was sich offline geändert hat, und lädt den neuesten Stand von selbst hoch, sobald die Maschine wieder Verbindung hat.
 
 ### Werden auch Mods und Einstellungen synchronisiert?
 

@@ -2,7 +2,7 @@
 title: "PC ゲームのセーブデータはどこにある？主な保存場所の一覧"
 description: "Windows、Steam Deck、Linux、Mac で PC ゲームがセーブを保存する場所、独自フォルダーを使うランチャー、どんなゲームのセーブでもすぐ見つける方法。"
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 決まったフォルダーはひとつではありません。Windows では、ほぼすべてのゲームが六つの場所のどれかに保存します。`Documents`、`Saved Games`、三つの `AppData` フォルダーのどれか、Steam の `userdata`、あるいはゲーム自身のインストールフォルダーです。どこにするかを決めるのはエンジンと開発者で、購入したストアではありません。このページでは主な保存場所、独自の層を加えるランチャー、そして誰も記録していないゲームでもセーブを素早く見つける方法をまとめます。
@@ -61,7 +61,7 @@ Deck には専用のガイドがあります：[Steam Deck と PC の間でセ�
 
 ## あるいは、見つけてもらう
 
-Hoard は同じコミュニティのデータベース（数千本のゲームを網羅）を読み、あなたのマシン上の候補パスをひとつずつ確認します。Proton、Heroic、Lutris のプレフィックス、OneDrive の `ドキュメント`、エミュレーター、ポータブル版のインストールまで。見つけたものは遊び終えるたびに自動でバックアップされ、すべてのバージョンが残り、PC と Steam Deck の間で同期されます。見落としたものは、フォルダーを一度指定すれば追加できます。[ゲームのセーブを自動でバックアップする方法](/guides/back-up-game-saves) を参照してください。
+Hoard は同じコミュニティのデータベース（数千本のゲームを網羅）を読み、あなたのマシン上の候補パスをひとつずつ確認します。Proton、Heroic、Lutris のプレフィックス、OneDrive の `ドキュメント`、エミュレーター、ポータブル版のインストールまで。見つけたものはゲームがセーブするたびに自動でバックアップされ、すべてのバージョンが残り、PC と Steam Deck の間で同期されます。見落としたものは、フォルダーを一度指定すれば追加できます。[ゲームのセーブを自動でバックアップする方法](/guides/back-up-game-saves) を参照するか、[人気ゲーム数百本のセーブデータの場所](/saves) からゲームを探してください。
 
 人気ゲームのいくつかには、正確なパスをまとめたページもあります：[Cyberpunk 2077](/guides/cyberpunk-2077-save-location)、[Baldur's Gate 3](/guides/baldurs-gate-3-save-location)、[Palworld](/guides/palworld-save-location)、[Crimson Desert](/guides/crimson-desert-save-location)、[Marvel's Spider-Man 2](/guides/spider-man-2-save-location)。
 

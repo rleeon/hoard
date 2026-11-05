@@ -2,7 +2,7 @@
 title: "Onde ficam os saves de GTA 6: PS5, Xbox e PC (o que se sabe)"
 description: "O GTA 6 sai na PS5 e na Xbox a 19 de novembro de 2026, ainda sem versão de PC. Onde ficam os saves na consola, como protegê-los e o que esperar no PC."
 order: 25
-updated: 2026-10-17
+updated: 2026-11-05
 ---
 
 O GTA 6 sai a **19 de novembro de 2026, apenas na PS5 e na Xbox Series X|S**. Ainda não há versão de PC: a Rockstar não anunciou data, e o único prazo que circula é um relatório de outubro de 2026, não confirmado, que aponta para o início de 2027. Até lá, os saves do GTA 6 vivem na consola e na nuvem da consola, não numa pasta que possas abrir. Abaixo tens como são guardados, como os proteger e onde vão muito provavelmente ficar os saves no PC, a julgar pelos últimos lançamentos da Rockstar no PC. Assim que a versão de PC sair, esta página passa a ter o caminho real.
@@ -40,7 +40,7 @@ A Rockstar não disse como o GTA 6 vai tratar os saves no PC. Usar a mesma nuvem
 
 ## Prepara-te para a versão de PC com o Hoard
 
-O [Hoard](/download) faz backup da pasta de saves sempre que deixas de jogar e guarda todas as versões, por isso um save corrompido ou uma missão que preferes repetir ficam à distância de um restauro. Também mantém a pasta sincronizada entre os teus PCs e uma Steam Deck, e já funciona com o GTA V e o Red Dead Redemption 2.
+O [Hoard](/download) faz backup da pasta de saves sempre que o jogo grava e outra vez quando sais, e guarda todas as versões, por isso um save corrompido ou uma missão que preferes repetir ficam à distância de um restauro. Também mantém a pasta sincronizada entre os teus PCs e uma Steam Deck, e já funciona com o GTA V e o Red Dead Redemption 2.
 
 Quando o GTA 6 chegar ao PC:
 

@@ -2,7 +2,7 @@
 title: "Crimson Desert save location (PC & Steam Deck)"
 description: "Where Crimson Desert keeps its saves on Windows, Steam Deck and Mac, which folder actually holds them, and how to back them up and sync them between PCs."
 order: 21
-updated: 2026-10-09
+updated: 2026-11-05
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
@@ -44,13 +44,13 @@ It's fine as a one-off before a big update or a reinstall. As a routine it depen
 
 ## Keep it backed up and in sync with Hoard
 
-[Hoard](/download) backs up the save folder each time you stop playing and keeps every version, so you can step back from a broken save or a choice you regret. It also keeps the folder in sync between your PCs and a Steam Deck.
+[Hoard](/download) backs up the save folder every time the game saves and again when you quit and keeps every version, so you can step back from a broken save or a choice you regret. It also keeps the folder in sync between your PCs and a Steam Deck.
 
 1. Install Hoard and sign in, or point it at [your own server](/guides/self-host-hoard).
 2. Open the **Library**. Crimson Desert is detected from your Steam library and the community save database, at the path above.
 3. Play. When you quit, the first version appears in the history.
 
-From then on every session adds a version, and the newest one is on whichever machine you sit down at next. If a save goes wrong, [restoring an older one](/guides/restore-a-game-save) takes a couple of clicks.
+From then on every save adds a version, and the newest one is on whichever machine you sit down at next. If a save goes wrong, [restoring an older one](/guides/restore-a-game-save) takes a couple of clicks.
 
 <!-- faq -->
 
@@ -70,4 +70,4 @@ It's hidden by default. Paste `%LOCALAPPDATA%\Pearl Abyss\CD\save` into the File
 
 ### Can I play on my desktop and my Steam Deck with the same save?
 
-Yes. Steam Cloud does it for the latest save on the same Steam account. Hoard does it too, and keeps a version per session, so you can go back if something breaks.
+Yes. Steam Cloud does it for the latest save on the same Steam account. Hoard does it too, and keeps a version every time the game saves, so you can go back if something breaks.

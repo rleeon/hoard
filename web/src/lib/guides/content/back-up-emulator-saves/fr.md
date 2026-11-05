@@ -2,7 +2,7 @@
 title: "Comment sauvegarder et synchroniser les sauvegardes d'émulateur (RetroArch, Dolphin, PCSX2)"
 description: "Sauvegardez et synchronisez vos sauvegardes d'émulateur entre PC et Steam Deck : RetroArch, Dolphin, PCSX2, DuckStation, avec historique et emplacements."
 order: 6
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Les sauvegardes d'émulateur se perdent facilement : fichiers de sauvegarde et save states vivent dans des dossiers éparpillés, et une réinstallation ou un nouveau PC peut effacer des années de progression. Hoard les sauvegarde automatiquement et les garde synchronisés entre vos machines, Steam Deck compris.
@@ -23,7 +23,7 @@ Comme Hoard localise les dossiers de sauvegarde avec la même base de données c
 
 1. **Installez Hoard** pour Windows, macOS ou Linux et connectez-vous.
 2. Ouvrez la **Bibliothèque** et ajoutez votre émulateur, ou ajoutez son dossier de sauvegardes/états manuellement si vous avez changé l'emplacement par défaut.
-3. Gardez le **mode automatique** activé. Hoard sauvegarde après chaque session et conserve un historique versionné.
+3. Gardez le **mode automatique** activé. Hoard sauvegarde chaque fois que l'émulateur enregistre, et une fois de plus quand vous quittez, et conserve un historique versionné.
 4. Installez Hoard sur vos autres PC avec le même compte pour synchroniser ces sauvegardes partout — voir [synchroniser ses parties entre plusieurs PC](/guides/sync-game-saves-across-pcs).
 
 ## Ludusavi pour les émulateurs ?
@@ -107,7 +107,7 @@ Les sauvegardes sont enfouies sous `sdmc/Nintendo 3DS/<id0>/<id1>/title/…`, et
 
 Sur Steam Deck, les émulateurs viennent généralement de Flatpak : leurs dossiers se trouvent donc sous `~/.var/app/<id>/` plutôt que dans les habituels `~/.config` ou `~/.local/share`. EmuDeck regroupe tout sous `~/Emulation/saves/`, un dossier par émulateur. Dans tous les cas, ajoutez le dossier une fois et Hoard le surveille.
 
-Ce qui compte sur une console portable : le moteur de Hoard tourne comme un service en arrière-plan, il sauvegarde donc quand vous quittez un jeu en mode Jeu, sans aucune fenêtre ouverte. Reprenez le Deck après une session sur le PC fixe, la sauvegarde est déjà là.
+Ce qui compte sur une console portable : le moteur de Hoard tourne comme un service en arrière-plan, il sauvegarde donc en mode Jeu, pendant que vous jouez et quand vous quittez, sans aucune fenêtre ouverte. Reprenez le Deck après une session sur le PC fixe, la sauvegarde est déjà là.
 
 ## Sauvegarde et état sauvegardé, ce n'est pas pareil
 
@@ -148,7 +148,7 @@ Oui, un Cloud Sync intégré qui nécessite un serveur WebDAV que vous hébergez
 
 ### Est-ce que ça marche sur Steam Deck en mode Jeu ?
 
-Oui. Le moteur tourne comme un service en arrière-plan : les sauvegardes sont copiées quand vous quittez un jeu, sans fenêtre ouverte. Les dossiers Flatpak et EmuDeck fonctionnent comme n'importe quels autres.
+Oui. Le moteur tourne comme un service en arrière-plan : les sauvegardes sont copiées pendant que vous jouez et quand vous quittez, sans fenêtre ouverte. Les dossiers Flatpak et EmuDeck fonctionnent comme n'importe quels autres.
 
 ### Mon émulateur est une version portable. Ça fonctionne ?
 

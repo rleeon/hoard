@@ -2,7 +2,7 @@
 title: "Cloud-Spielstände bei Epic und GOG: was sie abdecken und wie du den Rest synchronisierst"
 description: "Die Cloud von Epic und GOG gilt nur für manche Spiele, nur im Launcher, ohne Verlauf. Was sie abdeckt und wie du den Rest automatisch synchronisierst."
 order: 19.5
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Epic und GOG haben beide Cloud-Spielstände, mit denselben Haken wie Steam: Der Entwickler muss sie Spiel für Spiel unterstützen, sie funktionieren nur über den Launcher des jeweiligen Stores, und sie behalten die neueste Kopie statt eines Verlaufs. Hier steht, was jeder abdeckt, wo die Lücken sind und wie du jedes Spiel zwischen deinen PCs und einem Steam Deck synchron hältst, egal wo du es gekauft hast.
@@ -35,13 +35,13 @@ Ubisoft Connect und die EA-App haben Cloud-Spielstände für viele ihrer eigenen
 
 ## Den Rest synchronisieren
 
-Hoard arbeitet pro Spiel, nicht pro Store. Es findet den Speicherordner jedes Spiels über eine Community-Datenbank mit Tausenden Titeln, egal woher das Spiel kommt, sichert ihn automatisch, wenn du aufhörst zu spielen, und synchronisiert ihn mit deinen anderen PCs und deinem Steam Deck, mit jeder Version.
+Hoard arbeitet pro Spiel, nicht pro Store. Es findet den Speicherordner jedes Spiels über eine Community-Datenbank mit Tausenden Titeln, egal woher das Spiel kommt, sichert ihn automatisch bei jedem Speichern und synchronisiert ihn mit deinen anderen PCs und deinem Steam Deck, mit jeder Version.
 
 Das schließt die Lücken oben:
 
 - **Jeder Launcher, oder keiner.** Epic, GOG, Galaxy oder der Offline-Installer, Heroic unter Linux, ein Spiel, das du in einen Ordner entpackt hast.
 - **Store-übergreifend.** Die meisten Spiele speichern am selben Ort, egal welcher Store sie verkauft hat, meist unter `AppData` oder `Documents`, also können eine GOG-Installation auf einem PC und eine Steam-Installation auf einem anderen einen Spielstand teilen. Manche fügen einen Ordner mit der Konto-ID hinzu oder heißen je nach Store anders; prüf das, bevor du dich darauf verlässt.
-- **Ein Verlauf.** Jede Sitzung ist eine Version, zu der du zurückkannst.
+- **Ein Verlauf.** Jedes Speichern ist eine Version, zu der du zurückkannst.
 
 Wo die Cloud eines Launchers ein Spiel schon synchronisiert, lass sie weitermachen. Hoard ergänzt den Verlauf und synchronisiert alles andere.
 

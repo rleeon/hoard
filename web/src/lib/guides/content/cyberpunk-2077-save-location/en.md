@@ -2,7 +2,7 @@
 title: "Cyberpunk 2077 save location (PC & Steam Deck)"
 description: "Where Cyberpunk 2077 keeps its saves on Windows, Steam Deck and Mac, what each folder holds, and how to back them up and sync them between PCs."
 order: 20
-updated: 2026-10-09
+updated: 2026-11-05
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
@@ -46,7 +46,7 @@ It works, but only as often as you remember to do it, and only the copy you made
 
 ## Keep it backed up and in sync with Hoard
 
-[Hoard](/download) backs up the save folder every time you stop playing and keeps every version, so a corrupted save or an autosave that rotated away is one click back. It also syncs the folder between your PCs and a Steam Deck.
+[Hoard](/download) backs up the save folder every time the game saves and again when you quit and keeps every version, so a corrupted save or an autosave that rotated away is one click back. It also syncs the folder between your PCs and a Steam Deck.
 
 1. Install Hoard and sign in, or point it at [your own server](/guides/self-host-hoard).
 2. Open the **Library**. Cyberpunk is detected from your Steam library and the community save database.

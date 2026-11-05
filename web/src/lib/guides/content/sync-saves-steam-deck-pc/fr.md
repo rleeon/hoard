@@ -2,7 +2,7 @@
 title: "Synchroniser ses sauvegardes entre Steam Deck et PC"
 description: "Synchronisez automatiquement les sauvegardes du Steam Deck et du PC, jeux hors Steam, émulateurs et jeux sans Steam Cloud compris. Étapes, chemins, pièges."
 order: 10
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Pour les jeux Steam compatibles Steam Cloud, votre Deck et votre PC partagent déjà les sauvegardes. Tout le reste a besoin d'un coup de main : les jeux dont le développeur n'a jamais activé Steam Cloud, les jeux Epic et GOG lancés avec Heroic, les émulateurs et tout ce que vous avez ajouté comme jeu non-Steam. Hoard s'occupe de tout cela automatiquement. Quand vous quittez un jeu sur une machine, il sauvegarde la partie, et l'autre machine la récupère, avec chaque version précédente conservée au cas où quelque chose tourne mal.
@@ -44,7 +44,7 @@ Hoard Setup place l'application dans votre dossier personnel et le moteur de syn
 
 ## À quoi ressemble une journée normale
 
-Vous jouez sur le PC le soir et vous quittez. Hoard attend que le jeu soit fermé et que la sauvegarde ne bouge plus, puis l'envoie. Le lendemain matin, vous prenez le Deck. Dès qu'il est en ligne, Hoard voit la version plus récente et l'écrit dans le préfixe Proton. Vous lancez le jeu et vous continuez. Quand vous quittez sur le Deck, la même chose se produit dans l'autre sens.
+Vous jouez sur le PC le soir. Chaque fois que le jeu sauvegarde, Hoard envoie la sauvegarde quelques secondes plus tard, et une dernière fois quand vous quittez. Le lendemain matin, vous prenez le Deck. Dès qu'il est en ligne, Hoard voit la version plus récente et l'écrit dans le préfixe Proton. Vous lancez le jeu et vous continuez. Quand vous quittez sur le Deck, la même chose se produit dans l'autre sens.
 
 Aucune des deux machines n'a besoin d'être allumée en même temps que l'autre. La sauvegarde attend sur le serveur jusqu'à ce que l'autre la demande.
 
@@ -52,7 +52,7 @@ Aucune des deux machines n'a besoin d'être allumée en même temps que l'autre.
 
 ### Mettre en veille n'est pas quitter
 
-Le Deck rend très facile d'appuyer sur le bouton d'alimentation et de partir en laissant le jeu ouvert. Hoard ne sauvegarde une partie qu'une fois le jeu fermé, car un jeu en cours peut être en train de l'écrire. Et il ne remplace jamais la sauvegarde d'un jeu en cours. Si vous mettez le Deck en veille puis jouez sur le PC, la progression du Deck n'est pas encore envoyée, et la nouvelle sauvegarde du PC attend que vous fermiez le jeu sur le Deck.
+Le Deck rend très facile d'appuyer sur le bouton d'alimentation et de partir en laissant le jeu ouvert. Hoard envoie chaque sauvegarde quelques secondes après que le jeu l'a écrite, y compris pendant que vous jouez : ce que vous avez sauvegardé avant la mise en veille est donc normalement déjà sur le serveur, tant que le Deck était en ligne. Ce qu'il ne fait jamais, c'est remplacer la sauvegarde d'un jeu en cours. Si vous mettez le Deck en veille puis jouez sur le PC, la nouvelle sauvegarde du PC attend que vous fermiez le jeu sur le Deck.
 
 L'habitude qui évite tout cela : **quittez le jeu avant de changer de machine.** Si Proton laisse un processus mort derrière lui après la fermeture, ce qui arrive souvent, Hoard comprend que le jeu n'est plus là et continue.
 

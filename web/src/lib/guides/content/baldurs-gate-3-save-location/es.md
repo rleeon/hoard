@@ -2,7 +2,7 @@
 title: "Dónde están las partidas de Baldur's Gate 3 (PC y Steam Deck)"
 description: "Dónde guarda Baldur's Gate 3 sus partidas en Windows, Steam Deck y Mac, qué es partida y qué son mods o ajustes, el modo Honor, copia y sincronización."
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 En Windows, Baldur's Gate 3 guarda sus partidas en `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, una carpeta por partida. Es la ruta que da Larian en su propio FAQ de soporte. Debajo tienes las rutas de Steam Deck y Mac, lo que hay junto a las partidas, el modo Honor y cómo tenerlo todo copiado y sincronizado entre tu PC y tu Steam Deck.
@@ -42,13 +42,13 @@ Sí. En Steam usa Steam Cloud, que mantiene al día las últimas partidas entre 
 
 ## Copia y sincronización automáticas con Hoard
 
-[Hoard](/download) copia la carpeta de partidas cada vez que dejas de jugar y guarda todas las versiones, así que una partida rota por la actualización de un mod o por un parche está a una restauración. También mantiene la carpeta sincronizada entre tus PC y una Steam Deck.
+[Hoard](/download) copia la carpeta de partidas cada vez que el juego guarda y otra vez al salir, y guarda todas las versiones, así que una partida rota por la actualización de un mod o por un parche está a una restauración. También mantiene la carpeta sincronizada entre tus PC y una Steam Deck.
 
 1. Instala Hoard e inicia sesión, o apúntalo a [tu propio servidor](/guides/self-host-hoard).
 2. Abre la **Biblioteca**. Baldur's Gate 3 se detecta a partir de tu biblioteca de Steam y de la base de datos comunitaria de partidas.
 3. Juega. Al salir, la primera versión aparece en el historial.
 
-Cada sesión añade una versión con todas las partidas dentro. Para volver atrás, abre el historial y [restaura una versión anterior](/guides/restore-a-game-save); lo que tienes ahora en el PC se copia antes, así que probar una vieja nunca es un viaje sin vuelta.
+Cada copia añade una versión con todas las partidas dentro. Para volver atrás, abre el historial y [restaura una versión anterior](/guides/restore-a-game-save); lo que tienes ahora en el PC se copia antes, así que probar una vieja nunca es un viaje sin vuelta.
 
 <!-- faq -->
 

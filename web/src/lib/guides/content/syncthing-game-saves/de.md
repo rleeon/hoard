@@ -2,7 +2,7 @@
 title: "Syncthing für Spielstände: was klappt und was bricht"
 description: "Syncthing ist ein toller Datei-Sync, aber Spielstände brechen drei seiner Annahmen. Was schiefgeht, die Workarounds und wann ein Save-Tool besser passt."
 order: 9
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Syncthing ist die Antwort, zu der viele zuerst greifen, und das aus gutem Grund: kostenlos, quelloffen, peer-to-peer, und es funktioniert. Doch Spielstände brechen drei Annahmen, auf denen ein universeller Datei-Sync aufbaut, und die Fehler sind leise. Diese Anleitung handelt davon, was wirklich schiefgeht, und wann sich ein Werkzeug lohnt, das weiß, was ein Spielstand ist.
@@ -27,7 +27,7 @@ Nichts davon ist unlösbar. Man behilft sich mit Ignore-Mustern je Spiel, einer 
 
 ## Was ein spielstandbewusstes Werkzeug stattdessen tut
 
-Hoard sichert **nachdem du aufgehört hast**, sobald der Ordner zur Ruhe kommt, ein Snapshot ist also nie eine halb geschriebene Datei. Jede Sicherung ist eine Version des ganzen Spielstands, nicht einzelner Dateien, das Wiederherstellen ist ein Klick und setzt alles gemeinsam zurück. Es weiß, welcher Ordner zu welchem Spiel gehört — es liest dasselbe Community-Manifest für Speicherorte, das im Open-Source-Umfeld geteilt wird, mit über 20.000 Titeln — es gibt also keine Pfade zu pflegen, und es verfolgt `<AppID>/remote/` statt des Ordners darüber.
+Hoard sichert **jedes Mal, wenn das Spiel einen Spielstand fertig geschrieben hat**, sobald der Ordner zur Ruhe kommt, ein Snapshot ist also nie eine halb geschriebene Datei. Jede Sicherung ist eine Version des ganzen Spielstands, nicht einzelner Dateien, das Wiederherstellen ist ein Klick und setzt alles gemeinsam zurück. Es weiß, welcher Ordner zu welchem Spiel gehört — es liest dasselbe Community-Manifest für Speicherorte, das im Open-Source-Umfeld geteilt wird, mit über 20.000 Titeln — es gibt also keine Pfade zu pflegen, und es verfolgt `<AppID>/remote/` statt des Ordners darüber.
 
 ## Wann Syncthing die bessere Antwort ist
 

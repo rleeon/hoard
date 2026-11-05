@@ -2,7 +2,7 @@
 title: "Como sincronizar saves entre vários PCs"
 description: "Joga no fixo, no portátil e na Steam Deck sem perder progresso: sincroniza os saves entre PCs automaticamente, com histórico. Passo a passo."
 order: 2
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Se jogas em mais de um computador — um fixo em casa e um portátil em viagem — o Hoard mantém os teus saves sincronizados para que retomes sempre onde paraste.
@@ -16,13 +16,13 @@ O Hoard faz backup de cada save para a tua nuvem e descarrega a versão mais rec
 1. Instala o **Hoard** em cada PC onde jogas (Windows, macOS ou Linux).
 2. Inicia sessão com a **mesma conta** em cada máquina, ou liga-as ao mesmo servidor self-hosted.
 3. Adiciona os mesmos jogos à **Biblioteca** em cada PC. O Hoard associa-os por jogo, por isso um save feito num aparece nos outros.
-4. Mantém o **modo automático** ligado. O Hoard envia depois de jogares e descarrega a versão mais recente antes de começares.
+4. Mantém o **modo automático** ligado. O Hoard envia sempre que o jogo grava e descarrega a versão mais recente antes de começares.
 
 ## Vens do Ludusavi?
 
 O Ludusavi é uma excelente ferramenta open source para fazer backup e restaurar saves localmente, e pode enviar esses backups para uma nuvem que configuras tu mesmo com o Rclone. Mas a sincronização entre dispositivos montas tu à mão: agendar o backup, configurar o remoto, e depois restaurar no outro PC antes de jogar.
 
-O Hoard transforma isso em sincronização gerida. Usa os mesmos dados comunitários de localização do Ludusavi para encontrar os teus saves, depois envia após cada sessão e descarrega a versão mais recente antes da seguinte — em cada PC da tua conta, com histórico versionado na nuvem. Sem remotos de Rclone, sem scripts. E como o Ludusavi, o Hoard é open source e pode ser self-hosted. Vê a [comparação completa com o Ludusavi](/guides/ludusavi-alternative).
+O Hoard transforma isso em sincronização gerida. Usa os mesmos dados comunitários de localização do Ludusavi para encontrar os teus saves, depois envia sempre que o jogo grava e descarrega a versão mais recente antes de começares, em cada PC da tua conta, com histórico versionado na nuvem. Sem remotos de Rclone, sem scripts. E como o Ludusavi, o Hoard é open source e pode ser self-hosted. Vê a [comparação completa com o Ludusavi](/guides/ludusavi-alternative).
 
 ## Evitar conflitos
 
@@ -61,7 +61,7 @@ Os saves sim. As definições, por predefinição, não, e é de propósito. A S
 
 Por isso o Hoard classifica o que encontra numa pasta de saves:
 
-- **Os saves** sincronizam entre máquinas, em cada sessão.
+- **Os saves** sincronizam entre máquinas, sempre que o jogo escreve um.
 - **Os ficheiros de definições** (`graphics.ini`, `settings.cfg` e afins) ficam em cada backup, por isso nunca se perdem, mas um restauro não os escreve por cima dos de outra máquina. Se a entrada do jogo na base de dados de saves disser que um `.ini` *é* o save, é tratado como save.
 - **O lixo**, como crash dumps, ficheiros temporários, logs do motor tipo `Player.log` e a contabilidade própria do Steam, nem sequer entra no backup, para que abrir um jogo não crie por si só uma versão nova.
 
@@ -90,11 +90,11 @@ Três no plano gratuito, ilimitados no Pro e ilimitados em self-hosting: o teu s
 
 ### As duas máquinas têm de estar ligadas ao mesmo tempo?
 
-Não. O teu save sobe para o servidor quando acabas de jogar e desce quando a outra máquina o pede, por isso o segundo PC pode estar desligado uma semana e mesmo assim receber a versão mais recente ao ligar.
+Não. O teu save sobe para o servidor sempre que o jogo o escreve e desce quando a outra máquina o pede, por isso o segundo PC pode estar desligado uma semana e mesmo assim receber a versão mais recente ao ligar.
 
 ### E se jogar sem ligação?
 
-Sem problema. O snapshot é tirado localmente quando páras de jogar, e sobe sozinho assim que a máquina volta a ter ligação.
+Sem problema. O Hoard regista o que muda enquanto jogas sem ligação e envia o save mais recente sozinho assim que a máquina volta a ter ligação.
 
 ### Também sincroniza mods e definições?
 

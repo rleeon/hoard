@@ -2,7 +2,7 @@
 title: "Baldur's Gate 3: Speicherort der Spielstände (PC & Steam Deck)"
 description: "Wo Baldur's Gate 3 seine Spielstände unter Windows, Steam Deck und Mac ablegt, was Spielstand und was Mods sind, der Ehrenmodus, Backup und Sync."
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Unter Windows legt Baldur's Gate 3 seine Spielstände in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` ab, ein Ordner pro Spielstand. Diesen Pfad nennt Larian in der eigenen Support-FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was neben den Spielständen liegt, den Ehrenmodus und wie du alles gesichert und zwischen PC und Steam Deck synchron hältst.
@@ -42,13 +42,13 @@ Ja. Auf Steam nutzt es Steam Cloud, die die neuesten Spielstände zwischen Rechn
 
 ## Automatisch sichern und synchronisieren mit Hoard
 
-[Hoard](/download) sichert den Spielstand-Ordner jedes Mal, wenn du aufhörst zu spielen, und behält jede Version — ein von einem Mod-Update oder Patch zerstörter Spielstand ist also nur eine Wiederherstellung entfernt. Außerdem hält es den Ordner zwischen deinen PCs und einem Steam Deck synchron.
+[Hoard](/download) sichert den Spielstand-Ordner bei jedem Speichern und noch einmal beim Beenden und behält jede Version — ein von einem Mod-Update oder Patch zerstörter Spielstand ist also nur eine Wiederherstellung entfernt. Außerdem hält es den Ordner zwischen deinen PCs und einem Steam Deck synchron.
 
 1. Installiere Hoard und melde dich an, oder richte es auf [deinen eigenen Server](/guides/self-host-hoard).
 2. Öffne die **Bibliothek**. Baldur's Gate 3 wird über deine Steam-Bibliothek und die Community-Datenbank für Spielstände erkannt.
 3. Spiele. Beim Beenden erscheint die erste Version im Verlauf.
 
-Jede Session fügt eine Version mit allen Spielständen hinzu. Um zurückzugehen, öffne den Verlauf und [stelle eine ältere Version wieder her](/guides/restore-a-game-save); was gerade auf deinem PC liegt, wird vorher gesichert, ein Versuch mit einer alten Version ist also nie eine Einbahnstraße.
+Jede Sicherung fügt eine Version mit allen Spielständen hinzu. Um zurückzugehen, öffne den Verlauf und [stelle eine ältere Version wieder her](/guides/restore-a-game-save); was gerade auf deinem PC liegt, wird vorher gesichert, ein Versuch mit einer alten Version ist also nie eine Einbahnstraße.
 
 <!-- faq -->
 

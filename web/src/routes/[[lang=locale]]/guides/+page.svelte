@@ -41,7 +41,23 @@
     </p>
   </header>
 
-  <ul class="mt-12 space-y-4">
+  <a
+    href={$localeHref('/saves')}
+    use:reveal
+    class="reveal glow group mt-12 block rounded-xl border border-emerald-800/80 bg-black p-5 ring-focus transition-colors hover:border-emerald-600"
+  >
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h2 class="font-display text-lg font-semibold text-ink">{$_('guides.saves_card_title')}</h2>
+        <p class="mt-1.5 text-sm leading-relaxed text-ink-soft">{$_('guides.saves_card_text')}</p>
+      </div>
+      <ArrowRight
+        class="mt-1 h-5 w-5 shrink-0 text-ink-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink"
+      />
+    </div>
+  </a>
+
+  <ul class="mt-4 space-y-4">
     {#each guides as g (g.slug)}
       <li use:reveal class="reveal">
         <a

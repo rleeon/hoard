@@ -2,7 +2,7 @@
 title: "Dove sono i salvataggi di Marvel's Spider-Man 2 (PC e Steam Deck)"
 description: "Dove Marvel's Spider-Man 2 tiene i salvataggi su PC, cos'è la cartella col numero lungo, la trappola di OneDrive, il percorso su Steam Deck, backup e sync."
 order: 22
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Su PC, Marvel's Spider-Man 2 tiene i salvataggi in `Documenti\Marvel's Spider-Man 2\`, dentro una sottocartella con un numero lungo. Su Steam, quel numero è il tuo ID Steam. Qui sotto trovi cosa significa in pratica, la trappola di OneDrive, il percorso su Steam Deck e come tenere i salvataggi al sicuro e sincronizzati tra PC e Steam Deck.
@@ -41,7 +41,7 @@ Sì, Steam Cloud, che tiene allineati gli ultimi salvataggi tra le macchine con 
 
 ## Backup e sync automatici con Hoard
 
-[Hoard](/download) fa il backup della cartella ogni volta che smetti di giocare e tiene tutte le versioni. La sincronizza anche tra i tuoi PC e una Steam Deck, così il gioco riprende da dove l'hai lasciato su entrambi.
+[Hoard](/download) fa il backup della cartella ogni volta che il gioco salva e un'altra volta quando esci, e tiene tutte le versioni. La sincronizza anche tra i tuoi PC e una Steam Deck, così il gioco riprende da dove l'hai lasciato su entrambi.
 
 1. Installa Hoard e accedi, oppure puntalo verso [il tuo server](/guides/self-host-hoard).
 2. Apri la **Libreria** e controlla che la cartella mostrata per Spider-Man 2 sia quella sotto `Documenti` (o `OneDrive\Documents`). Se punta altrove, cambiala con quella cartella.

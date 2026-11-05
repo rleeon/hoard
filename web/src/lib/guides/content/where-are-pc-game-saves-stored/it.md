@@ -2,7 +2,7 @@
 title: "Dove vengono salvati i giochi per PC? Tutti i percorsi"
 description: "Dove i giochi per PC tengono i salvataggi su Windows, Steam Deck, Linux e Mac, quali launcher aggiungono cartelle e come trovare quelli di ogni gioco."
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Non esiste un'unica cartella. Su Windows quasi ogni gioco salva in uno di sei posti: `Documents`, `Saved Games`, una delle tre cartelle `AppData`, la `userdata` di Steam o la sua cartella di installazione. Decidono il motore e lo sviluppatore, non il negozio dove l'hai comprato. Qui trovi tutti i percorsi più comuni, i launcher che aggiungono un livello proprio e un modo rapido per trovare i salvataggi di qualsiasi gioco, anche di uno che nessuno ha documentato.
@@ -61,7 +61,7 @@ Quando un gioco non è in nessun elenco, tre trucchi lo trovano in un paio di mi
 
 ## Oppure lascia che li trovi qualcun altro
 
-Hoard legge lo stesso database della community, che copre migliaia di giochi, e controlla ogni percorso possibile sulla tua macchina: prefissi di Proton, Heroic e Lutris, la `Documenti` di OneDrive, emulatori, installazioni portatili. Quello che trova viene salvato in automatico ogni volta che smetti di giocare, con ogni versione conservata, e tenuto sincronizzato tra i tuoi PC e lo Steam Deck. Quello che gli sfugge lo aggiungi indicando la cartella una volta. Vedi [come fare il backup automatico dei salvataggi](/guides/back-up-game-saves).
+Hoard legge lo stesso database della community, che copre migliaia di giochi, e controlla ogni percorso possibile sulla tua macchina: prefissi di Proton, Heroic e Lutris, la `Documenti` di OneDrive, emulatori, installazioni portatili. Quello che trova viene salvato in automatico a ogni salvataggio del gioco, con ogni versione conservata, e tenuto sincronizzato tra i tuoi PC e lo Steam Deck. Quello che gli sfugge lo aggiungi indicando la cartella una volta. Vedi [come fare il backup automatico dei salvataggi](/guides/back-up-game-saves), oppure cerca un gioco tra le [posizioni dei salvataggi di centinaia di giochi popolari](/saves).
 
 Ci sono anche pagine con i percorsi esatti di alcuni giochi famosi: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location), [Palworld](/guides/palworld-save-location), [Crimson Desert](/guides/crimson-desert-save-location) e [Marvel's Spider-Man 2](/guides/spider-man-2-save-location).
 

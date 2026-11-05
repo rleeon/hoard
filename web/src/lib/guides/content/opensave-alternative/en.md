@@ -2,7 +2,7 @@
 title: "OpenSave alternative: peer-to-peer or a server you own"
 description: "OpenSave syncs saves peer-to-peer; Hoard syncs through a server, ours or yours, and keeps every version. An honest look at when each design wins."
 order: 8
-updated: 2026-10-18
+updated: 2026-11-05
 related: game-save-sync-comparison, self-host-hoard, syncthing-game-saves
 ---
 
@@ -12,14 +12,14 @@ Both tools solve the same problem and disagree about the architecture, which is 
 
 **OpenSave** is peer-to-peer. Your machines talk to each other directly, and nothing sits in between. There's no account and no storage to pay for, and it can optionally mirror a copy to a cloud drive you already have.
 
-**Hoard** syncs through a server. That server is either Hoard One, managed by us, or `hoard-server` running on your own PC or NAS. Your save goes up when you stop playing and comes down when another machine asks for it.
+**Hoard** syncs through a server. That server is either Hoard One, managed by us, or `hoard-server` running on your own PC or NAS. Your save goes up every time the game writes it, and comes down when another machine asks for it.
 
 Everything else follows from that one choice.
 
 ## What a server buys you
 
 - **The other machine doesn't have to be on.** You finish on the desktop, the laptop stays shut for a week, and the latest save is waiting when you open it. Peer-to-peer needs both ends awake at the same time, which is fine at a desk and awkward with a handheld you pick up twice a month.
-- **A version history, not just the latest state.** Every session becomes a version you can roll back to. This is the part that matters the day a mod eats your world or a save is written half-corrupt: direct sync faithfully copies the broken file to your other PC.
+- **A version history, not just the latest state.** Every save becomes a version you can roll back to. This is the part that matters the day a mod eats your world or a save is written half-corrupt: direct sync faithfully copies the broken file to your other PC.
 - **A copy that survives the hardware.** Both your PCs dying in the same flat is not an exotic scenario. A save that only ever existed on those two machines dies with them.
 - **Nothing to arrange on the network.** No NAT to traverse, no port to open, no both-devices-on-the-same-LAN caveat.
 
@@ -67,11 +67,11 @@ Yes. Run `hoard-server` on a PC or a NAS and your saves go from your machine to 
 
 ### Do both PCs need to be online at the same time?
 
-No, and that's the practical advantage of syncing through a server. Your save is uploaded when you stop playing and downloaded whenever the other machine next asks for it.
+No, and that's the practical advantage of syncing through a server. Your save is uploaded every time the game writes it and downloaded whenever the other machine next asks for it.
 
 ### Does a direct transfer keep a version history?
 
-Not inherently — copying a file to another machine gives you the current state on both. Hoard captures every session as a version, which is what makes rolling back a corrupted save possible.
+Not inherently: copying a file to another machine gives you the current state on both. Hoard keeps every save as a version, which is what makes rolling back a corrupted save possible.
 
 ### Is Hoard open source too?
 

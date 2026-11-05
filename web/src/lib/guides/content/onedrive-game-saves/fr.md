@@ -2,7 +2,7 @@
 title: "OneDrive et les sauvegardes de jeux : ce qui casse et comment réparer"
 description: "OneDrive a déplacé vos Documents : sauvegardes qui échouent, disparaissent ou apparaissent en double. Pourquoi, comment réparer, et mieux synchroniser."
 order: 15
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Sur beaucoup de PC Windows, OneDrive sauvegarde le dossier `Documents`, souvent activé pendant l'installation sans que personne ne le remarque. Les jeux qui sauvegardent dans `Documents`, c'est-à-dire presque tout `My Games`, le suivent dans OneDrive. Et les ennuis commencent : sauvegardes qui échouent, sauvegardes à télécharger avant de pouvoir les charger, et copies portant le nom de votre PC que le jeu ne lit jamais. Voici pourquoi cela arrive et comment y remédier.
@@ -33,9 +33,9 @@ Dans OneDrive, ouvrez **Paramètres → Synchroniser et sauvegarder → Gérer l
 
 ## Une meilleure répartition
 
-OneDrive est bon avec les documents. Les sauvegardes de jeux ont besoin d'autre chose : une copie faite une fois le jeu fermé, des versions de la sauvegarde entière plutôt que de fichiers isolés, et une synchronisation avec vos autres PC et un Steam Deck.
+OneDrive est bon avec les documents. Les sauvegardes de jeux ont besoin d'autre chose : une copie faite seulement une fois que le jeu a fini d'écrire, des versions de la sauvegarde entière plutôt que de fichiers isolés, et une synchronisation avec vos autres PC et un Steam Deck.
 
-C'est ce que fait Hoard. Il trouve vos sauvegardes que `Documents` soit dans OneDrive ou non, parce qu'il demande à Windows où se trouve vraiment le dossier. Il les sauvegarde automatiquement après chaque session, garde chaque version et les synchronise avec vos autres machines.
+C'est ce que fait Hoard. Il trouve vos sauvegardes que `Documents` soit dans OneDrive ou non, parce qu'il demande à Windows où se trouve vraiment le dossier. Il les sauvegarde automatiquement à chaque sauvegarde du jeu, garde chaque version et les synchronise avec vos autres machines.
 
 Une règle : un seul outil doit gérer la synchronisation entre PC. Si OneDrive sauvegarde `Documents` sur plusieurs PC de jeu avec le même compte, il synchronise déjà ces sauvegardes entre eux. Désactivez la sauvegarde de `Documents` sur ces PC et laissez les sauvegardes de jeux à Hoard.
 

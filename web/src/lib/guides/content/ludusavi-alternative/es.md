@@ -2,7 +2,7 @@
 title: "Alternativa a Ludusavi: sincronización automática de partidas en la nube"
 description: "Ludusavi es genial para copias locales. Hoard añade sync automático entre PC y Steam Deck con historial de versiones, sobre la misma base de datos de saves."
 order: 5
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Si buscas una forma de hacer copia y sincronizar tus partidas guardadas, seguramente has encontrado **Ludusavi**, y es excelente. Esta guía es una comparativa honesta para que elijas la herramienta adecuada, y explica dónde encaja Hoard si quieres sincronización automática en la nube entre equipos.
@@ -19,7 +19,7 @@ El punto donde la mayoría se atasca con cualquier herramienta local es **sincro
 
 Hoard convierte eso en **sincronización gestionada en la nube**:
 
-- **Inicia sesión y listo.** Sin remotos de Rclone, sin scripts. Hoard sube tu partida cuando terminas de jugar y descarga la última antes de empezar, en todos los PC de tu cuenta.
+- **Inicia sesión y listo.** Sin remotos de Rclone, sin scripts. Hoard sube tu partida cada vez que el juego la escribe y descarga la última antes de empezar, en todos los PC de tu cuenta.
 - **Historial versionado en la nube.** Se conserva cada copia, así que puedes volver a cualquier partida anterior, incluso tras un fallo de disco o una instalación limpia.
 - **Tiene en cuenta los conflictos.** Hoard compara fechas y guarda una copia local de lo que reemplaza, así que una sincronización nunca destruye progreso en silencio.
 - **Sigue siendo open source y autoalojable.** Como Ludusavi, no hay bloqueo: usa Hoard One o aloja el servidor tú mismo.
@@ -31,7 +31,8 @@ Hoard convierte eso en **sincronización gestionada en la nube**:
 | Copias locales | Sí | Sí |
 | Detección de partidas | Manifiesto comunitario | El mismo manifiesto, más bibliotecas de Steam, procesos en ejecución y un barrido del disco |
 | Almacenamiento en la nube | El tuyo, vía Rclone | Incluido, o tu propio servidor |
-| Sincronización entre PC | Manual: copia aquí, restaura allí | Automática, al dejar de jugar y antes de empezar |
+| Sincronización entre PC | Manual: copia aquí, restaura allí | Automática, cada vez que el juego guarda y antes de empezar |
+| El otro PC puede estar apagado | Solo con un remoto de Rclone | Sí, la partida espera en el servidor |
 | Historial de versiones | Copias locales que podas tú | Todas las versiones en la nube, deduplicadas por hash de contenido |
 | Emuladores | Sí | Sí |
 | Interfaces | App de escritorio y CLI | App de escritorio, CLI y overlay dentro del juego |

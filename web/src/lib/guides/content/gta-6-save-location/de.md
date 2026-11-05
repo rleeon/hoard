@@ -2,7 +2,7 @@
 title: "GTA 6: Speicherort der Spielstände auf PS5, Xbox und PC (was bekannt ist)"
 description: "GTA 6 erscheint am 19. November 2026 für PS5 und Xbox, noch ohne PC-Version. Wo Konsolen-Spielstände liegen, wie du sie sicherst und was auf PC kommt."
 order: 25
-updated: 2026-10-17
+updated: 2026-11-05
 ---
 
 GTA 6 erscheint am **19. November 2026, nur für PS5 und Xbox Series X|S**. Eine PC-Version gibt es noch nicht: Rockstar hat keinen Termin genannt, und der einzige Zeitraum, der kursiert, stammt aus einem unbestätigten Bericht vom Oktober 2026, der Anfang 2027 nennt. Bis dahin liegen GTA-6-Spielstände auf der Konsole und in ihrer Cloud, nicht in einem Ordner, den du öffnen kannst. Hier erfährst du, wie diese Spielstände gespeichert werden, wie du sie schützt und wo die PC-Spielstände sehr wahrscheinlich landen, gemessen an Rockstars letzten PC-Veröffentlichungen. Sobald die PC-Version erscheint, steht hier der echte Pfad.
@@ -40,7 +40,7 @@ Rockstar hat nicht gesagt, wie GTA 6 Spielstände auf dem PC behandeln wird. Die
 
 ## Mit Hoard auf die PC-Version vorbereitet sein
 
-[Hoard](/download) sichert einen Spielstand-Ordner jedes Mal, wenn du aufhörst zu spielen, und behält jede Version. Ein beschädigter Spielstand oder eine Mission, die du lieber noch einmal spielen willst, ist also nur eine Wiederherstellung entfernt. Außerdem hält es den Ordner zwischen deinen PCs und einem Steam Deck synchron, und mit GTA V und Red Dead Redemption 2 funktioniert es schon heute.
+[Hoard](/download) sichert einen Spielstand-Ordner bei jedem Speichern und noch einmal beim Beenden und behält jede Version. Ein beschädigter Spielstand oder eine Mission, die du lieber noch einmal spielen willst, ist also nur eine Wiederherstellung entfernt. Außerdem hält es den Ordner zwischen deinen PCs und einem Steam Deck synchron, und mit GTA V und Red Dead Redemption 2 funktioniert es schon heute.
 
 Wenn GTA 6 auf den PC kommt:
 

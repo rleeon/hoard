@@ -2,7 +2,7 @@
 title: "Alternativa a Steam Cloud: sincroniza y copia las partidas que Steam no guarda"
 description: "Steam Cloud se salta muchos juegos y no guarda historial. Sincroniza y copia todos, de cualquier launcher, entre PC y Steam Deck, con versiones para volver."
 order: 7
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Steam Cloud hace muy bien el trabajo concreto que hace, y la mayoría de la gente descubre sus límites justo el día que pierde algo. Esta guía explica dónde están esos límites y qué hacer con los juegos que se quedan fuera.
@@ -26,7 +26,7 @@ Cuando funciona es invisible y excelente: cierras el juego en un PC, lo abres en
 
 ## Qué añade Hoard
 
-Hoard vigila la carpeta en la que escribe cada juego y captura una **versión nueva cada vez que terminas de jugar**:
+Hoard vigila la carpeta en la que escribe cada juego y captura una **versión nueva cada vez que el juego guarda**:
 
 - **Le da igual de dónde venga el juego.** Steam, GOG, Epic, itch, emuladores o una carpeta que le señales a mano.
 - **Se conservan todas las versiones**, así que recuperarte de una partida corrupta o de una mala decisión son dos clics y no una partida perdida.
@@ -73,7 +73,7 @@ Sí, y es buena parte del sentido que tiene. Localiza las partidas con una base 
 
 ### ¿Usar los dos provoca conflictos?
 
-No. Hoard captura una versión cuando dejas de jugar y la carpeta se queda quieta, y nunca sobrescribe sin capturar antes lo que reemplaza.
+No. Hoard captura una versión cuando el juego ha terminado de escribir y la carpeta se queda quieta, y nunca sobrescribe sin capturar antes lo que reemplaza.
 
 ### ¿Puedo mantener mis partidas fuera de las dos nubes?
 

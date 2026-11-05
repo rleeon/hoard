@@ -2,7 +2,7 @@
 title: "Salvataggio corrotto? Come recuperarlo"
 description: "Un salvataggio che non si carica non è sempre perso. Dove trovare una copia buona (backup del gioco, Steam Cloud, Windows, OneDrive) e come prevenire."
 order: 12
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Un salvataggio che non si carica raramente è perso per sempre. Quasi sempre una copia buona esiste da qualche parte: un backup fatto dal gioco stesso, la copia di Steam Cloud, una versione precedente conservata da Windows o OneDrive, o il salvataggio su un altro PC. Ma l'ordine conta, perché una mossa sbagliata può sovrascrivere la copia buona con quella rotta. Comincia da qui.
@@ -73,7 +73,7 @@ Per alcuni giochi famosi la community ha editor di salvataggi o strumenti di rip
 
 ## Non restare mai più a piedi
 
-Tutti i recuperi qui sopra dipendono dalla fortuna: che il gioco avesse un backup, o che Steam non avesse ancora sincronizzato. Un backup con versioni toglie la fortuna dall'equazione. È quello che fa Hoard: salva ogni partita in automatico dopo che hai smesso di giocare, appena la cartella è ferma, quindi un backup non è mai un file scritto a metà. Ogni versione viene conservata. Quando qualcosa si rompe, apri la **Cronologia** del gioco e ripristini l'ultima buona con un clic; il salvataggio attuale viene copiato prima, quindi anche quello si può annullare. E poiché Hoard tiene anche i salvataggi sincronizzati, la copia sul portatile o sullo Steam Deck non è mai una vecchia copia dimenticata: tutte le tue macchine lavorano sulla stessa cronologia.
+Tutti i recuperi qui sopra dipendono dalla fortuna: che il gioco avesse un backup, o che Steam non avesse ancora sincronizzato. Un backup con versioni toglie la fortuna dall'equazione. È quello che fa Hoard: salva ogni partita in automatico ogni volta che il gioco la scrive, appena la cartella è ferma, quindi un backup non è mai un file scritto a metà. Ogni versione viene conservata. Quando qualcosa si rompe, apri la **Cronologia** del gioco e ripristini l'ultima buona con un clic; il salvataggio attuale viene copiato prima, quindi anche quello si può annullare. E poiché Hoard tiene anche i salvataggi sincronizzati, la copia sul portatile o sullo Steam Deck non è mai una vecchia copia dimenticata: tutte le tue macchine lavorano sulla stessa cronologia.
 
 Un trucco per individuare il momento in cui si è rotto: un calo improvviso di dimensione tra due versioni di solito indica un salvataggio troncato. Altro in [come ripristinare un vecchio salvataggio](/guides/restore-a-game-save).
 
@@ -101,4 +101,4 @@ Il gioco ha iniziato a scriverlo e non ha mai finito: un crash, un calo di corre
 
 ### Come evito che succeda di nuovo?
 
-Con backup a versioni fatti quando il gioco non è in esecuzione. Hoard lo fa in automatico dopo ogni sessione e conserva ogni versione, così puoi tornare a qualsiasi di esse.
+Con backup a versioni che non vengono mai fatti a metà di una scrittura. Hoard lo fa in automatico a ogni salvataggio, aspettando che il file sia completo, e conserva ogni versione, così puoi tornare a qualsiasi di esse.

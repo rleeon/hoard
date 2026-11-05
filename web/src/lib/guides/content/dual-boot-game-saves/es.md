@@ -2,7 +2,7 @@
 title: "Sincronizar partidas entre Windows y Linux en un PC con arranque dual"
 description: "Mismo PC, dos sistemas, dos carpetas de partidas. Sincroniza tus partidas entre Windows y Linux de forma automática, por qué falla compartir NTFS y las trampas."
 order: 18
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 En un PC con arranque dual, el mismo juego tiene dos partidas separadas: una en tu carpeta de usuario de Windows y otra dentro de un prefijo de Proton en Linux. Steam Cloud las une en los juegos que lo admiten; todo lo demás se desincroniza la primera vez que cambias de sistema. Hoard las mantiene sincronizadas de forma automática. Instálalo en los dos sistemas con la misma cuenta, y la partida de cada juego te sigue arranques el que arranques.
@@ -41,7 +41,7 @@ Dejar que cada sistema guarde las partidas donde las espera el juego, y sincroni
 
 Con dos PC separados, la partida espera en el servidor hasta que la otra máquina la pide. En un PC con arranque dual, la "otra máquina" es el mismo ordenador después de reiniciar, y eso cambia una costumbre.
 
-Hoard sube una partida cuando el juego se ha cerrado y la carpeta se ha quedado quieta. **Si cierras el juego y reinicias en ese mismo momento, puede que la subida aún no se haya hecho**, y el otro sistema arranca sin tu último progreso. Se pondrá al día la próxima vez que vuelvas a arrancar el primero, pero para entonces puede que hayas jugado sobre la partida vieja.
+Hoard sube una partida unos segundos después de que el juego la escriba, cuando la carpeta se ha quedado quieta. **Si guardas y reinicias en ese mismo momento, puede que la subida aún no se haya hecho**, y el otro sistema arranca sin tu último progreso. Se pondrá al día la próxima vez que vuelvas a arrancar el primero, pero para entonces puede que hayas jugado sobre la partida vieja.
 
 Así que: cierra el juego, dale un momento a Hoard, comprueba en la app que la partida está al día, y después reinicia.
 

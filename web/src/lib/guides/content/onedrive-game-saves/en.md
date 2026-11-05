@@ -2,7 +2,7 @@
 title: "OneDrive and game saves: what breaks and how to fix it"
 description: "OneDrive moved your Documents and now saves fail, vanish or show up twice. Why it happens, how to fix it, and a better way to sync game saves."
 order: 15
-updated: 2026-10-09
+updated: 2026-11-05
 related: where-are-pc-game-saves-stored, recover-corrupted-game-save, syncthing-game-saves, sync-game-saves-across-pcs
 ---
 
@@ -34,9 +34,9 @@ In OneDrive, open **Settings → Sync and backup → Manage back up** and turn o
 
 ## A better split
 
-OneDrive is good at documents. Saves need something different: a backup taken once the game has closed, versions of the whole save rather than single files, and sync to your other PCs and a Steam Deck.
+OneDrive is good at documents. Saves need something different: a backup taken only once the game has finished writing, versions of the whole save rather than single files, and sync to your other PCs and a Steam Deck.
 
-That's what Hoard does. It finds your saves whether `Documents` is in OneDrive or not, because it asks Windows where the folder really is. It backs them up automatically after each session, keeps every version, and syncs them to your other machines.
+That's what Hoard does. It finds your saves whether `Documents` is in OneDrive or not, because it asks Windows where the folder really is. It backs them up automatically every time the game saves, keeps every version, and syncs them to your other machines.
 
 One rule: let one tool own the syncing between PCs. If OneDrive backs up `Documents` on several gaming PCs with the same account, it's already syncing those saves between them. Turn off the `Documents` backup on those PCs and let Hoard handle the saves.
 

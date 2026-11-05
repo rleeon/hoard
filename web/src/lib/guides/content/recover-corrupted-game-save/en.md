@@ -2,7 +2,7 @@
 title: "Corrupted game save? How to recover it"
 description: "A save that won't load isn't always gone. Where to find a working copy (game backups, Steam Cloud, Windows, OneDrive) and how never to be stuck again."
 order: 12
-updated: 2026-10-09
+updated: 2026-11-05
 related: restore-a-game-save, back-up-game-saves, where-are-pc-game-saves-stored, onedrive-game-saves
 ---
 
@@ -74,7 +74,7 @@ For a few popular games, the community has save editors or repair tools that can
 
 ## Never be stuck again
 
-Every recovery above depends on luck: the game happened to keep a backup, or Steam hadn't synced yet. A versioned backup takes the luck out. That's what Hoard does: it backs up each save automatically after you stop playing, once the folder has gone quiet, so a backup is never a half-written file. Every version is kept. When something breaks, you open the game's **History** and restore the last good one in one click; your current save is captured first, so even that is reversible. And because Hoard also keeps your saves in sync, the copy on your laptop or Steam Deck is never an older, forgotten one: every machine works from the same history.
+Every recovery above depends on luck: the game happened to keep a backup, or Steam hadn't synced yet. A versioned backup takes the luck out. That's what Hoard does: it backs up each save automatically every time the game writes one, once the folder has gone quiet, so a backup is never a half-written file. Every version is kept. When something breaks, you open the game's **History** and restore the last good one in one click; your current save is captured first, so even that is reversible. And because Hoard also keeps your saves in sync, the copy on your laptop or Steam Deck is never an older, forgotten one: every machine works from the same history.
 
 A tip for spotting the moment it broke: a sudden drop in size between two versions usually means a truncated save. More in [how to restore an old game save](/guides/restore-a-game-save).
 
@@ -102,4 +102,4 @@ The game started writing the save and never finished: a crash, a power cut or a 
 
 ### How do I stop this from happening again?
 
-Keep versioned backups taken when the game isn't running. Hoard does that automatically after every session and keeps each version, so you can go back to any one of them.
+Keep versioned backups that are never taken halfway through a write. Hoard does that automatically every time the game saves, waiting until the file is finished, and keeps each version, so you can go back to any one of them.

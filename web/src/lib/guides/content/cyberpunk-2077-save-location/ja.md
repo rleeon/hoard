@@ -2,7 +2,7 @@
 title: "サイバーパンク2077（Cyberpunk 2077）のセーブデータの場所（PC・Steam Deck）"
 description: "Cyberpunk 2077のセーブデータがWindows、Steam Deck、Macのどこにあるか、各フォルダーの中身、バックアップとPC間での同期のしかたを解説。"
 order: 20
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Windows では、Cyberpunk 2077 のセーブデータは `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` にあり、セーブ 1 つにつきフォルダーが 1 つ作られます。これが短い答えです。以下では Steam Deck と Mac のパス、フォルダーの実際の中身、そしてバックアップを保ちながら PC と Steam Deck で同期する方法を説明します。
@@ -45,7 +45,7 @@ Cyberpunk はセーブを 1 つのファイルとして書き込むのではな�
 
 ## Hoard で自動バックアップと同期
 
-[Hoard](/download) は、プレイをやめるたびにセーブフォルダーをバックアップし、すべてのバージョンを保持します。壊れたセーブも、ローテーションで消えたオートセーブも、ワンクリックで戻せます。さらにフォルダーを PC と Steam Deck の間で同期します。
+[Hoard](/download) は、ゲームがセーブするたびと終了時にセーブフォルダーをバックアップし、すべてのバージョンを保持します。壊れたセーブも、ローテーションで消えたオートセーブも、ワンクリックで戻せます。さらにフォルダーを PC と Steam Deck の間で同期します。
 
 1. Hoard をインストールしてサインインするか、[自分のサーバー](/guides/self-host-hoard)を指定します。
 2. **ライブラリ** を開きます。Cyberpunk は Steam ライブラリとコミュニティのセーブデータベースから検出されます。

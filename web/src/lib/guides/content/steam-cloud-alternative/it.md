@@ -2,7 +2,7 @@
 title: "Alternativa a Steam Cloud: sincronizza e salva i salvataggi che Steam non copre"
 description: "Steam Cloud salta molti giochi e non tiene la cronologia. Sincronizza e fai il backup di ogni gioco, da qualsiasi launcher, tra PC e Steam Deck, con versioni."
 order: 7
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Steam Cloud fa molto bene il compito ristretto che ha, e quasi tutti ne scoprono i limiti proprio il giorno in cui perdono qualcosa. Questa guida spiega dove sono quei limiti e cosa fare con i giochi che restano fuori.
@@ -26,7 +26,7 @@ Quando funziona è invisibile ed eccellente: chiudi il gioco su un PC, lo apri s
 
 ## Cosa aggiunge Hoard
 
-Hoard sorveglia la cartella in cui il gioco scrive davvero e cattura una **nuova versione ogni volta che smetti di giocare**:
+Hoard sorveglia la cartella in cui il gioco scrive davvero e cattura una **nuova versione ogni volta che il gioco salva**:
 
 - **Non gli importa da dove venga il gioco.** Steam, GOG, Epic, itch, emulatori o una cartella che gli indichi a mano.
 - **Tutte le versioni vengono conservate**, quindi rimediare a un salvataggio corrotto o a una scelta sbagliata sono due clic e non una partita persa.
@@ -73,7 +73,7 @@ Sì, ed è buona parte del punto. Individua i salvataggi tramite un database com
 
 ### Usarli entrambi crea conflitti?
 
-No. Hoard cattura una versione dopo che hai smesso e la cartella si è calmata, e non sovrascrive mai senza aver prima catturato ciò che sostituisce.
+No. Hoard cattura una versione quando il gioco ha finito di scrivere e la cartella si è calmata, e non sovrascrive mai senza aver prima catturato ciò che sostituisce.
 
 ### Posso tenere i salvataggi fuori da entrambi i cloud?
 

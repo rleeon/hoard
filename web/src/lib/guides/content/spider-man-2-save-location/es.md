@@ -2,7 +2,7 @@
 title: "Dónde están las partidas de Marvel's Spider-Man 2 (PC y Steam Deck)"
 description: "Dónde guarda Marvel's Spider-Man 2 sus partidas en PC, la carpeta del número largo, la trampa de OneDrive, la ruta en Steam Deck, copia y sincronización."
 order: 22
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 En PC, Marvel's Spider-Man 2 guarda sus partidas en `Documentos\Marvel's Spider-Man 2\`, dentro de una subcarpeta con un número largo. En Steam, ese número es tu ID de Steam. Debajo tienes qué significa eso en la práctica, la trampa de OneDrive, la ruta en Steam Deck y cómo tener las partidas siempre copiadas y sincronizadas entre tu PC y tu Steam Deck.
@@ -41,7 +41,7 @@ Sí, Steam Cloud, que mantiene al día las últimas partidas entre máquinas con
 
 ## Copia y sincronización automáticas con Hoard
 
-[Hoard](/download) copia la carpeta de partidas cada vez que dejas de jugar y guarda todas las versiones. También la sincroniza entre tus PC y una Steam Deck, así que el juego sigue donde lo dejaste en cualquiera de los dos.
+[Hoard](/download) copia la carpeta de partidas cada vez que el juego guarda y otra vez al salir, y guarda todas las versiones. También la sincroniza entre tus PC y una Steam Deck, así que el juego sigue donde lo dejaste en cualquiera de los dos.
 
 1. Instala Hoard e inicia sesión, o apúntalo a [tu propio servidor](/guides/self-host-hoard).
 2. Abre la **Biblioteca** y comprueba que la carpeta que aparece para Spider-Man 2 es la de `Documentos` (o `OneDrive\Documents`). Si apunta a otro sitio, cámbiala a esa carpeta.

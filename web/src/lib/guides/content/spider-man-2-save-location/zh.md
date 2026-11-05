@@ -2,7 +2,7 @@
 title: "漫威蜘蛛侠 2（Marvel's Spider-Man 2）存档位置（PC 与 Steam Deck）"
 description: "Marvel's Spider-Man 2 的 PC 存档位置、那个长数字文件夹是什么、OneDrive 的陷阱、Steam Deck 上的路径，以及如何备份和同步存档。"
 order: 22
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 在 PC 上，Marvel's Spider-Man 2 把存档放在 `文档\Marvel's Spider-Man 2\` 里一个以长数字命名的子文件夹中。在 Steam 上，这个数字就是你的 Steam ID。下面介绍这在实际中意味着什么、OneDrive 的陷阱、Steam Deck 上的路径，以及如何让存档一直有备份，并在 PC 和 Steam Deck 之间保持同步。
@@ -41,7 +41,7 @@ PC 版只支持 Windows，所以在 Steam Deck 上通过 Proton 运行，存档�
 
 ## 用 Hoard 自动备份和同步
 
-[Hoard](/download) 会在你每次停止游戏时备份存档文件夹，并保留每一个版本。它还会在你的 PC 和 Steam Deck 之间同步，让游戏在任意一台上都能接着玩。
+[Hoard](/download) 会在游戏每次存档时以及你退出时备份存档文件夹，并保留每一个版本。它还会在你的 PC 和 Steam Deck 之间同步，让游戏在任意一台上都能接着玩。
 
 1. 安装 Hoard 并登录，或把它指向[你自己的服务器](/guides/self-host-hoard)。
 2. 打开**库**，确认 Spider-Man 2 显示的文件夹是“文档”（或 `OneDrive\Documents`）下的那个。如果指向别处，请改成该文件夹。

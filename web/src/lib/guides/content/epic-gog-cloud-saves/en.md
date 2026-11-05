@@ -2,7 +2,7 @@
 title: "Epic and GOG cloud saves: what they cover and how to sync the rest"
 description: "Epic and GOG cloud saves work only for some games, only in their launchers, and keep no history. What they cover, and how to sync the rest automatically."
 order: 19.5
-updated: 2026-10-09
+updated: 2026-11-05
 related: steam-cloud-alternative, sync-game-saves-across-pcs, rog-ally-legion-go-save-sync, where-are-pc-game-saves-stored
 ---
 
@@ -36,13 +36,13 @@ Ubisoft Connect and the EA app have cloud saves for many of their own games, and
 
 ## Syncing the rest
 
-Hoard works by game, not by store. It finds each game's save folder from a community database covering thousands of titles, wherever the game came from, backs it up automatically when you stop playing and syncs it to your other PCs and your Steam Deck, with every version kept.
+Hoard works by game, not by store. It finds each game's save folder from a community database covering thousands of titles, wherever the game came from, backs it up automatically every time the game saves and syncs it to your other PCs and your Steam Deck, with every version kept.
 
 That covers the gaps above:
 
 - **Any launcher, or none.** Epic, GOG, Galaxy or the offline installer, Heroic on Linux, a game you unzipped into a folder.
 - **Across stores.** Most games save in the same place whatever store sold them, usually under `AppData` or `Documents`, so a GOG install on one PC and a Steam install on another can share a save. A few add an account-ID folder or use a different name per store; check before relying on it.
-- **A history.** Every session is a version you can roll back to.
+- **A history.** Every save is a version you can roll back to.
 
 Where a launcher's own cloud already syncs a game, let it keep doing that. Hoard adds the history, and does the syncing for everything else.
 

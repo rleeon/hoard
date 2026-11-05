@@ -2,7 +2,7 @@
 title: "博德之门 3（Baldur's Gate 3）存档位置（PC 与 Steam Deck）"
 description: "Baldur's Gate 3 在 Windows、Steam Deck 和 Mac 上的存档位置，哪些是存档、哪些是 Mod 或设置，荣誉模式，以及如何备份和同步存档。"
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 在 Windows 上，Baldur's Gate 3 把存档放在 `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`，每个存档一个文件夹。这是 Larian 在官方支持 FAQ 中给出的路径。下面是 Steam Deck 和 Mac 上的路径、存档旁边都有什么、荣誉模式，以及如何把一切都备份好，并在 PC 和 Steam Deck 之间保持同步。
@@ -42,13 +42,13 @@ updated: 2026-10-18
 
 ## 用 Hoard 自动备份和同步
 
-[Hoard](/download) 会在你每次停止游戏时备份存档文件夹，并保留每一个版本，所以被 Mod 更新或补丁弄坏的存档，只需一次恢复就能找回。它还会在你的 PC 和 Steam Deck 之间保持这个文件夹同步。
+[Hoard](/download) 会在游戏每次存档时以及你退出时备份存档文件夹，并保留每一个版本，所以被 Mod 更新或补丁弄坏的存档，只需一次恢复就能找回。它还会在你的 PC 和 Steam Deck 之间保持这个文件夹同步。
 
 1. 安装 Hoard 并登录，或把它指向[你自己的服务器](/guides/self-host-hoard)。
 2. 打开**库**。Baldur's Gate 3 会通过你的 Steam 库和社区存档数据库被识别出来。
 3. 开始游戏。退出后，第一个版本就会出现在历史记录里。
 
-每次游玩都会增加一个包含所有存档的版本。想退回去时，打开历史记录并[恢复旧版本](/guides/restore-a-game-save)；你电脑上现有的内容会先被备份，所以试一个旧版本从来不是单程票。
+每次备份都会增加一个包含所有存档的版本。想退回去时，打开历史记录并[恢复旧版本](/guides/restore-a-game-save)；你电脑上现有的内容会先被备份，所以试一个旧版本从来不是单程票。
 
 <!-- faq -->
 

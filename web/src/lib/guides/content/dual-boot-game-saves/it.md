@@ -2,7 +2,7 @@
 title: "Sincronizzare i salvataggi tra Windows e Linux su un PC in dual boot"
 description: "Un PC, due sistemi, due cartelle di salvataggio. Sincronizza i salvataggi tra Windows e Linux in automatico, perché una cartella NTFS condivisa si rompe."
 order: 18
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Su un PC in dual boot, lo stesso gioco tiene due salvataggi separati: uno nella tua cartella utente di Windows e uno dentro un prefisso Proton su Linux. Steam Cloud li collega nei giochi che lo supportano; tutto il resto si separa la prima volta che cambi sistema. Hoard li tiene sincronizzati in automatico. Installalo su entrambi i sistemi con lo stesso account, e il salvataggio di ogni gioco ti segue qualunque sistema avvii.
@@ -41,7 +41,7 @@ Lasciare che ogni sistema tenga i salvataggi dove il gioco se li aspetta, e sinc
 
 Con due PC separati, il salvataggio aspetta sul server finché l'altra macchina non lo chiede. Su un PC in dual boot, l'"altra macchina" è lo stesso computer dopo un riavvio, e questo cambia un'abitudine.
 
-Hoard carica un salvataggio quando il gioco si è chiuso e la cartella è ferma. **Se esci dal gioco e riavvii subito, il caricamento potrebbe non essere ancora avvenuto**, e l'altro sistema parte senza i tuoi ultimi progressi. Si rimetterà in pari la prossima volta che riavvii nel primo, ma nel frattempo potresti aver giocato sul vecchio salvataggio.
+Hoard carica un salvataggio pochi secondi dopo che il gioco lo ha scritto, quando la cartella è ferma. **Se salvi e riavvii subito, il caricamento potrebbe non essere ancora avvenuto**, e l'altro sistema parte senza i tuoi ultimi progressi. Si rimetterà in pari la prossima volta che riavvii nel primo, ma nel frattempo potresti aver giocato sul vecchio salvataggio.
 
 Quindi: esci dal gioco, lascia un momento a Hoard, controlla nell'app che il salvataggio sia aggiornato, e poi riavvia.
 

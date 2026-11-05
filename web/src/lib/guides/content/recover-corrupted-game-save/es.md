@@ -2,7 +2,7 @@
 title: "¿Partida corrupta? Cómo recuperarla"
 description: "Una partida que no carga no siempre está perdida. Dónde buscar una copia buena (backups del juego, Steam Cloud, Windows, OneDrive) y cómo evitar perderla."
 order: 12
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Una partida que no carga casi nunca está perdida del todo. Lo normal es que exista una copia buena en algún sitio: un backup que hizo el propio juego, la copia de Steam Cloud, una versión anterior que guardó Windows u OneDrive, o la partida de otro PC. Pero el orden importa, porque un mal paso puede machacar la copia buena con la rota. Empieza por aquí.
@@ -73,7 +73,7 @@ Para algunos juegos populares, la comunidad tiene editores de partidas o herrami
 
 ## No vuelvas a quedarte sin partida
 
-Todas las recuperaciones de arriba dependen de la suerte: que el juego hiciera un backup, o que Steam todavía no hubiera sincronizado. Una copia con versiones quita la suerte de la ecuación. Es lo que hace Hoard: respalda cada partida automáticamente cuando dejas de jugar, en cuanto la carpeta se queda quieta, así que una copia nunca es un fichero a medio escribir. Se guardan todas las versiones. Cuando algo se rompe, abres el **Historial** del juego y restauras la última buena con un clic; tu partida actual se guarda primero, así que hasta eso tiene vuelta atrás. Y como Hoard también mantiene tus partidas sincronizadas, la copia de tu portátil o tu Steam Deck nunca es una vieja y olvidada: todas tus máquinas trabajan con el mismo historial.
+Todas las recuperaciones de arriba dependen de la suerte: que el juego hiciera un backup, o que Steam todavía no hubiera sincronizado. Una copia con versiones quita la suerte de la ecuación. Es lo que hace Hoard: respalda cada partida automáticamente cada vez que el juego la escribe, en cuanto la carpeta se queda quieta, así que una copia nunca es un fichero a medio escribir. Se guardan todas las versiones. Cuando algo se rompe, abres el **Historial** del juego y restauras la última buena con un clic; tu partida actual se guarda primero, así que hasta eso tiene vuelta atrás. Y como Hoard también mantiene tus partidas sincronizadas, la copia de tu portátil o tu Steam Deck nunca es una vieja y olvidada: todas tus máquinas trabajan con el mismo historial.
 
 Un truco para ver cuándo se rompió: una caída brusca de tamaño entre dos versiones suele indicar una partida truncada. Más en [cómo restaurar una partida guardada anterior](/guides/restore-a-game-save).
 
@@ -101,4 +101,4 @@ El juego empezó a escribirla y no terminó: un cuelgue, un corte de luz o el di
 
 ### ¿Cómo evito que vuelva a pasar?
 
-Con copias con versiones hechas cuando el juego no está abierto. Hoard lo hace automáticamente después de cada sesión y guarda cada versión, así que puedes volver a cualquiera.
+Con copias con versiones que nunca se hacen a mitad de una escritura. Hoard lo hace automáticamente cada vez que el juego guarda, esperando a que el fichero esté terminado, y guarda cada versión, así que puedes volver a cualquiera.

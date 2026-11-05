@@ -2,7 +2,7 @@
 title: "Dónde están las partidas de Crimson Desert (PC y Steam Deck)"
 description: "Dónde guarda Crimson Desert sus partidas en Windows, Steam Deck y Mac, qué carpeta las contiene de verdad y cómo copiarlas y sincronizarlas entre tus PC."
 order: 21
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 En Windows, Crimson Desert guarda sus partidas en `%LOCALAPPDATA%\Pearl Abyss\CD\save`. Es la carpeta que indica Pearl Abyss en su propio FAQ. Debajo tienes las rutas de Steam Deck y Mac, qué hay dentro y cómo tenerla siempre copiada y sincronizada entre tu PC y tu Steam Deck.
@@ -43,13 +43,13 @@ Está bien como copia puntual antes de una actualización grande o una reinstala
 
 ## Copia y sincronización automáticas con Hoard
 
-[Hoard](/download) copia la carpeta de partidas cada vez que dejas de jugar y guarda todas las versiones, así que puedes volver atrás desde una partida rota o una decisión de la que te arrepientes. También mantiene la carpeta sincronizada entre tus PC y una Steam Deck.
+[Hoard](/download) copia la carpeta de partidas cada vez que el juego guarda y otra vez al salir, y guarda todas las versiones, así que puedes volver atrás desde una partida rota o una decisión de la que te arrepientes. También mantiene la carpeta sincronizada entre tus PC y una Steam Deck.
 
 1. Instala Hoard e inicia sesión, o apúntalo a [tu propio servidor](/guides/self-host-hoard).
 2. Abre la **Biblioteca**. Crimson Desert se detecta a partir de tu biblioteca de Steam y de la base de datos comunitaria de partidas, en la ruta de arriba.
 3. Juega. Al salir, la primera versión aparece en el historial.
 
-A partir de ahí cada sesión añade una versión, y la más nueva está en la máquina en la que te sientes después. Si una partida se estropea, [restaurar una anterior](/guides/restore-a-game-save) son un par de clics.
+A partir de ahí cada partida guardada añade una versión, y la más nueva está en la máquina en la que te sientes después. Si una partida se estropea, [restaurar una anterior](/guides/restore-a-game-save) son un par de clics.
 
 <!-- faq -->
 
@@ -69,4 +69,4 @@ Está oculta por defecto. Pega `%LOCALAPPDATA%\Pearl Abyss\CD\save` en la barra 
 
 ### ¿Puedo jugar en el sobremesa y en la Steam Deck con la misma partida?
 
-Sí. Steam Cloud lo hace con la última partida en la misma cuenta de Steam. Hoard también, y guarda una versión por sesión, así que puedes volver atrás si algo se rompe.
+Sí. Steam Cloud lo hace con la última partida en la misma cuenta de Steam. Hoard también, y guarda una versión cada vez que el juego guarda, así que puedes volver atrás si algo se rompe.

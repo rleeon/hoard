@@ -2,7 +2,7 @@
 title: "PC 游戏存档在哪里？所有常见位置"
 description: "PC 游戏在 Windows、Steam Deck、Linux 和 Mac 上把存档放在哪里，哪些启动器会加上自己的文件夹，以及如何快速找到任何游戏的存档。"
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 没有统一的文件夹。在 Windows 上，几乎每款游戏都把存档放在六个位置之一：`Documents`、`Saved Games`、三个 `AppData` 文件夹之一、Steam 的 `userdata`，或者游戏自己的安装文件夹。决定位置的是引擎和开发者，而不是你购买游戏的商店。本页列出所有常见位置、会加上自己一层的启动器，以及一个快速找到任何游戏存档的方法，即使是没人记录过的游戏。
@@ -61,7 +61,7 @@ Deck 有专门的指南：[如何在 Steam Deck 和 PC 之间同步存档](/guid
 
 ## 或者让别人替你找
 
-Hoard 读取同一个社区数据库（覆盖数千款游戏），并逐一检查你电脑上的每个候选路径：Proton、Heroic 和 Lutris 的前缀、OneDrive 里的 `文档`、模拟器、便携版安装。找到的内容会在你每次停止游戏后自动备份，保留每个版本，并在你的 PC 和 Steam Deck 之间保持同步。它漏掉的，指定一次文件夹就能添加。参见 [如何自动备份游戏存档](/guides/back-up-game-saves)。
+Hoard 读取同一个社区数据库（覆盖数千款游戏），并逐一检查你电脑上的每个候选路径：Proton、Heroic 和 Lutris 的前缀、OneDrive 里的 `文档`、模拟器、便携版安装。找到的内容会在游戏每次存档时自动备份，保留每个版本，并在你的 PC 和 Steam Deck 之间保持同步。它漏掉的，指定一次文件夹就能添加。参见 [如何自动备份游戏存档](/guides/back-up-game-saves)，或在[数百款热门游戏的存档位置](/saves)里查找你的游戏。
 
 一些热门游戏还有列出确切路径的页面：[Cyberpunk 2077](/guides/cyberpunk-2077-save-location)、[Baldur's Gate 3](/guides/baldurs-gate-3-save-location)、[Palworld](/guides/palworld-save-location)、[Crimson Desert](/guides/crimson-desert-save-location) 和 [Marvel's Spider-Man 2](/guides/spider-man-2-save-location)。
 

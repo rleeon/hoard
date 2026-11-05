@@ -2,7 +2,7 @@
 title: "赛博朋克 2077（Cyberpunk 2077）存档位置（PC 与 Steam Deck）"
 description: "Cyberpunk 2077 在 Windows、Steam Deck 和 Mac 上的存档位置，各文件夹里有什么，以及如何备份存档并在 PC 之间同步。"
 order: 20
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 在 Windows 上，Cyberpunk 2077 把存档放在 `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`，每个存档一个文件夹。这是简短的答案。本页其余部分介绍 Steam Deck 和 Mac 上的路径、文件夹里实际有什么，以及如何让它一直有备份，并在 PC 和 Steam Deck 之间保持同步。
@@ -45,7 +45,7 @@ Cyberpunk 不是写一个存档文件，而是**每个存档一个文件夹**：
 
 ## 用 Hoard 自动备份和同步
 
-[Hoard](/download) 会在你每次停止游戏时备份存档文件夹，并保留每一个版本，所以损坏的存档或已经被轮换掉的自动存档只需点一下就能找回。它还会在你的 PC 和 Steam Deck 之间同步这个文件夹。
+[Hoard](/download) 会在游戏每次存档时以及你退出时备份存档文件夹，并保留每一个版本，所以损坏的存档或已经被轮换掉的自动存档只需点一下就能找回。它还会在你的 PC 和 Steam Deck 之间同步这个文件夹。
 
 1. 安装 Hoard 并登录，或把它指向[你自己的服务器](/guides/self-host-hoard)。
 2. 打开**库**。Cyberpunk 会通过你的 Steam 库和社区存档数据库被识别出来。

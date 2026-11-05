@@ -2,7 +2,7 @@
 title: "Sauvegardes cloud d'Epic et GOG : ce qu'elles couvrent et comment synchroniser le reste"
 description: "Le cloud d'Epic et GOG ne marche que pour certains jeux, dans leur launcher, sans historique. Ce qu'il couvre et comment synchroniser le reste."
 order: 19.5
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Epic et GOG ont tous les deux des sauvegardes cloud, avec les mêmes limites que Steam : le développeur doit les prendre en charge jeu par jeu, elles ne fonctionnent qu'à travers le launcher de la boutique, et elles gardent la dernière copie plutôt qu'un historique. Voici ce que couvre chacun, où sont les trous, et comment garder tous vos jeux synchronisés entre vos PC et un Steam Deck, peu importe où vous les avez achetés.
@@ -35,13 +35,13 @@ Ubisoft Connect et l'application EA ont des sauvegardes cloud pour beaucoup de l
 
 ## Synchroniser le reste
 
-Hoard travaille par jeu, pas par boutique. Il trouve le dossier de sauvegarde de chaque jeu grâce à une base communautaire qui couvre des milliers de titres, d'où que vienne le jeu, le sauvegarde automatiquement quand vous arrêtez de jouer et le synchronise avec vos autres PC et votre Steam Deck, en gardant chaque version.
+Hoard travaille par jeu, pas par boutique. Il trouve le dossier de sauvegarde de chaque jeu grâce à une base communautaire qui couvre des milliers de titres, d'où que vienne le jeu, le sauvegarde automatiquement à chaque sauvegarde du jeu et le synchronise avec vos autres PC et votre Steam Deck, en gardant chaque version.
 
 Cela couvre les trous ci-dessus :
 
 - **N'importe quel launcher, ou aucun.** Epic, GOG, Galaxy ou l'installateur hors ligne, Heroic sous Linux, un jeu décompressé dans un dossier.
 - **Entre boutiques.** La plupart des jeux sauvegardent au même endroit quelle que soit la boutique qui les a vendus, en général dans `AppData` ou `Documents`, donc une installation GOG sur un PC et une installation Steam sur un autre peuvent partager une sauvegarde. Certains ajoutent un dossier à l'ID du compte ou changent de nom selon la boutique ; vérifiez avant de compter dessus.
-- **Un historique.** Chaque session est une version à laquelle vous pouvez revenir.
+- **Un historique.** Chaque sauvegarde est une version à laquelle vous pouvez revenir.
 
 Là où le cloud d'un launcher synchronise déjà un jeu, laissez-le faire. Hoard ajoute l'historique, et synchronise tout le reste.
 

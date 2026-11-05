@@ -1,13 +1,13 @@
 ---
 title: "Comparatif de synchronisation des sauvegardes : Hoard face à Ludusavi, Syncthing, OpenSave et les autres"
-description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager et d'autres comparés : points forts, limites de chacun et un tableau côte à côte."
+description: "Hoard, Ludusavi, Syncthing, OpenSave, GameSave Manager, SaveState, EmuSync et d'autres comparés : les points forts de chacun et un tableau."
 order: 4
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Steam Cloud ne couvre que les jeux achetés sur Steam, et seulement quand le développeur a pris la peine de l'activer. Émulateurs, GOG, Epic, itch.io, jeux hors Steam, tout ce qui est moddé : rien de tout ça n'est couvert. Si vous jouez sur plusieurs machines, un fixe et un Steam Deck par exemple, vous finissez par copier des dossiers à la main en espérant avoir pris le plus récent.
 
-Plusieurs outils règlent le problème, et ils ne font pas tous la même chose. Certains font des sauvegardes locales, d'autres répliquent des dossiers entre appareils, d'autres envoient vers un cloud. Cette page les passe en revue et dit ce que chacun fait vraiment bien. Hoard est mon projet, donc la partie honnête arrive à la fin : une section sur les points faibles de Hoard, et un tableau lisible sans croire un mot du texte.
+Plusieurs outils règlent le problème, et ils ne font pas tous la même chose. Certains font des sauvegardes locales, d'autres répliquent des dossiers entre appareils, d'autres envoient vers un cloud. Cette page les passe en revue et dit ce que chacun fait vraiment bien. Hoard est mon projet, donc il arrive en dernier, avec ce qu'il ne fait pas, et un tableau lisible sans croire un mot du texte.
 
 ## Ludusavi
 
@@ -57,6 +57,30 @@ Un outil Windows gratuit de longue date, propriétaire, avec sa propre base de j
 
 **Où il s'arrête :** Windows uniquement, et Sync & Link signifie qu'un client cloud généraliste synchronise le dossier actif pendant que le jeu écrit dedans, le même schéma qui rend [Syncthing risqué pour les sauvegardes](/guides/syncthing-game-saves). L'historique est celui que garde votre cloud.
 
+## Game Save Manager (GSM)
+
+Malgré le nom, ce n'est pas le même programme que celui du dessus. GSM, de dyang886, est une application Windows sous GPL-3.0 qui trouve les jeux installés via Steam, Epic, Battle.net et d'autres launchers grâce à la base de PCGamingWiki, garde pour chaque jeu une série de sauvegardes locales qui tourne selon la limite que vous fixez, et emporte tout votre historique sur un nouveau PC dans une archive `.gsmr` exportée. Il existe même un troisième homonyme : le game-save-manager de mcthesw, populaire dans les communautés chinoises, qui sauvegarde de façon programmée les dossiers que vous ajoutez à la main, avec WebDAV pour une copie hors de la machine.
+
+**Le meilleur si :** vous jouez sur un seul PC Windows et voulez des sauvegardes locales versionnées presque sans réglage, plus un déménagement facile vers une nouvelle machine.
+
+**Là où il s'arrête :** pas de synchro entre appareils : le second PC reçoit vos sauvegardes quand vous exportez une archive et l'importez là-bas. Windows uniquement.
+
+## SaveState
+
+SaveState, de Matteo842, est un gestionnaire de sauvegardes sous GPL-3.0 pour Windows et Linux, avec une application Android à part. Vous déposez le raccourci d'un launcher dessus et il trouve le dossier de sauvegarde, et sa prise en charge des émulateurs va loin : RetroArch, Dolphin, les cartes mémoire de PCSX2, xemu et plus d'une vingtaine d'autres. Les sauvegardes sont des archives `.zip` compressées avec rotation, et une synchro optionnelle les copie vers Google Drive, WebDAV, FTP, un partage réseau ou Git.
+
+**Le meilleur si :** vous voulez un outil de sauvegarde accueillant, avec une large couverture d'émulateurs, et restaurer à la main sur l'autre machine ne vous gêne pas.
+
+**Là où il s'arrête :** il est construit autour d'archives de sauvegarde, pas de la sauvegarde vivante. La synchro déplace ces archives entre machines, mais en remettre une dans le dossier du jeu de l'autre côté reste une restauration que vous lancez vous-même. Pas de macOS.
+
+## EmuSync
+
+EmuSync est un outil de synchro sous GPL-3.0 pour les sauvegardes PC et d'émulateurs, pensé d'abord pour un PC Windows et un Steam Deck. Vous associez l'emplacement des sauvegardes de chaque jeu, sur chaque appareil, à un point de synchro unique dans votre propre Google Drive, Dropbox ou OneDrive, ou dans un dossier partagé, et il synchronise automatiquement ou à la demande. Un plugin Decky affiche l'état en mode Jeu.
+
+**Le meilleur si :** vous jouez entre un PC Windows et un Deck et voulez vos sauvegardes dans un cloud que vous avez déjà.
+
+**Là où il s'arrête :** le cloud garde l'état actuel, et la sauvegarde et la restauration restent locales à chaque appareil plutôt qu'un historique partagé entre eux. macOS n'est pas testé, et la dernière version date de février 2026.
+
 ## Aletheia
 
 L'un des plus récents, sous AGPL, et il attaque précisément ce que les autres couvrent à moitié : les lanceurs. Heroic, itch.io, Lutris, Steam, GOG Galaxy et Xbox, sous Windows, Linux et macOS.
@@ -81,20 +105,29 @@ Le nom le plus récent de la liste, en bêta gratuite sous Windows. Tachyon dét
 
 **Où il s'arrête :** Windows uniquement pour l'instant (Linux et macOS sont annoncés), donc pas encore de Steam Deck ; pas de code source publié ; impossible d'utiliser son propre serveur. Les tarifs après la bêta ne sont pas annoncés.
 
+## Plugins pour Steam Deck (Decky)
+
+Sur le Deck lui-même, quelques plugins Decky Loader couvrent une partie du travail depuis le mode Jeu. Decky Cloud Save synchronise des dossiers avec OneDrive, Google Drive ou Dropbox via rclone après la fermeture d'un jeu ; son auteur ne le maintient plus et renvoie vers deux successeurs, Decky Ludusavi (une interface Ludusavi pour le mode Jeu) et SDH-GameSync (un fork qui récupère les sauvegardes au lancement de chaque jeu et les envoie à sa fermeture). Steamback garde en local les dix instantanés les plus récents des jeux qui utilisent Steam Cloud, pris quand vous quittez.
+
+**Le meilleur si :** vous jouez surtout sur le Deck et voulez quelque chose que l'on pilote sans quitter le mode Jeu.
+
+**Là où il s'arrête :** ils ne tournent que sur le Deck, et la partie entre appareils repose sur autre chose : rclone et votre cloud, Ludusavi ou Steam Cloud lui-même. Les instantanés de Steamback restent sur le Deck et ne couvrent que les jeux Steam Cloud.
+
 ## Une note sur EmuDeck
 
 EmuDeck revient dans ces discussions, et ce n'est pas un concurrent au sens habituel : c'est un installateur et configurateur d'émulateurs pour Steam Deck, et la synchronisation qu'il propose est un confort greffé sur cette mission (Rclone vers un cloud de fichiers, pour les sauvegardes d'émulateurs uniquement). Il recoupe les outils ci-dessus sans être de la même nature : EmuDeck installe vos émulateurs, les outils d'ici veillent sur les sauvegardes de toute la bibliothèque. Beaucoup font tourner EmuDeck à côté de l'un d'eux, et c'est une configuration sensée, pas une redondance.
 
 ## Hoard
 
-Hoard prend la session de jeu comme unité. Le moteur tourne en service d'arrière-plan — `hoardd`, sans fenêtre, donc il fonctionne en mode jeu de SteamOS —, remarque que vous avez arrêté de jouer, et prend l'instantané à ce moment-là plutôt que de réagir à chaque écriture pendant la partie.
+Hoard sauvegarde chaque partie dès que le jeu a fini de l'écrire et la garde synchronisée sur toutes les machines où vous jouez. Le moteur tourne en service d'arrière-plan, `hoardd`, sans fenêtre, il continue donc de fonctionner en mode Jeu de SteamOS. Il attend que le dossier soit calme quelques secondes, donc il n'envoie jamais un fichier à moitié écrit ; il fait une copie de plus quand vous quittez ; et il ne remplace jamais la sauvegarde d'un jeu en cours : ce qui arrive d'une autre machine attend que vous fermiez le jeu.
 
-- **Historique versionné par session.** Chaque session est une version vers laquelle revenir, même après une panne de disque ou une réinstallation.
-- **Déduplication par empreinte de contenu.** Dix versions d'une sauvegarde de 2 Go qui change peu d'une session à l'autre coûtent environ 2 Go, pas 20 Go. Les transferts sont compressés en zstd.
-- **SHA-256 à la montée et à la descente.** La corruption est détectée avant de pouvoir écraser une bonne sauvegarde. Rien n'est jamais écrasé en silence : c'est tout le principe.
-- **Cloud ou auto-hébergé, le même code.** Hoard One a une offre gratuite (2 Go, 3 appareils, historique complet). Ou vous lancez `hoard-server` vous-même avec Docker Compose sur n'importe quel stockage compatible S3 — MinIO, Garage, Backblaze B2 — sans compte ni quota. AGPL-3.0.
-- **Windows, Linux, macOS**, plus une CLI sans interface pour un Steam Deck ou un serveur.
-- **Émulateurs en bêta :** PCSX2, RPCS3, Dolphin, Cemu, Ryujinx, RetroArch, DuckStation, PPSSPP et d'autres en préréglages.
+- **L'autre machine peut être éteinte.** La sauvegarde la plus récente attend sur le serveur, donc le Deck que vous reprenez la semaine prochaine la reçoit sans que le PC soit allumé. Les outils pair-à-pair ont besoin des deux appareils éveillés en même temps.
+- **Toutes les versions, conservées.** Chaque sauvegarde est une version à laquelle revenir depuis l'application ou avec `hoard restore`, y compris après une panne de disque ou une installation neuve. Hoard One garde toutes les versions pour de bon ; sur votre propre serveur, c'est vous qui décidez combien d'historique garder.
+- **Seul ce qui change voyage.** Les envois ne transmettent que les fichiers modifiés, compressés en zstd, et les versions partagent tout ce qui ne change pas : dix versions d'une sauvegarde de 2 Go qui change peu occupent environ 2 Go, pas 20.
+- **SHA-256 à l'envoi et au retour.** La corruption est détectée avant de pouvoir écraser une bonne sauvegarde, et Hoard garde une copie de tout ce qu'il remplace.
+- **Gratuit et open source, avec votre propre serveur si vous le voulez.** L'application, la CLI et le serveur sont sous AGPL-3.0. Hoard One, le serveur géré que nous recommandons à tout le monde, est gratuit avec 2 Go et trois appareils, sans rien à installer. Ou lancez `hoard-server` avec Docker sur un PC, un NAS ou un Raspberry Pi, sur disque local ou n'importe quel stockage compatible S3 : aucun compte chez nous, aucune télémétrie vers nous, aucun quota de notre part.
+- **Windows, Linux, macOS et SteamOS**, avec la même application de bureau sur les quatre et une CLI pour les serveurs et les machines sans écran.
+- **Une détection qui couvre toute la bibliothèque :** Steam, Epic, GOG, préfixes Proton et Wine, des milliers de jeux grâce à la base communautaire des sauvegardes, et des préréglages pour 19 émulateurs, de PCSX2, Dolphin et RPCS3 à Ryujinx, Cemu, DuckStation et RetroArch.
 
 ## Le détail qui décide de la synchro Steam Deck ↔ PC
 
@@ -102,13 +135,11 @@ Bon à savoir quel que soit l'outil choisi. La sauvegarde cloud d'un jeu Steam v
 
 Synchronisez le dossier parent et vous obtenez un conflit permanent entre deux machines qui n'ont jamais été en désaccord sur une seule sauvegarde. Hoard suit `remote/`, pas le dossier parent. N'importe quel outil auquel vous désignez un dossier à la main peut faire pareil, et c'est la première chose à vérifier quand une configuration de synchronisation signale des conflits sans raison visible.
 
-## Là où Hoard perd
+## Ce que Hoard ne fait pas
 
-- **Il veut un serveur.** Compte cloud ou machine à vous, dans les deux cas c'est de l'infrastructure, alors qu'OpenSave ou Ludusavi n'en demandent aucune.
-- **La prise en charge des émulateurs est en bêta.** Les installations portables et les manies de chaque émulateur le piègent encore, et Aletheia comme OpenSave couvrent aujourd'hui mieux certains cas particuliers de lanceurs et d'émulateurs.
-- **macOS est à peine testé sur du matériel réel.** Ça compile et ça tourne, mais personne n'y a vécu pendant des mois.
-- **C'est jeune.** Ludusavi et Game Backup Monitor ont des années de rapports de bugs derrière eux. Pas Hoard, et ça compte pour un logiciel qui garde une partie de 200 heures.
-- **Il ne fait pas le partage coop.** Pour passer un monde à un ami, SaveSync est fait pour ça, Hoard non.
+- **Synchroniser sans serveur.** Hoard synchronise toujours par un serveur : Hoard One si vous préférez ne rien faire tourner, ou le vôtre. C'est justement ce qui permet à l'autre appareil d'être éteint, et ce qui laisse une copie qui survit aux deux machines. Si vous ne voulez de serveur en aucun cas, OpenSave, Syncthing ou Ludusavi sont faits pour ça.
+- **Partager des mondes en coop.** Passer un monde à un ami, c'est le travail de SaveSync ; Hoard s'occupe de vos propres sauvegardes.
+- **Fusionner deux sauvegardes qui ont divergé.** Aucun outil ne peut fusionner deux parties en une. Hoard garde les deux comme versions, sur toutes vos machines, et vous choisissez.
 
 ## La distinction entre Hoard One et l'auto-hébergement
 
@@ -121,24 +152,29 @@ Le même code, la même détection. Ce qui change, c'est à qui appartient le st
 
 ## Le tableau
 
-| Outil | Synchro automatique entre appareils | Où vivent les sauvegardes | Historique | Plateformes | Licence |
-|---|---|---|---|---|---|
-| **Hoard** | Oui, par session de jeu | Hoard One ou votre serveur (compatible S3) | Versionné par session, dédupliqué | Win · Linux · macOS · Deck | AGPL-3.0, offre gratuite |
-| **Ludusavi** | Manuelle, ou Rclone que vous montez | Local, plus votre remote Rclone | Sauvegardes locales versionnées | Win · Linux · macOS | Gratuit, open source |
-| **Syncthing** | Oui, miroir continu | Vos appareils seulement | Versionnage par fichier | Tout | Gratuit, open source |
-| **OpenSave** | Oui, pair-à-pair | Vos appareils, réplication cloud optionnelle | Instantanés et branches | Win · Linux · macOS · Deck | MIT |
-| **OpenCloudSaves** | Oui, via votre cloud | OneDrive / Drive / Dropbox / Nextcloud | Ce que garde le cloud | Win · Linux · macOS | Gratuit, open source, archivé |
-| **Game Backup Monitor** | Non | Archives 7-Zip locales | Sauvegardes numérotées | Windows · Linux | Gratuit, open source |
-| **GameSave Manager** | Via votre cloud (Sync & Link) | Local, plus Dropbox / OneDrive | Ce que garde le cloud | Windows | Gratuit, propriétaire |
-| **Aletheia** | Sauvegarde et restauration par lanceur | Votre stockage | Sauvegardes | Win · Linux · macOS | AGPL-3.0 |
-| **SaveSync** | Oui, et avec des amis | Entrées privées du Steam Workshop | Selon l'application | Windows | Payant, code fermé |
-| **Tachyon** | Oui, via son propre cloud | Le cloud de Tachyon | Versions et timelines | Windows (bêta) | Bêta gratuite, code non publié |
+| Outil | Synchro automatique | Fonctionne avec l'autre appareil éteint | Où vivent les sauvegardes | Historique | Plateformes | Licence |
+|---|---|---|---|---|---|---|
+| **Hoard** | Oui, à chaque sauvegarde du jeu | Oui | Hoard One ou votre serveur (disque ou compatible S3) | Toutes les versions, dédupliquées | Win · Linux · macOS · Deck | AGPL-3.0, gratuit |
+| **Ludusavi** | Manuelle, ou Rclone que vous câblez | Seulement avec un distant Rclone | Local, plus votre distant Rclone | Sauvegardes locales versionnées | Win · Linux · macOS | MIT, gratuit |
+| **Syncthing** | Oui, miroir continu | Non, les deux doivent être allumés | Vos appareils uniquement | Versionnage par fichier | Partout | MPL-2.0, gratuit |
+| **OpenSave** | Oui, pair-à-pair | Non, sauf si vous configurez un miroir cloud | Vos appareils, miroir cloud en option | Instantanés et branches | Win · Linux · macOS · Deck | MIT, gratuit |
+| **OpenCloudSaves** | Via votre cloud | Oui, via le cloud | OneDrive / Drive / Dropbox / Nextcloud | Ce que garde le cloud | Win · Linux · macOS | Open source, archivé |
+| **Game Backup Monitor** | Non | Pas de synchro | Archives 7-Zip locales | Sauvegardes numérotées | Windows · Linux | GPL-3.0, gratuit |
+| **GameSave Manager** | Via votre cloud (Sync & Link) | Oui, via le cloud | Local, plus Dropbox / OneDrive | Ce que garde le cloud | Windows | Gratuit, code fermé |
+| **Game Save Manager (GSM)** | Non, export et import | Pas de synchro | Sauvegardes locales | Sauvegardes locales tournantes | Windows | GPL-3.0, gratuit |
+| **SaveState** | En option, des archives | Oui, via votre stockage | Zips locaux, plus Drive / WebDAV / FTP / SMB / Git | Archives tournantes | Windows · Linux | GPL-3.0, gratuit |
+| **EmuSync** | Oui, via votre cloud | Oui, via le cloud | Drive / Dropbox / OneDrive ou un dossier partagé | Sauvegardes locales | Windows · Linux · Deck | GPL-3.0, gratuit |
+| **Aletheia** | Sauvegarde et restauration par launcher | Pas de synchro | Votre stockage | Sauvegardes | Win · Linux · macOS | AGPL-3.0 |
+| **SaveSync** | Oui, et avec des amis | Oui, via Steam | Entrées privées du Steam Workshop | Selon l'application | Windows | Payant, code fermé |
+| **Tachyon** | Oui, via son propre cloud | Oui | Le cloud de Tachyon | Versions et chronologies | Windows (bêta) | Bêta gratuite, sans code publié |
 
 ## Alors lequel
 
-Si vous voulez une seule machine sauvegardée et rien d'autre, prenez Ludusavi ou Game Backup Monitor. Si vous refusez tout compte et que vos appareils sont généralement allumés ensemble, OpenSave. Si vos sauvegardes doivent atterrir dans un dossier Drive que vous payez déjà, Ludusavi avec un remote Rclone, maintenant qu'OpenCloudSaves n'est plus maintenu. Si vous partagez un monde coop avec des amis, SaveSync.
+Si vous voulez que les sauvegardes et la synchro se fassent toutes seules, entre PC et Steam Deck, avec toutes les versions gardées, l'autre machine libre de rester éteinte et la possibilité que tout vous appartienne, c'est Hoard. [Téléchargez-le](/download), connectez-vous à Hoard One, ou lisez d'abord [comment l'auto-héberger avec Docker](/guides/self-host-hoard). C'est gratuit dans les deux cas.
 
-Si vous voulez que la sauvegarde *et* la synchronisation entre PC et Steam Deck se fassent toutes seules, avec une version par session où revenir et la possibilité de tout auto-héberger, c'est à ça que sert Hoard. [Téléchargez-le](/download), ou lisez d'abord [comment l'auto-héberger avec Docker](/guides/self-host-hoard). Il y a aussi un [comparatif détaillé avec Ludusavi](/guides/ludusavi-alternative) si c'est celui que vous mettez dans la balance.
+Pour des besoins plus étroits : un seul PC Windows et des archives locales, Game Backup Monitor ou GSM. Des sauvegardes locales en gardant tout le contrôle et sans serveur nulle part, Ludusavi. Aucun compte en aucun cas, avec des appareils souvent allumés en même temps, OpenSave ou Syncthing. Des sauvegardes qui doivent vivre dans un dossier Drive que vous payez déjà, Ludusavi avec un distant Rclone, ou EmuSync ; OpenCloudSaves le faisait, mais il est archivé. Partager un monde coop avec des amis, SaveSync.
+
+Si vous venez d'OpenCloudSaves et vouliez surtout vos sauvegardes dans un stockage que vous contrôlez, plutôt que dans Drive en tant que tel, un Hoard auto-hébergé le fait, avec l'historique en plus : il écrit sur disque local ou dans n'importe quel bucket compatible S3, comme Backblaze B2 ou MinIO. Si c'est Ludusavi que vous comparez, il y a une [comparaison plus longue avec Ludusavi](/guides/ludusavi-alternative).
 
 ## Comparaisons en tête-à-tête
 
@@ -148,6 +184,9 @@ Chacune va plus loin que la section ci-dessus, y compris sur les points où l'au
 - [Hoard comme alternative à Steam Cloud](/guides/steam-cloud-alternative)
 - [Synchro pair-à-pair face à un serveur qui vous appartient](/guides/opensave-alternative)
 - [Syncthing pour les sauvegardes : ce qui casse](/guides/syncthing-game-saves)
+- [Hoard face à GameSave Manager et aux autres Game Save Manager](/guides/game-save-manager-alternative)
+- [Remplacer OpenCloudSaves maintenant qu'il est archivé](/guides/opencloudsaves-alternative)
+- [Une alternative gratuite à SaveSync](/guides/savesync-alternative)
 
 <!-- faq -->
 
@@ -155,11 +194,15 @@ Chacune va plus loin que la section ci-dessus, y compris sur les points où l'au
 
 ### Lequel de ces outils garde un historique de versions ?
 
-Hoard conserve chaque session comme une version où revenir. Ludusavi garde des sauvegardes locales versionnées. La plupart des autres synchronisent ou copient l'état actuel : une sauvegarde corrompue est donc fidèlement propagée à votre autre machine.
+Hoard conserve chaque sauvegarde comme une version où revenir, sur toutes vos machines. Ludusavi, GSM et SaveState gardent des sauvegardes locales versionnées ou tournantes, et OpenSave garde des instantanés sur vos appareils. La plupart des autres synchronisent ou copient l'état actuel : une sauvegarde corrompue est donc fidèlement propagée à votre autre machine.
 
 ### Lequel fonctionne sans serveur ni compte ?
 
 Ludusavi en sauvegardes locales, et tout outil pair-à-pair. Hoard entre aussi dans cette catégorie si vous l'auto-hébergez : aucun compte chez nous, et rien qui passe par nos serveurs.
+
+### Lequel synchronise quand mon autre appareil est éteint ?
+
+Tout outil qui garde la sauvegarde ailleurs que sur vos appareils : Hoard, via Hoard One ou votre propre serveur, et les outils qui écrivent dans un cloud, comme EmuSync ou Ludusavi avec Rclone. La synchro pair-à-pair (OpenSave sans son miroir, Syncthing) exige les deux appareils allumés en même temps.
 
 ### Lequel couvre les jeux absents de Steam ?
 

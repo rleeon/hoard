@@ -1,13 +1,13 @@
 ---
 title: "游戏存档同步工具对比：Hoard 与 Ludusavi、Syncthing、OpenSave 等"
-description: "Hoard、Ludusavi、Syncthing、OpenSave、GameSave Manager 等工具对比：各自的长处与短板，附并排对比表。"
+description: "Hoard、Ludusavi、Syncthing、OpenSave、GameSave Manager、SaveState、EmuSync 等工具对比：各自的长处，附并排对比表。"
 order: 4
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿意打开这个开关。模拟器、GOG、Epic、itch.io、非 Steam 的游戏、任何装了 MOD 的东西，统统不在其中。如果你在不止一台机器上玩——比如一台台式机加一台 Steam Deck——最后就是手动复制文件夹，然后祈祷自己拿的是最新的那一份。
 
-有好几款工具在解决这件事，而它们做的并不是同一件事。有的做本地备份，有的在设备之间镜像文件夹，有的上传到云端。这一页把它们逐个过一遍，说清楚每一款真正擅长什么。Hoard 是我自己的项目，所以诚实的部分放在最后：一节讲 Hoard 输在哪里，再加一张即使你一个字都不信正文也能读的表。
+有好几款工具在解决这件事，而它们做的并不是同一件事。有的做本地备份，有的在设备之间镜像文件夹，有的上传到云端。这一页把它们逐个过一遍，说清楚每一款真正擅长什么。Hoard 是我自己的项目，所以放在最后，附上它不做的事，再加一张即使你一个字都不信正文也能读的表。
 
 ## Ludusavi
 
@@ -57,6 +57,30 @@ Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿�
 
 **局限：**仅限 Windows；而且 Sync & Link 意味着通用云盘客户端会在游戏写入时同步正在使用的文件夹，这正是[用 Syncthing 同步存档有风险](/guides/syncthing-game-saves)的同一种模式。版本历史取决于你的云盘保留多少。
 
+## Game Save Manager (GSM)
+
+名字相近，但和上面那个不是同一个程序。dyang886 的 GSM 是一款 GPL-3.0 的 Windows 应用，借助 PCGamingWiki 的数据库找出 Steam、Epic、Battle.net 等启动器里装好的游戏，按你设定的上限为每款游戏轮换保留一组本地备份，并能通过导出的 `.gsmr` 归档把全部历史带到新电脑上。还有第三个同名工具：mcthesw 的 game-save-manager，在中文社区很受欢迎，它定时备份你手动添加的文件夹，并可通过 WebDAV 在本机之外再存一份。
+
+**适合：** 只在一台 Windows 电脑上玩，想几乎不用设置就有带版本的本地备份，换新电脑时也想搬得轻松。
+
+**止步之处：** 不在设备之间同步：第二台电脑要拿到存档，得先导出归档，再到那边导入。仅限 Windows。
+
+## SaveState
+
+Matteo842 的 SaveState 是一款面向 Windows 和 Linux 的 GPL-3.0 备份管理器，另有单独的 Android 应用。把启动器的快捷方式拖上去，它就能找到存档文件夹；模拟器支持也很深入：RetroArch、Dolphin、PCSX2 的记忆卡、xemu，以及二十多款其他模拟器。备份是轮换保留的压缩 `.zip` 归档，可选的云同步会把它们复制到 Google Drive、WebDAV、FTP、网络共享或 Git。
+
+**适合：** 想要一个上手友好、模拟器覆盖广的备份工具，并且不介意在另一台机器上手动恢复。
+
+**止步之处：** 它围绕的是备份归档，而不是正在使用的存档。同步会在机器之间搬运这些归档，但要把其中一份放回另一边的游戏文件夹，仍然是一次你自己执行的恢复。没有 macOS 版。
+
+## EmuSync
+
+EmuSync 是一款 GPL-3.0 的同步工具，面向 PC 游戏和模拟器存档，最初是为一台 Windows 电脑加一台 Steam Deck 打造的。你把每台设备上每款游戏的存档位置映射到同一个同步点，放在你自己的 Google Drive、Dropbox 或 OneDrive 上，或某个共享文件夹里，它会自动或按需同步。一个 Decky 插件可以在游戏模式下查看同步状态。
+
+**适合：** 在 Windows 电脑和 Deck 之间切换着玩，并想把存档放在已有的云盘里。
+
+**止步之处：** 云盘里存的是当前状态，备份和恢复都在各自设备本地进行，而不是一份设备之间共享的历史。macOS 未经测试，最近一次发布是 2026 年 2 月。
+
 ## Aletheia
 
 这一组里较新的一款，AGPL 许可，而且专攻别人都只覆盖了一半的那块：启动器。Heroic、itch.io、Lutris、Steam、GOG Galaxy 和 Xbox，覆盖 Windows、Linux 和 macOS。
@@ -81,20 +105,29 @@ Steam 云存档只覆盖你在 Steam 上买的游戏，而且还得开发者愿�
 
 **局限：**目前仅限 Windows（Linux 和 macOS 标注为即将推出），所以还不支持 Steam Deck；没有公开源代码；也无法使用自己的服务器。测试结束后的定价尚未公布。
 
+## Steam Deck 插件（Decky）
+
+在 Deck 本机上，有几款 Decky Loader 插件能在游戏模式里承担一部分工作。Decky Cloud Save 会在游戏关闭后通过 rclone 把文件夹同步到 OneDrive、Google Drive 或 Dropbox；作者已不再维护它，并推荐了两个后继：Decky Ludusavi（一个给游戏模式用的 Ludusavi 前端）和 SDH-GameSync（一个分支版本，会在每款游戏启动时拉取存档、退出时上传）。Steamback 会为使用 Steam 云的游戏在退出时拍下本地快照，并保留最近十个。
+
+**适合：** 主要在 Deck 上玩，想要不离开游戏模式就能操作的东西。
+
+**止步之处：** 它们都只能在 Deck 上用，跨设备的那部分要靠别的东西：rclone 加你的云盘、Ludusavi，或者 Steam 云本身。Steamback 的快照留在 Deck 上，而且只覆盖支持 Steam 云的游戏。
+
 ## 关于 EmuDeck 的一点说明
 
 这类讨论里常常会提到 EmuDeck，但它并不是通常意义上的竞品：它是 Steam Deck 上的模拟器安装与配置工具，所提供的同步只是附在这份工作上的便利功能（用 Rclone 对接网盘，而且仅限模拟器存档）。它和上面这些工具有重叠，却不是同一类东西：EmuDeck 负责把模拟器给你装好配好，这里的工具负责照看整个游戏库的存档。确实有人把 EmuDeck 和其中一款搭配着用，那是合理的组合，并不重复。
 
 ## Hoard
 
-Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`hoardd`，没有窗口，所以在 SteamOS 的游戏模式下照样工作——它会察觉你已经不玩了，然后在那一刻拍下快照，而不是在游戏进行中对每一次文件写入做出反应。
+游戏一写完存档，Hoard 就会备份它，并在你玩的每台机器之间保持同步。引擎作为后台服务 `hoardd` 运行，没有窗口，所以在 SteamOS 的游戏模式下也照常工作。它会等文件夹安静几秒，所以绝不会上传写到一半的文件；退出时再备份一次；也从不替换正在运行的游戏的存档：从另一台机器来的内容，会等你关掉游戏再写入。
 
-- **按会话的版本历史。** 每一次会话都是一个可以回退到的版本，哪怕是在硬盘故障或者全新安装之后。
-- **基于内容哈希的去重。** 如果每次游玩之间改动不大，一个 2 GB 存档的十个版本大约只占 2 GB，而不是 20 GB。传输使用 zstd 压缩。
-- **上传和下载都做 SHA-256 校验。** 损坏会在覆盖掉一个完好存档之前被抓出来。任何东西都不会被悄悄覆盖——整个设计就是围着这一点转的。
-- **云端或自托管，同一套代码。** Hoard One 有免费额度（2 GB、3 台设备、完整历史）。或者你用 Docker Compose 自己跑 `hoard-server`，对接任何兼容 S3 的存储——MinIO、Garage、Backblaze B2——不需要账号，也没有配额。AGPL-3.0。
-- **Windows、Linux、macOS**，另外还有一个无界面的命令行版本，适合 Steam Deck 或服务器。
-- **模拟器支持处于测试阶段：** PCSX2、RPCS3、Dolphin、Cemu、Ryujinx、RetroArch、DuckStation、PPSSPP 等以预设形式提供。
+- **另一台机器可以关着。** 最新的存档在服务器上等着，所以你下周拿起的 Deck 不需要 PC 开机也能拿到它。点对点工具则要求两台设备同时醒着。
+- **每个版本都保留。** 每一次存档都是一个可以回退的版本，在应用里或用 `hoard restore` 都能恢复，磁盘故障或重装系统之后也一样。Hoard One 永久保留所有版本；在你自己的服务器上，保留多少历史由你决定。
+- **只传变化的部分。** 上传只发送改动过的文件，并用 zstd 压缩，各版本之间共享没变的内容：一个几乎不变的 2 GB 存档存十个版本，大约占 2 GB，而不是 20 GB。
+- **上传和下载都校验 SHA-256。** 损坏会在覆盖好存档之前被发现，而且 Hoard 会为它替换的一切保留一份副本。
+- **免费、开源，也可以用你自己的服务器。** 应用、命令行和服务器都采用 AGPL-3.0。我们推荐给所有人的托管服务器 Hoard One，免费提供 2 GB 和三台设备，什么都不用搭。也可以在 PC、NAS 或树莓派上用 Docker 运行 `hoard-server`，存到本地磁盘或任何兼容 S3 的存储：没有我们这边的账号，没有发给我们的遥测，也没有我们设的配额。
+- **Windows、Linux、macOS 和 SteamOS**，四个平台用同一个桌面应用，另有命令行供服务器和无屏幕的机器使用。
+- **覆盖整个游戏库的检测：** Steam、Epic、GOG、Proton 和 Wine 前缀，借助社区存档数据库支持数千款游戏，还为 19 款模拟器准备了预设，从 PCSX2、Dolphin、RPCS3 到 Ryujinx、Cemu、DuckStation 和 RetroArch。
 
 ## 决定 Steam Deck ↔ PC 同步成败的那个细节
 
@@ -102,13 +135,11 @@ Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`h
 
 同步父文件夹，你就会在两台从未在任何一个存档上产生分歧的机器之间，制造出永久的冲突。Hoard 跟踪的是 `remote/`，不是父文件夹。任何允许你手动指定文件夹的工具都可以照此设置；当一套同步配置莫名其妙地不断报冲突时，这也是第一个该去检查的地方。
 
-## Hoard 输在哪里
+## Hoard 不做的事
 
-- **它需要一台服务器。** 云端账号也好，自己的机器也罢，总归是基础设施；而 OpenSave 或 Ludusavi 一台都不需要。
-- **模拟器支持还在测试阶段。** 便携式安装和各家模拟器的怪癖仍然会绊到它，某些启动器和模拟器的边缘情况，今天 Aletheia 和 OpenSave 处理得更好。
-- **macOS 几乎没在真机上验证过。** 能编译也能跑，但没有人在上面长期用过几个月。
-- **它还年轻。** Ludusavi 和 Game Backup Monitor 背后有好几年的问题反馈积累，Hoard 没有；对于一个要守着 200 小时存档的软件来说，这个差距不轻。
-- **它不做联机存档共享。** 想把一个世界递给朋友，那是 SaveSync 的活儿，不是 Hoard 的。
+- **不经服务器同步。** Hoard 总是通过一台服务器同步：不想运维任何东西就用 Hoard One，否则用你自己的。正是这一点让另一台设备可以关着，也让副本在两台机器都坏掉时依然存在。如果你无论如何都不想要服务器，OpenSave、Syncthing 或 Ludusavi 就是为此而做的。
+- **共享合作模式的世界。** 把世界交给朋友是 SaveSync 的活儿；Hoard 管的是你自己的存档。
+- **合并两个已经分叉的存档。** 没有工具能把两段游玩合成一个。Hoard 会把两者都作为版本保留在你所有的机器上，由你来选。
 
 ## Hoard One 与自托管的区别
 
@@ -121,24 +152,29 @@ Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`h
 
 ## 对比表
 
-| 工具 | 设备之间自动同步 | 存档放在哪里 | 历史 | 平台 | 许可 |
-|---|---|---|---|---|---|
-| **Hoard** | 是，按游戏会话 | Hoard One 或你自己的服务器（兼容 S3） | 按会话版本化，带去重 | Win · Linux · macOS · Deck | AGPL-3.0，有免费额度 |
-| **Ludusavi** | 手动，或你自己搭的 Rclone | 本地，外加你的 Rclone 远端 | 带版本的本地备份 | Win · Linux · macOS | 免费开源 |
-| **Syncthing** | 是，持续镜像 | 只在你的设备上 | 按文件的版本保留 | 全平台 | 免费开源 |
-| **OpenSave** | 是，点对点 | 你的设备，可选云端镜像 | 快照与分支 | Win · Linux · macOS · Deck | MIT |
-| **OpenCloudSaves** | 是，经由你的网盘 | OneDrive / Drive / Dropbox / Nextcloud | 取决于网盘保留什么 | Win · Linux · macOS | 免费开源，已归档 |
-| **Game Backup Monitor** | 否 | 本地 7-Zip 归档 | 编号备份 | Windows · Linux | 免费开源 |
-| **GameSave Manager** | 通过你的云盘（Sync & Link） | 本地，外加 Dropbox / OneDrive | 取决于云盘保留多少 | Windows | 免费，闭源 |
-| **Aletheia** | 按启动器备份与还原 | 你自己的存储 | 备份 | Win · Linux · macOS | AGPL-3.0 |
-| **SaveSync** | 是，还能和朋友同步 | 私有的 Steam 创意工坊条目 | 视应用而定 | Windows | 付费闭源 |
-| **Tachyon** | 有，通过自家云 | Tachyon 的云 | 版本和时间线 | Windows（测试版） | 免费测试版，未公开源代码 |
+| 工具 | 自动同步 | 另一台设备关机时能否同步 | 存档放在哪里 | 历史 | 平台 | 许可 |
+|---|---|---|---|---|---|---|
+| **Hoard** | 是，游戏每次存档时 | 能 | Hoard One 或你自己的服务器（磁盘或兼容 S3） | 所有版本，带去重 | Win · Linux · macOS · Deck | AGPL-3.0，免费 |
+| **Ludusavi** | 手动，或你自己接上的 Rclone | 仅限配置了 Rclone 远端 | 本地，加你的 Rclone 远端 | 带版本的本地备份 | Win · Linux · macOS | MIT，免费 |
+| **Syncthing** | 是，持续镜像 | 不能，两台都得开着 | 只在你的设备上 | 按文件的版本 | 全平台 | MPL-2.0，免费 |
+| **OpenSave** | 是，点对点 | 不能，除非你配置了云端镜像 | 你的设备，可选云端镜像 | 快照和分支 | Win · Linux · macOS · Deck | MIT，免费 |
+| **OpenCloudSaves** | 通过你的云盘 | 能，经由云盘 | OneDrive / Drive / Dropbox / Nextcloud | 云盘保留多少就有多少 | Win · Linux · macOS | 开源，已归档 |
+| **Game Backup Monitor** | 否 | 不同步 | 本地 7-Zip 归档 | 编号备份 | Windows · Linux | GPL-3.0，免费 |
+| **GameSave Manager** | 通过你的云盘（Sync & Link） | 能，经由云盘 | 本地，加 Dropbox / OneDrive | 云盘保留多少就有多少 | Windows | 免费，闭源 |
+| **Game Save Manager (GSM)** | 否，导出再导入 | 不同步 | 本地备份 | 轮换的本地备份 | Windows | GPL-3.0，免费 |
+| **SaveState** | 可选，同步备份归档 | 能，经由你的存储 | 本地 zip，加 Drive / WebDAV / FTP / SMB / Git | 轮换的归档 | Windows · Linux | GPL-3.0，免费 |
+| **EmuSync** | 是，通过你的云盘 | 能，经由云盘 | Drive / Dropbox / OneDrive 或共享文件夹 | 本地备份 | Windows · Linux · Deck | GPL-3.0，免费 |
+| **Aletheia** | 按启动器备份和恢复 | 不同步 | 你的存储 | 备份 | Win · Linux · macOS | AGPL-3.0 |
+| **SaveSync** | 是，还能和朋友同步 | 能，经由 Steam | 私密的 Steam 创意工坊条目 | 视应用而定 | Windows | 付费，闭源 |
+| **Tachyon** | 是，通过它自己的云 | 能 | Tachyon 的云 | 版本和时间线 | Windows（测试版） | 免费测试版，未公开源码 |
 
 ## 那么选哪个
 
-如果你只想保住一台机器，别的都不管，选 Ludusavi 或 Game Backup Monitor。如果你无论如何都不想要账号，而且设备通常同时开着，选 OpenSave。如果存档应该落进一个你已经在付费的 Drive 文件夹里，既然 OpenCloudSaves 已经停止维护，就选配好 Rclone 远端的 Ludusavi。如果你要和朋友共享一个联机世界，选 SaveSync。
+如果你希望备份和同步自动完成，在多台 PC 和 Steam Deck 之间，保留每个版本，另一台机器可以一直关着，还能选择把一切握在自己手里，那就是 Hoard。[下载它](/download)，登录 Hoard One，或者先读一读[如何用 Docker 自托管](/guides/self-host-hoard)。两种方式都免费。
 
-如果你想要的是备份*和*跨 PC 与 Steam Deck 的同步自己就发生，每一次会话都有一个可以回退的版本，并且保留把整套东西自托管的选项——那正是 Hoard 存在的理由。[下载它](/download)，或者先读一读[如何用 Docker 自托管](/guides/self-host-hoard)。如果你正在权衡的对手就是 Ludusavi，这里还有一篇[更详细的对比](/guides/ludusavi-alternative)。
+如果需求更窄：只有一台 Windows 电脑、只要本地归档，选 Game Backup Monitor 或 GSM。想要完全自己掌控、哪里都不放服务器的本地备份，选 Ludusavi。无论如何都不要账号，而且设备常常同时开着，选 OpenSave 或 Syncthing。存档必须放在你已付费的 Drive 文件夹里，选配了 Rclone 远端的 Ludusavi，或 EmuSync；OpenCloudSaves 以前就是干这个的，但它已归档。要和朋友共享合作模式的世界，选 SaveSync。
+
+如果你是从 OpenCloudSaves 过来的，真正想要的是把存档放在自己掌控的存储里，而不一定是 Drive 本身，那么自托管的 Hoard 就能做到，还多了历史记录：它可以写入本地磁盘，或任何兼容 S3 的存储桶，比如 Backblaze B2 或 MinIO。如果你在和 Ludusavi 比较，还有一篇[更详细的 Ludusavi 对比](/guides/ludusavi-alternative)。
 
 ## 一对一比较
 
@@ -148,6 +184,9 @@ Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`h
 - [用 Hoard 替代 Steam 云存档](/guides/steam-cloud-alternative)
 - [点对点同步与一台属于你的服务器](/guides/opensave-alternative)
 - [用 Syncthing 同步存档会坏在哪里](/guides/syncthing-game-saves)
+- [Hoard 与 GameSave Manager 及其他 Game Save Manager](/guides/game-save-manager-alternative)
+- [OpenCloudSaves 归档之后用什么替代](/guides/opencloudsaves-alternative)
+- [免费的 SaveSync 替代方案](/guides/savesync-alternative)
 
 <!-- faq -->
 
@@ -155,11 +194,15 @@ Hoard 以一次游戏会话作为单位。引擎作为后台服务运行——`h
 
 ### 这些工具里，哪个保留版本历史？
 
-Hoard 把每次游玩留成一个可回退的版本。Ludusavi 保留带版本的本地备份。其余大多数只是同步或复制当前状态，也就是说损坏的存档会被忠实地传到你的另一台机器上。
+Hoard 把每次存档都留成一个可回退的版本，所有机器上都有。Ludusavi、GSM 和 SaveState 保留带版本或轮换的本地备份，OpenSave 则在你的设备上保留快照。其余大多数只是同步或复制当前状态，也就是说损坏的存档会被忠实地传到你的另一台机器上。
 
 ### 哪个不需要服务器也不需要账号？
 
 用作本地备份的 Ludusavi，以及任何点对点工具。如果你自托管，Hoard 也算在内：没有我们这边的账号，也没有任何东西经过我们的服务器。
+
+### 另一台设备关机时，哪个还能同步？
+
+凡是把存档放在你自己设备之外的工具都可以：通过 Hoard One 或你自己服务器的 Hoard，以及写入云盘的工具，比如 EmuSync 或配了 Rclone 的 Ludusavi。点对点同步（不开镜像的 OpenSave、Syncthing）需要两台设备同时开着。
 
 ### 哪个能覆盖不在 Steam 上的游戏？
 

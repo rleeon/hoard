@@ -2,7 +2,7 @@
 title: "Synchroniser ses sauvegardes entre ROG Ally, Legion Go, MSI Claw et son PC"
 description: "La ROG Ally, la Legion Go et la MSI Claw sont des PC sous Windows. Synchronisez leurs sauvegardes avec votre PC fixe automatiquement, avec historique."
 order: 19
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 La ROG Ally, la Legion Go et la MSI Claw tournent sous Windows : pour un jeu, ce sont simplement d'autres PC. C'est justement le problème : votre PC fixe et votre console portable gardent chacun leurs propres sauvegardes. Steam Cloud couvre une partie de votre bibliothèque et le cloud Xbox couvre le Game Pass, mais tout le reste reste sur la machine où vous avez joué. Hoard garde vos sauvegardes synchronisées entre la portable et le PC fixe automatiquement : arrêtez de jouer sur l'une et votre partie vous attend sur l'autre, avec chaque version précédente conservée.
@@ -28,7 +28,7 @@ Le moteur de synchronisation est un service d'arrière-plan qui démarre avec Wi
 
 ### La veille n'est pas une fermeture
 
-Sur une portable, il est facile d'appuyer sur le bouton d'alimentation et de la ranger avec le jeu ouvert. Hoard ne sauvegarde qu'une fois le jeu fermé, car un jeu en cours peut être en train d'écrire sa sauvegarde, et il ne remplace jamais la sauvegarde d'un jeu en cours. Si vous mettez la portable en veille puis jouez sur le PC fixe, la progression de la portable n'est pas encore envoyée. **Quittez le jeu avant de changer de machine.**
+Sur une portable, il est facile d'appuyer sur le bouton d'alimentation et de la ranger avec le jeu ouvert. Hoard envoie chaque sauvegarde quelques secondes après que le jeu l'a écrite, y compris pendant que vous jouez, mais il ne remplace jamais la sauvegarde d'un jeu en cours. Si vous mettez la portable en veille avec le jeu ouvert puis jouez sur le PC fixe, la portable ne récupérera la sauvegarde plus récente du PC fixe qu'une fois le jeu fermé sur elle. **Quittez le jeu avant de changer de machine.**
 
 ### Les jeux sur la carte microSD
 

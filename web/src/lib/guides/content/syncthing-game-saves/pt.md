@@ -2,7 +2,7 @@
 title: "Syncthing para saves de jogos: o que funciona e o que parte"
 description: "O Syncthing é um ótimo sincronizador, mas os saves quebram três das suas premissas. O que corre mal, como contornar e quando usar uma ferramenta de saves."
 order: 9
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 O Syncthing é a resposta a que muita gente chega primeiro, e com razão: é gratuito, open source, ponto a ponto, e funciona. Mas os saves de jogos partem três dos pressupostos em que assenta um sincronizador genérico, e as falhas são silenciosas. Este guia é sobre o que corre mal a sério, e sobre quando vale a pena usar algo que saiba o que é um save.
@@ -27,7 +27,7 @@ Nada disto é insolúvel. As pessoas safam-se com padrões de exclusão por jogo
 
 ## O que faz em vez disso uma ferramenta que percebe de saves
 
-O Hoard captura **quando paras de jogar**, assim que a pasta fica quieta, por isso um snapshot nunca é um ficheiro escrito a meio. Cada captura é uma versão do save inteiro, e não de ficheiros soltos, por isso restaurar é um clique e devolve tudo junto. Sabe que pasta é de que jogo — lê o mesmo manifesto comunitário de localizações que o ecossistema open source partilha, com mais de 20.000 títulos — por isso não há caminhos para manter, e segue `<AppID>/remote/` em vez da pasta acima.
+O Hoard captura **sempre que o jogo acaba de escrever um save**, assim que a pasta fica quieta, por isso um snapshot nunca é um ficheiro escrito a meio. Cada captura é uma versão do save inteiro, e não de ficheiros soltos, por isso restaurar é um clique e devolve tudo junto. Sabe que pasta é de que jogo — lê o mesmo manifesto comunitário de localizações que o ecossistema open source partilha, com mais de 20.000 títulos — por isso não há caminhos para manter, e segue `<AppID>/remote/` em vez da pasta acima.
 
 ## Quando o Syncthing é a melhor resposta
 

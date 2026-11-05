@@ -2,7 +2,7 @@
 title: "Ludusavi alternative: automatic cloud sync for your game saves"
 description: "Ludusavi is great for local backups. Hoard adds automatic sync between PCs and Steam Deck with version history, built on the same save database."
 order: 5
-updated: 2026-10-18
+updated: 2026-11-05
 related: game-save-sync-comparison, sync-game-saves-across-pcs, back-up-emulator-saves
 ---
 
@@ -20,7 +20,7 @@ The gap most people hit with any local-first tool is **syncing across devices**.
 
 Hoard turns that into **managed cloud sync**:
 
-- **Sign in and go.** No Rclone remotes, no scripts. Hoard uploads your save after you finish playing and downloads the latest before you start, on every PC on your account.
+- **Sign in and go.** No Rclone remotes, no scripts. Hoard uploads your save every time the game writes it and downloads the latest before you start, on every PC on your account.
 - **Versioned history in the cloud.** Every backup is kept, so you can roll back to any earlier save — even after a disk failure or a fresh install.
 - **Conflict-aware.** Hoard compares timestamps and keeps a local copy of anything it replaces, so a sync never silently destroys progress.
 - **Still open source and self-hostable.** Like Ludusavi, you're not locked in — run Hoard One or host the server yourself.
@@ -32,7 +32,8 @@ Hoard turns that into **managed cloud sync**:
 | Local backups | Yes | Yes |
 | Save detection | Community manifest | The same manifest, plus Steam libraries, running processes and a filesystem scan |
 | Cloud storage | Bring your own, through Rclone | Included, or your own server |
-| Sync between PCs | Manual: back up here, restore there | Automatic, after you stop playing and before you start |
+| Sync between PCs | Manual: back up here, restore there | Automatic, every time the game saves and before you start |
+| Other PC can be off | Only with an Rclone remote | Yes, the save waits on the server |
 | Version history | Local backups you prune yourself | Every version kept in the cloud, deduplicated by content hash |
 | Emulators | Yes | Yes |
 | Interfaces | Desktop app and CLI | Desktop app, CLI, and an in-game overlay |

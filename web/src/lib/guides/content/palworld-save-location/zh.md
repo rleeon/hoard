@@ -2,7 +2,7 @@
 title: "幻兽帕鲁（Palworld）存档位置（PC 与 Steam Deck）"
 description: "Palworld 的世界在 PC 和 Steam Deck 上存放在哪里，每个文件的作用，联机世界如何运作，以及如何备份存档并在 PC 之间同步。"
 order: 24
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 在 PC（Steam）上，Palworld 把存档放在 `%LOCALAPPDATA%\Pal\Saved\SaveGames\<你的 Steam ID>`，里面每个世界一个文件夹。这是 Pocketpair 在官方 FAQ 中给出的路径。下面是 Steam Deck 上的路径、每个文件的作用、联机时有什么不同，以及如何让你的世界一直有备份，并在 PC 和 Steam Deck 之间保持同步。
@@ -46,7 +46,7 @@ Steam 版使用 Steam 云，会在同一账号的设备之间同步世界的最�
 
 ## 用 Hoard 自动备份和同步
 
-[Hoard](/download) 会在你每次停止游戏时备份你的世界，并把每个版本保存在本机之外，所以世界损坏或硬盘丢失，都不会让你花了几周建起来的据点就此完蛋。它还会在你的 PC 和 Steam Deck 之间同步这些世界。
+[Hoard](/download) 会在游戏每次存档时以及你退出时备份你的世界，并把每个版本保存在本机之外，所以世界损坏或硬盘丢失，都不会让你花了几周建起来的据点就此完蛋。它还会在你的 PC 和 Steam Deck 之间同步这些世界。
 
 1. 安装 Hoard 并登录，或把它指向[你自己的服务器](/guides/self-host-hoard)。
 2. 打开**库**。Palworld 会通过你的 Steam 库和社区存档数据库被识别出来。

@@ -2,7 +2,7 @@
 title: "Spielstände zwischen ROG Ally, Legion Go, MSI Claw und deinem PC synchronisieren"
 description: "Windows-Handhelds wie ROG Ally, Legion Go und MSI Claw sind einfach PCs. Synchronisiere ihre Spielstände automatisch mit deinem Desktop, mit Versionsverlauf."
 order: 19
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 ROG Ally, Legion Go und MSI Claw laufen mit Windows, für ein Spiel sind sie also einfach ein weiterer PC. Genau das ist das Problem: Dein Desktop und dein Handheld behalten jeweils ihre eigenen Spielstände. Steam Cloud deckt einen Teil deiner Bibliothek ab und die Xbox-Cloud den Game Pass, aber alles andere bleibt auf dem Gerät, auf dem du gespielt hast. Hoard hält die Spielstände zwischen Handheld und Desktop automatisch synchron: Hörst du auf einem auf, wartet dein Spiel auf dem anderen, und jede frühere Version bleibt erhalten.
@@ -28,7 +28,7 @@ Der Sync-Motor läuft als Hintergrunddienst, der mit Windows startet, er arbeite
 
 ### Standby ist nicht Beenden
 
-Bei einem Handheld ist es leicht, die Ein/Aus-Taste zu drücken und das Gerät mit laufendem Spiel wegzulegen. Hoard sichert erst, wenn das Spiel geschlossen ist, weil ein laufendes Spiel gerade mitten im Schreiben sein kann, und es tauscht nie den Spielstand eines laufenden Spiels aus. Schickst du den Handheld in den Standby und spielst dann am Desktop, ist der Fortschritt vom Handheld noch nicht hochgeladen. **Beende das Spiel, bevor du wechselst.**
+Bei einem Handheld ist es leicht, die Ein/Aus-Taste zu drücken und das Gerät mit laufendem Spiel wegzulegen. Hoard lädt jeden Spielstand ein paar Sekunden, nachdem das Spiel ihn geschrieben hat, hoch, auch während du spielst, aber es tauscht nie den Spielstand eines laufenden Spiels aus. Schickst du den Handheld mit offenem Spiel in den Standby und spielst dann am Desktop, übernimmt der Handheld den neueren Spielstand vom Desktop erst, wenn du das Spiel dort beendest. **Beende das Spiel, bevor du wechselst.**
 
 ### Spiele auf der microSD-Karte
 

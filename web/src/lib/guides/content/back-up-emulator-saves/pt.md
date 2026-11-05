@@ -2,7 +2,7 @@
 title: "Como fazer backup e sincronizar saves de emuladores (RetroArch, Dolphin, PCSX2)"
 description: "Backup e sincronização de saves de emuladores entre PC e Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation e mais, com histórico e onde cada um grava."
 order: 6
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Os saves de emulador perdem-se com facilidade: ficheiros de save e save states vivem em pastas espalhadas, e uma reinstalação ou um PC novo podem apagar anos de progresso. O Hoard faz backup deles automaticamente e mantém-nos sincronizados entre as tuas máquinas, Steam Deck incluída.
@@ -23,7 +23,7 @@ Como o Hoard encontra as pastas de save com a mesma base de dados comunitária q
 
 1. **Instala o Hoard** para Windows, macOS ou Linux e inicia sessão.
 2. Abre a **Biblioteca** e adiciona o teu emulador, ou adiciona manualmente a sua pasta de saves/estados se mudaste a localização predefinida.
-3. Mantém o **modo automático** ligado. O Hoard faz backup depois de cada sessão e guarda um histórico versionado.
+3. Mantém o **modo automático** ligado. O Hoard faz backup sempre que o emulador grava, e outra vez quando sais, e guarda um histórico versionado.
 4. Instala o Hoard nos teus outros PCs com a mesma conta para sincronizar esses saves em todo o lado — vê [como sincronizar saves entre PCs](/guides/sync-game-saves-across-pcs).
 
 ## Ludusavi para emuladores?
@@ -107,7 +107,7 @@ Os saves estão bem fundo em `sdmc/Nintendo 3DS/<id0>/<id1>/title/…`, e `id0`/
 
 Na Steam Deck os emuladores costumam vir em Flatpak, por isso as pastas ficam em `~/.var/app/<id>/` em vez dos habituais `~/.config` ou `~/.local/share`. O EmuDeck junta tudo em `~/Emulation/saves/`, uma pasta por emulador. Seja como for, adicionas a pasta uma vez e o Hoard vigia-a.
 
-O que conta numa portátil: o motor do Hoard corre como um serviço em segundo plano, por isso faz o backup quando sais de um jogo no modo Jogo, sem nenhuma janela aberta. Pegas na Deck depois de uma sessão no PC e o save já lá está.
+O que conta numa portátil: o motor do Hoard corre como um serviço em segundo plano, por isso faz o backup no modo Jogo, enquanto jogas e quando sais, sem nenhuma janela aberta. Pegas na Deck depois de uma sessão no PC e o save já lá está.
 
 ## Save e save state não são a mesma coisa
 
@@ -148,7 +148,7 @@ Sim, um Cloud Sync integrado que precisa de um servidor WebDAV que geres ou alug
 
 ### Funciona numa Steam Deck no modo Jogo?
 
-Sim. O motor corre como um serviço em segundo plano, por isso os saves são copiados quando sais de um jogo, sem janela aberta. As pastas de Flatpak e do EmuDeck funcionam como qualquer outra.
+Sim. O motor corre como um serviço em segundo plano, por isso os saves são copiados enquanto jogas e quando sais, sem janela aberta. As pastas de Flatpak e do EmuDeck funcionam como qualquer outra.
 
 ### O meu emulador é portátil. Funciona?
 

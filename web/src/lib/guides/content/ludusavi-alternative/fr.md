@@ -2,7 +2,7 @@
 title: "Alternative à Ludusavi : synchronisation cloud automatique de vos parties"
 description: "Ludusavi excelle en sauvegarde locale. Hoard ajoute la synchro automatique entre PC et Steam Deck avec historique, sur la même base de données."
 order: 5
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Si vous cherchez un moyen de sauvegarder et synchroniser vos parties, vous avez sans doute trouvé **Ludusavi** — et il est excellent. Ce guide est une comparaison honnête pour vous aider à choisir le bon outil, et explique où Hoard s'inscrit si vous voulez une synchro cloud automatique entre machines.
@@ -19,7 +19,7 @@ Le point où la plupart bloquent avec tout outil local, c'est la **synchronisati
 
 Hoard transforme cela en **synchro cloud gérée** :
 
-- **Connectez-vous et c'est parti.** Pas de distants Rclone, pas de scripts. Hoard envoie votre sauvegarde après le jeu et télécharge la dernière version avant que vous commenciez, sur chaque PC de votre compte.
+- **Connectez-vous et c'est parti.** Pas de distants Rclone, pas de scripts. Hoard envoie votre sauvegarde chaque fois que le jeu l'écrit et télécharge la dernière version avant que vous commenciez, sur chaque PC de votre compte.
 - **Historique versionné dans le cloud.** Chaque sauvegarde est conservée, vous pouvez donc revenir à n'importe quelle sauvegarde antérieure — même après une panne de disque ou une installation neuve.
 - **Gestion des conflits.** Hoard compare les horodatages et conserve une copie locale de tout ce qu'il remplace, donc une synchro ne détruit jamais la progression en silence.
 - **Toujours open source et auto-hébergeable.** Comme Ludusavi, pas de verrouillage — utilisez Hoard One ou hébergez le serveur vous-même.
@@ -31,7 +31,8 @@ Hoard transforme cela en **synchro cloud gérée** :
 | Sauvegardes locales | Oui | Oui |
 | Détection des sauvegardes | Manifeste communautaire | Le même manifeste, plus les bibliothèques Steam, les processus en cours et un balayage du disque |
 | Stockage cloud | Le vôtre, via Rclone | Inclus, ou votre propre serveur |
-| Synchro entre PC | Manuelle : sauvegarder ici, restaurer là-bas | Automatique, après avoir joué et avant de commencer |
+| Synchro entre PC | Manuelle : sauvegarder ici, restaurer là-bas | Automatique, à chaque sauvegarde du jeu et avant de commencer |
+| L'autre PC peut être éteint | Seulement avec un distant Rclone | Oui, la sauvegarde attend sur le serveur |
 | Historique des versions | Sauvegardes locales que vous élaguez vous-même | Toutes les versions dans le cloud, dédupliquées par empreinte de contenu |
 | Émulateurs | Oui | Oui |
 | Interfaces | Application de bureau et CLI | Application de bureau, CLI et surcouche en jeu |

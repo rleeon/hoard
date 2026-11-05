@@ -2,8 +2,8 @@
 title: "Steam Cloud alternative: sync and back up the saves Steam doesn't"
 description: "Steam Cloud skips many games and keeps no history. Sync and back up every game from any launcher between PCs and Steam Deck, with versions to roll back."
 order: 7
-updated: 2026-10-18
-related: sync-game-saves-across-pcs, restore-a-game-save, game-save-sync-comparison, sync-saves-steam-deck-pc, epic-gog-cloud-saves
+updated: 2026-11-05
+related: sync-game-saves-across-pcs, restore-a-game-save, game-save-sync-comparison, sync-saves-steam-deck-pc, epic-gog-cloud-saves, where-does-steam-store-saves
 ---
 
 Steam Cloud is genuinely good at the narrow job it does, and most people only find its edges the day they lose something. This guide explains exactly where those edges are, and what to do about the games that fall outside them.
@@ -27,7 +27,7 @@ When it works, it's invisible and excellent: you close the game on one PC, open 
 
 ## What Hoard adds
 
-Hoard watches the folder each game actually writes to and captures a **new version every time you finish playing**:
+Hoard watches the folder each game actually writes to and captures a **new version every time the game saves**:
 
 - **It doesn't care where a game came from.** Steam, GOG, Epic, itch, emulators, a folder you pointed it at by hand.
 - **Every version is kept**, so rolling back a corrupted save or a bad decision is two clicks rather than a lost run.
@@ -74,7 +74,7 @@ Yes, that's most of the point. It locates saves through a community database cov
 
 ### Will running both cause conflicts?
 
-No. Hoard captures a version after you stop playing, once the folder goes quiet, and never overwrites without capturing what it replaces first.
+No. Hoard captures a version once the game has finished writing and the folder goes quiet, and never overwrites without capturing what it replaces first.
 
 ### Can I keep my saves off both clouds?
 

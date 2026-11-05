@@ -2,7 +2,7 @@
 title: "Partidas en la nube de Epic y GOG: qué cubren y cómo sincronizar el resto"
 description: "La nube de Epic y GOG solo sirve para algunos juegos, solo dentro de su launcher y sin historial. Qué cubre y cómo sincronizar el resto de forma automática."
 order: 19.5
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Tanto Epic como GOG tienen partidas en la nube, con las mismas pegas que Steam: el desarrollador tiene que admitirlas juego a juego, solo funcionan a través del launcher de la propia tienda y guardan la última copia en lugar de un historial. Aquí tienes qué cubre cada una, dónde están los huecos y cómo tener todos tus juegos sincronizados entre tus PC y una Steam Deck, los compraras donde los compraras.
@@ -35,13 +35,13 @@ Ubisoft Connect y la app de EA tienen partidas en la nube para muchos de sus pro
 
 ## Sincronizar el resto
 
-Hoard trabaja por juego, no por tienda. Encuentra la carpeta de guardado de cada juego con una base de datos comunitaria que cubre miles de títulos, venga de donde venga el juego, la respalda automáticamente cuando dejas de jugar y la sincroniza con tus otros PC y tu Steam Deck, guardando todas las versiones.
+Hoard trabaja por juego, no por tienda. Encuentra la carpeta de guardado de cada juego con una base de datos comunitaria que cubre miles de títulos, venga de donde venga el juego, la respalda automáticamente cada vez que el juego guarda y la sincroniza con tus otros PC y tu Steam Deck, guardando todas las versiones.
 
 Eso cubre los huecos de arriba:
 
 - **Cualquier launcher, o ninguno.** Epic, GOG, Galaxy o el instalador offline, Heroic en Linux, un juego que descomprimiste en una carpeta.
 - **Entre tiendas.** La mayoría de juegos guarda en el mismo sitio sea cual sea la tienda que los vendió, normalmente en `AppData` o `Documents`, así que una instalación de GOG en un PC y una de Steam en otro pueden compartir partida. Algunos añaden una carpeta con el ID de la cuenta o usan otro nombre según la tienda; compruébalo antes de fiarte.
-- **Un historial.** Cada sesión es una versión a la que puedes volver.
+- **Un historial.** Cada partida guardada es una versión a la que puedes volver.
 
 Donde la nube del propio launcher ya sincroniza un juego, déjala seguir. Hoard añade el historial, y se encarga de sincronizar todo lo demás.
 

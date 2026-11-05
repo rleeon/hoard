@@ -2,7 +2,7 @@
 title: "Alternative à OpenSave : direct entre machines ou serveur qui vous appartient"
 description: "OpenSave synchronise en pair-à-pair ; Hoard passe par un serveur, le nôtre ou le vôtre, et garde chaque version. Quand chaque approche l'emporte."
 order: 8
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Les deux outils résolvent le même problème et divergent sur l'architecture, et c'est bien la seule chose qui mérite comparaison. Cette page met les deux approches côte à côte, y compris les cas où l'autre est la meilleure réponse.
@@ -11,14 +11,14 @@ Les deux outils résolvent le même problème et divergent sur l'architecture, e
 
 **OpenSave** est pair-à-pair. Vos machines se parlent directement, sans rien entre elles. Pas de compte, pas de stockage à payer, et la possibilité de refléter une copie vers un cloud que vous avez déjà.
 
-**Hoard** synchronise via un serveur. Ce serveur est soit Hoard One, géré par nous, soit `hoard-server` sur votre propre PC ou NAS. Votre sauvegarde monte quand vous arrêtez de jouer et redescend quand une autre machine la demande.
+**Hoard** synchronise via un serveur. Ce serveur est soit Hoard One, géré par nous, soit `hoard-server` sur votre propre PC ou NAS. Votre sauvegarde monte chaque fois que le jeu l'écrit, et redescend quand une autre machine la demande.
 
 Tout le reste découle de ce seul choix.
 
 ## Ce qu'un serveur vous apporte
 
 - **L'autre machine n'a pas besoin d'être allumée.** Vous finissez sur le fixe, le portable reste fermé une semaine, et la dernière sauvegarde attend quand vous l'ouvrez. Le pair-à-pair exige les deux bouts éveillés en même temps : parfait à un bureau, pénible avec une console portable que vous sortez deux fois par mois.
-- **Un historique de versions, pas seulement le dernier état.** Chaque session devient une version où revenir. C'est ce qui compte le jour où un mod dévore votre monde ou qu'une sauvegarde s'écrit à moitié : une synchro directe recopie fidèlement le fichier cassé sur l'autre PC.
+- **Un historique de versions, pas seulement le dernier état.** Chaque sauvegarde devient une version où revenir. C'est ce qui compte le jour où un mod dévore votre monde ou qu'une sauvegarde s'écrit à moitié : une synchro directe recopie fidèlement le fichier cassé sur l'autre PC.
 - **Une copie qui survit au matériel.** Que vos deux PC meurent dans le même appartement n'a rien d'exotique. Une sauvegarde qui n'a existé que sur ces deux machines meurt avec elles.
 - **Rien à préparer côté réseau.** Pas de NAT à traverser, pas de port à ouvrir, pas de condition d'être sur le même réseau local.
 
@@ -66,11 +66,11 @@ Oui. Faites tourner `hoard-server` sur un PC ou un NAS et vos sauvegardes vont d
 
 ### Les deux PC doivent-ils être en ligne en même temps ?
 
-Non, et c'est l'avantage pratique de passer par un serveur. Votre sauvegarde est envoyée quand vous arrêtez de jouer et téléchargée dès que l'autre machine la réclame.
+Non, et c'est l'avantage pratique de passer par un serveur. Votre sauvegarde est envoyée chaque fois que le jeu l'écrit et téléchargée dès que l'autre machine la réclame.
 
 ### Un transfert direct garde-t-il un historique de versions ?
 
-Pas en soi : copier un fichier vers une autre machine vous donne l'état actuel des deux côtés. Hoard capture chaque session comme une version, ce qui rend possible le retour en arrière après une sauvegarde corrompue.
+Pas en soi : copier un fichier vers une autre machine vous donne l'état actuel des deux côtés. Hoard garde chaque sauvegarde comme une version, ce qui rend possible le retour en arrière après une sauvegarde corrompue.
 
 ### Hoard est-il open source lui aussi ?
 

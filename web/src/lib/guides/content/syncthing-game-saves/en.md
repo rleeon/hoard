@@ -2,7 +2,7 @@
 title: "Syncthing for game saves: what works and what breaks"
 description: "Syncthing is a great file syncer, but game saves break three of its assumptions. What goes wrong, the workarounds, and when a save-aware tool fits better."
 order: 9
-updated: 2026-10-18
+updated: 2026-11-05
 related: game-save-sync-comparison, sync-game-saves-across-pcs, opensave-alternative, onedrive-game-saves
 ---
 
@@ -28,7 +28,7 @@ None of the above is unfixable. People handle it with ignore patterns per game, 
 
 ## What a save-aware tool does instead
 
-Hoard captures **after you stop playing**, once the folder goes quiet, so a snapshot is never a half-written file. Each capture is a version of the whole save, not of individual files, so restoring is one click and puts everything back together. It knows which folder belongs to which game — reading the same community save-location manifest the open-source ecosystem shares, covering 20,000+ titles — so there are no paths to maintain, and it tracks `<AppID>/remote/` rather than the folder above it.
+Hoard captures **every time the game finishes writing a save**, once the folder goes quiet, so a snapshot is never a half-written file. Each capture is a version of the whole save, not of individual files, so restoring is one click and puts everything back together. It knows which folder belongs to which game — reading the same community save-location manifest the open-source ecosystem shares, covering 20,000+ titles — so there are no paths to maintain, and it tracks `<AppID>/remote/` rather than the folder above it.
 
 ## When Syncthing is the better answer
 

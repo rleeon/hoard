@@ -2,7 +2,7 @@
 title: "Sync saves between ROG Ally, Legion Go, MSI Claw and your PC"
 description: "Windows handhelds like the ROG Ally, Legion Go and MSI Claw are just PCs. Sync their game saves with your desktop automatically, with version history."
 order: 19
-updated: 2026-10-09
+updated: 2026-11-05
 related: sync-game-saves-across-pcs, sync-saves-steam-deck-pc, epic-gog-cloud-saves, steam-cloud-alternative
 ---
 
@@ -29,7 +29,7 @@ The sync engine runs as a background service that starts with Windows, so it kee
 
 ### Sleep is not quitting
 
-Handhelds make it easy to press the power button and put the game away still running. Hoard only backs up once the game has closed, because a running game may be halfway through writing its save, and it never swaps the save of a running game. If you sleep the handheld and then play on the desktop, the handheld's progress hasn't been uploaded yet. **Quit the game before you switch.**
+Handhelds make it easy to press the power button and put the game away still running. Hoard uploads each save a few seconds after the game writes it, while you play too, but it never swaps the save of a running game. If you sleep the handheld with the game open and then play on the desktop, the handheld won't take the desktop's newer save until you close the game there. **Quit the game before you switch.**
 
 ### Games on the microSD card
 

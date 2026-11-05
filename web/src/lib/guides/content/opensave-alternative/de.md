@@ -2,7 +2,7 @@
 title: "OpenSave-Alternative: direkt zwischen Geräten oder über einen eigenen Server"
 description: "OpenSave synct Peer-to-Peer, Hoard über einen Server, unseren oder deinen, und behält jede Version. Ein ehrlicher Blick, wann welches Design gewinnt."
 order: 8
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Beide Werkzeuge lösen dasselbe Problem und sind sich über die Architektur uneinig, und genau das ist das Einzige, was einen Vergleich lohnt. Diese Seite legt die zwei Ansätze nebeneinander, samt der Fälle, in denen der andere die bessere Antwort ist.
@@ -11,14 +11,14 @@ Beide Werkzeuge lösen dasselbe Problem und sind sich über die Architektur unei
 
 **OpenSave** arbeitet peer-to-peer. Deine Maschinen reden direkt miteinander, dazwischen sitzt nichts. Kein Konto, kein Speicher, den man bezahlt, und optional lässt sich eine Kopie in eine Cloud spiegeln, die du ohnehin hast.
 
-**Hoard** synchronisiert über einen Server. Dieser Server ist entweder Hoard One, von uns betrieben, oder `hoard-server` auf deinem eigenen PC oder NAS. Dein Stand geht hoch, wenn du aufhörst, und kommt herunter, wenn eine andere Maschine danach fragt.
+**Hoard** synchronisiert über einen Server. Dieser Server ist entweder Hoard One, von uns betrieben, oder `hoard-server` auf deinem eigenen PC oder NAS. Dein Stand geht bei jedem Speichern hoch und kommt herunter, wenn eine andere Maschine danach fragt.
 
 Alles Weitere folgt aus dieser einen Entscheidung.
 
 ## Was dir ein Server bringt
 
 - **Die andere Maschine muss nicht laufen.** Du hörst am Desktop auf, der Laptop bleibt eine Woche zu, und beim Aufklappen wartet der neueste Stand. Peer-to-peer braucht beide Enden gleichzeitig wach — am Schreibtisch kein Problem, mit einem Handheld, das du zweimal im Monat anfasst, schon.
-- **Eine Versionshistorie statt nur des letzten Zustands.** Jede Sitzung wird eine Version, zu der du zurückkannst. Das zählt an dem Tag, an dem ein Mod deine Welt frisst oder ein Stand halb geschrieben landet: eine direkte Synchronisierung kopiert die kaputte Datei getreulich auf den anderen PC.
+- **Eine Versionshistorie statt nur des letzten Zustands.** Jedes Speichern wird eine Version, zu der du zurückkannst. Das zählt an dem Tag, an dem ein Mod deine Welt frisst oder ein Stand halb geschrieben landet: eine direkte Synchronisierung kopiert die kaputte Datei getreulich auf den anderen PC.
 - **Eine Kopie, die die Hardware überlebt.** Dass beide PCs in derselben Wohnung sterben, ist kein exotisches Szenario. Ein Spielstand, den es nur auf diesen zwei Maschinen gab, stirbt mit ihnen.
 - **Nichts am Netzwerk zu regeln.** Kein NAT zu durchqueren, kein Port zu öffnen, keine Bedingung, dass beide im selben LAN hängen.
 
@@ -66,11 +66,11 @@ Ja. Betreibe `hoard-server` auf einem PC oder NAS, und deine Stände gehen von d
 
 ### Müssen beide PCs gleichzeitig online sein?
 
-Nein, und das ist der praktische Vorteil der Synchronisierung über einen Server. Dein Stand wird hochgeladen, wenn du aufhörst, und heruntergeladen, sobald die andere Maschine das nächste Mal danach fragt.
+Nein, und das ist der praktische Vorteil der Synchronisierung über einen Server. Dein Stand wird bei jedem Speichern hochgeladen und heruntergeladen, sobald die andere Maschine das nächste Mal danach fragt.
 
 ### Führt eine Direktübertragung eine Versionshistorie?
 
-Von sich aus nicht — eine Datei auf eine andere Maschine zu kopieren gibt dir den aktuellen Zustand auf beiden. Hoard sichert jede Sitzung als Version, und genau das macht das Zurückrollen eines beschädigten Stands möglich.
+Von sich aus nicht: Eine Datei auf eine andere Maschine zu kopieren gibt dir den aktuellen Zustand auf beiden. Hoard behält jedes Speichern als Version, und genau das macht das Zurückrollen eines beschädigten Stands möglich.
 
 ### Ist Hoard ebenfalls Open Source?
 

@@ -2,7 +2,7 @@
 title: "Spielstände zwischen Steam Deck und PC synchronisieren"
 description: "Steam-Deck- und PC-Spielstände automatisch synchron halten, auch Nicht-Steam-Spiele, Emulatoren und Spiele ohne Steam Cloud. Einrichtung, Pfade, Fallen."
 order: 10
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Bei Steam-Spielen mit Steam Cloud teilen sich dein Deck und dein PC die Spielstände bereits. Alles andere braucht Hilfe: Spiele, bei denen der Entwickler Steam Cloud nie eingeschaltet hat, Epic- und GOG-Spiele über Heroic, Emulatoren und alles, was du als Nicht-Steam-Spiel hinzugefügt hast. Hoard deckt all das automatisch ab. Beendest du ein Spiel auf einem Gerät, sichert Hoard den Spielstand, und das andere Gerät holt ihn sich, wobei jede frühere Version erhalten bleibt, falls etwas schiefgeht.
@@ -44,7 +44,7 @@ Hoard Setup legt die App in deinem Home-Ordner ab und den Sync-Motor in einen Hi
 
 ## Wie ein normaler Tag aussieht
 
-Du spielst abends am PC und beendest das Spiel. Hoard wartet, bis das Spiel geschlossen ist und sich der Spielstand nicht mehr ändert, und lädt ihn dann hoch. Am nächsten Morgen nimmst du das Deck. Sobald es online ist, sieht Hoard die neuere Version und schreibt sie ins Proton-Präfix. Du startest das Spiel und machst weiter. Beendest du es auf dem Deck, passiert dasselbe in umgekehrter Richtung.
+Du spielst abends am PC. Jedes Mal, wenn das Spiel speichert, lädt Hoard den Spielstand ein paar Sekunden später hoch, und noch einmal, wenn du es beendest. Am nächsten Morgen nimmst du das Deck. Sobald es online ist, sieht Hoard die neuere Version und schreibt sie ins Proton-Präfix. Du startest das Spiel und machst weiter. Beendest du es auf dem Deck, passiert dasselbe in umgekehrter Richtung.
 
 Keines der Geräte muss gleichzeitig mit dem anderen an sein. Der Spielstand wartet auf dem Server, bis das andere Gerät ihn abholt.
 
@@ -52,7 +52,7 @@ Keines der Geräte muss gleichzeitig mit dem anderen an sein. Der Spielstand war
 
 ### Standby ist nicht Beenden
 
-Auf dem Deck ist es sehr leicht, die Ein/Aus-Taste zu drücken und das Spiel offen zu lassen. Hoard sichert einen Spielstand erst, wenn das Spiel geschlossen ist, denn ein laufendes Spiel kann gerade mitten im Schreiben sein. Und es tauscht nie den Spielstand eines laufenden Spiels aus. Schickst du das Deck in den Standby und spielst dann am PC, ist der Fortschritt vom Deck noch nicht hochgeladen, und der neue Spielstand vom PC wartet, bis du das Spiel auf dem Deck beendest.
+Auf dem Deck ist es sehr leicht, die Ein/Aus-Taste zu drücken und das Spiel offen zu lassen. Hoard lädt jeden Spielstand ein paar Sekunden, nachdem das Spiel ihn geschrieben hat, hoch, auch während du spielst. Was du vor dem Standby gespeichert hast, liegt also normalerweise schon auf dem Server, sofern das Deck online war. Was Hoard nie tut: den Spielstand eines laufenden Spiels austauschen. Schickst du das Deck in den Standby und spielst dann am PC, wartet der neue Spielstand vom PC, bis du das Spiel auf dem Deck beendest.
 
 Die Gewohnheit, die all das verhindert: **Beende das Spiel, bevor du das Gerät wechselst.** Lässt Proton nach dem Beenden einen toten Prozess zurück, was oft passiert, merkt Hoard, dass das Spiel weg ist, und macht weiter.
 

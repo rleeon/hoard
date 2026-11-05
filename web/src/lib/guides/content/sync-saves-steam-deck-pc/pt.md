@@ -2,7 +2,7 @@
 title: "Como sincronizar saves entre Steam Deck e PC"
 description: "Sincroniza automaticamente os saves do Steam Deck e do PC, incluindo jogos fora do Steam, emuladores e jogos sem Steam Cloud. Passos, caminhos e armadilhas."
 order: 10
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Nos jogos do Steam com Steam Cloud, o teu Deck e o teu PC já partilham os saves. Tudo o resto precisa de ajuda: jogos em que o programador nunca ativou o Steam Cloud, jogos da Epic e da GOG que abres com o Heroic, emuladores e qualquer coisa que tenhas adicionado como jogo fora do Steam. O Hoard trata de todos automaticamente. Quando fechas um jogo numa máquina, faz backup do save, e a outra máquina descarrega-o, com todas as versões anteriores guardadas para o caso de algo correr mal.
@@ -44,7 +44,7 @@ O Hoard Setup põe a app na tua pasta pessoal e o motor de sincronização num s
 
 ## Como é um dia normal
 
-Jogas no PC à noite e sais. O Hoard espera que o jogo feche e que o save deixe de mudar, e depois envia-o. Na manhã seguinte pegas no Deck. Assim que fica online, o Hoard vê a versão mais recente e escreve-a no prefixo do Proton. Abres o jogo e continuas. Quando sais no Deck, acontece o mesmo no sentido inverso.
+Jogas no PC à noite. Sempre que o jogo grava, o Hoard envia o save alguns segundos depois, e mais uma vez quando sais. Na manhã seguinte pegas no Deck. Assim que fica online, o Hoard vê a versão mais recente e escreve-a no prefixo do Proton. Abres o jogo e continuas. Quando sais no Deck, acontece o mesmo no sentido inverso.
 
 Nenhuma das máquinas tem de estar ligada ao mesmo tempo que a outra. O save espera no servidor até a outra o pedir.
 
@@ -52,7 +52,7 @@ Nenhuma das máquinas tem de estar ligada ao mesmo tempo que a outra. O save esp
 
 ### Suspender não é sair
 
-O Deck torna muito fácil carregar no botão de ligar e deixar o jogo aberto. O Hoard só faz backup de um save depois de o jogo fechar, porque um jogo a correr pode estar a meio de o escrever. E nunca troca o save de um jogo aberto. Por isso, se suspendes o Deck e depois jogas no PC, o progresso do Deck ainda não foi enviado, e o save novo do PC fica à espera de que feches o jogo no Deck.
+O Deck torna muito fácil carregar no botão de ligar e deixar o jogo aberto. O Hoard envia cada save alguns segundos depois de o jogo o escrever, também enquanto jogas, por isso o que gravaste antes de suspender normalmente já está no servidor, desde que o Deck tivesse ligação. O que nunca faz é trocar o save de um jogo aberto. Por isso, se suspendes o Deck e depois jogas no PC, o save novo do PC fica à espera de que feches o jogo no Deck.
 
 O hábito que evita tudo isto: **fecha o jogo antes de mudar de máquina.** Se o Proton deixar um processo morto para trás depois de saíres, o que acontece muitas vezes, o Hoard percebe que o jogo já não está lá e segue em frente.
 

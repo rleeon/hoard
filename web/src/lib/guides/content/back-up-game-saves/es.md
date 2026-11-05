@@ -1,8 +1,8 @@
 ---
 title: "Cómo hacer copias de seguridad de tus partidas automáticamente"
-description: "Copia tus partidas de PC automáticamente tras cada sesión y sincronízalas con tus otros PC y tu Steam Deck, con historial de versiones, para no perder nada."
+description: "Copia tus partidas de PC automáticamente cada vez que el juego guarda y sincronízalas con tus otros PC y tu Steam Deck, con historial de versiones."
 order: 1
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Perder una partida guardada significa perder horas de progreso. Hoard hace copias de tus partidas de PC automáticamente, guarda un historial completo de versiones para que siempre puedas volver atrás, y mantiene cada partida sincronizada entre tus PC y tu Steam Deck, para que sigas donde lo dejaste.

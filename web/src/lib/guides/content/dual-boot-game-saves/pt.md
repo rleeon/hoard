@@ -2,7 +2,7 @@
 title: "Sincronizar saves entre Windows e Linux num PC com dual boot"
 description: "Um PC, dois sistemas, duas pastas de saves. Sincroniza os saves entre Windows e Linux automaticamente, e porque é que partilhar uma pasta NTFS falha."
 order: 18
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Num PC com dual boot, o mesmo jogo tem dois saves separados: um na tua pasta de utilizador do Windows e outro dentro de um prefixo do Proton no Linux. O Steam Cloud liga os dois nos jogos que o suportam; tudo o resto separa-se da primeira vez que mudas de sistema. O Hoard mantém-nos sincronizados automaticamente. Instala-o nos dois sistemas com a mesma conta, e o save de cada jogo segue-te seja qual for o sistema que arrancas.
@@ -41,7 +41,7 @@ Deixar cada sistema guardar os saves onde o jogo os espera, e sincronizá-los en
 
 Com dois PCs separados, o save espera no servidor até a outra máquina o pedir. Num PC com dual boot, a "outra máquina" é o mesmo computador depois de reiniciar, e isso muda um hábito.
 
-O Hoard envia um save quando o jogo fecha e a pasta fica parada. **Se sais do jogo e reinicias logo a seguir, o envio pode ainda não ter acontecido**, e o outro sistema arranca sem o teu último progresso. Vai pôr-se em dia da próxima vez que voltares a arrancar o primeiro, mas até lá podes ter jogado sobre o save antigo.
+O Hoard envia um save alguns segundos depois de o jogo o escrever, quando a pasta fica parada. **Se gravas e reinicias logo a seguir, o envio pode ainda não ter acontecido**, e o outro sistema arranca sem o teu último progresso. Vai pôr-se em dia da próxima vez que voltares a arrancar o primeiro, mas até lá podes ter jogado sobre o save antigo.
 
 Portanto: sai do jogo, dá um momento ao Hoard, confirma na app que o save está atualizado, e só depois reinicia.
 

@@ -2,7 +2,7 @@
 title: "Comment synchroniser vos parties entre plusieurs PC"
 description: "Jouez sur votre fixe, votre portable et votre Steam Deck sans perdre votre progression : synchro automatique des parties entre PC, avec historique."
 order: 2
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Si vous jouez sur plus d'un ordinateur — un fixe à la maison et un portable en déplacement — Hoard garde vos sauvegardes synchronisées pour que vous repreniez toujours là où vous en étiez.
@@ -16,13 +16,13 @@ Hoard sauvegarde chaque partie vers votre cloud et récupère la dernière versi
 1. Installez **Hoard** sur chaque PC où vous jouez (Windows, macOS ou Linux).
 2. Connectez-vous avec le **même compte** sur chaque machine, ou reliez-les au même serveur auto-hébergé.
 3. Ajoutez les mêmes jeux à votre **Bibliothèque** sur chaque PC. Hoard les associe par jeu, donc une sauvegarde faite sur l'un apparaît sur les autres.
-4. Gardez le **mode automatique** activé. Hoard envoie après que vous jouez et télécharge la dernière version avant que vous commenciez.
+4. Gardez le **mode automatique** activé. Hoard envoie à chaque sauvegarde du jeu et télécharge la dernière version avant que vous commenciez.
 
 ## Vous venez de Ludusavi ?
 
 Ludusavi est un excellent outil open source pour sauvegarder et restaurer des parties en local, et il peut envoyer ces sauvegardes vers un cloud que vous configurez vous-même avec Rclone. Mais la synchro entre appareils, vous la montez à la main : planifier la sauvegarde, configurer le distant, puis restaurer sur l'autre PC avant de jouer.
 
-Hoard transforme cela en synchro gérée. Il utilise les mêmes données communautaires d'emplacements que Ludusavi pour trouver vos sauvegardes, puis envoie après chaque session et télécharge la dernière version avant la suivante — sur chaque PC de votre compte, avec un historique versionné dans le cloud. Pas de distants Rclone, pas de scripts. Et comme Ludusavi, Hoard est open source et peut être auto-hébergé. Voir la [comparaison complète avec Ludusavi](/guides/ludusavi-alternative).
+Hoard transforme cela en synchro gérée. Il utilise les mêmes données communautaires d'emplacements que Ludusavi pour trouver vos sauvegardes, puis envoie à chaque sauvegarde du jeu et télécharge la dernière version avant que vous commenciez, sur chaque PC de votre compte, avec un historique versionné dans le cloud. Pas de distants Rclone, pas de scripts. Et comme Ludusavi, Hoard est open source et peut être auto-hébergé. Voir la [comparaison complète avec Ludusavi](/guides/ludusavi-alternative).
 
 ## Éviter les conflits
 
@@ -61,7 +61,7 @@ Les sauvegardes, oui. Les réglages, par défaut, non, et c'est voulu. Le Steam 
 
 Hoard trie donc ce qu'il trouve dans un dossier de sauvegarde :
 
-- **Les sauvegardes** se synchronisent entre machines, à chaque session.
+- **Les sauvegardes** se synchronisent entre machines, chaque fois que le jeu en écrit une.
 - **Les fichiers de réglages** (`graphics.ini`, `settings.cfg` et autres) sont conservés dans chaque sauvegarde, donc jamais perdus, mais une restauration ne les écrit pas par-dessus ceux d'une autre machine. Si l'entrée du jeu dans la base de données des sauvegardes indique qu'un `.ini` *est* la sauvegarde, il est traité comme tel.
 - **Le superflu**, comme les rapports de plantage, les fichiers temporaires, les journaux du moteur type `Player.log` et la comptabilité propre à Steam, n'est pas sauvegardé du tout, pour qu'ouvrir un jeu ne crée pas à lui seul une nouvelle version.
 
@@ -90,11 +90,11 @@ Trois avec l'offre gratuite, un nombre illimité avec Pro, et illimité en auto-
 
 ### Les deux machines doivent-elles être allumées en même temps ?
 
-Non. Votre sauvegarde monte vers le serveur quand vous finissez de jouer et redescend quand l'autre machine la demande : le second PC peut rester éteint une semaine et recevoir quand même la dernière version à l'allumage.
+Non. Votre sauvegarde monte vers le serveur chaque fois que le jeu l'écrit et redescend quand l'autre machine la demande : le second PC peut rester éteint une semaine et recevoir quand même la dernière version à l'allumage.
 
 ### Et si je joue hors ligne ?
 
-Aucun souci. L'instantané est pris localement quand vous arrêtez de jouer, et il part tout seul dès que la machine retrouve une connexion.
+Aucun souci. Hoard note ce qui change pendant que vous jouez hors ligne et envoie la dernière sauvegarde tout seul dès que la machine retrouve une connexion.
 
 ### Est-ce que ça synchronise aussi mes mods et réglages ?
 

@@ -1,8 +1,8 @@
 ---
 title: "How to back up your game saves automatically"
-description: "Back up PC game saves automatically after every session and sync them to your other PCs and Steam Deck, with version history, so nothing wipes your progress."
+description: "Back up PC game saves automatically each time the game writes one, and sync them to your other PCs and Steam Deck with full version history."
 order: 1
-updated: 2026-10-18
+updated: 2026-11-05
 related: restore-a-game-save, sync-game-saves-across-pcs, steam-cloud-alternative, where-are-pc-game-saves-stored, recover-corrupted-game-save
 ---
 

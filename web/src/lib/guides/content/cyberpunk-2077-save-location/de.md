@@ -2,7 +2,7 @@
 title: "Cyberpunk 2077: Speicherort der Spielstände (PC & Steam Deck)"
 description: "Wo Cyberpunk 2077 seine Spielstände unter Windows, Steam Deck und Mac ablegt, was in den Ordnern steckt und wie du sie sicherst und synchronisierst."
 order: 20
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Unter Windows legt Cyberpunk 2077 seine Spielstände in `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077` ab, ein Ordner pro Spielstand. Das ist die kurze Antwort. Der Rest der Seite behandelt die Pfade auf Steam Deck und Mac, was wirklich im Ordner liegt und wie du ihn gesichert und zwischen PC und Steam Deck synchron hältst.
@@ -45,7 +45,7 @@ Das funktioniert, aber nur so oft, wie du daran denkst, und du hast immer nur di
 
 ## Automatisch sichern und synchronisieren mit Hoard
 
-[Hoard](/download) sichert den Spielstand-Ordner jedes Mal, wenn du aufhörst zu spielen, und behält jede Version — ein beschädigter Spielstand oder ein weggerotierter Autosave ist also einen Klick entfernt. Außerdem synchronisiert es den Ordner zwischen deinen PCs und einem Steam Deck.
+[Hoard](/download) sichert den Spielstand-Ordner bei jedem Speichern und noch einmal beim Beenden und behält jede Version — ein beschädigter Spielstand oder ein weggerotierter Autosave ist also einen Klick entfernt. Außerdem synchronisiert es den Ordner zwischen deinen PCs und einem Steam Deck.
 
 1. Installiere Hoard und melde dich an, oder richte es auf [deinen eigenen Server](/guides/self-host-hoard).
 2. Öffne die **Bibliothek**. Cyberpunk wird über deine Steam-Bibliothek und die Community-Datenbank für Spielstände erkannt.

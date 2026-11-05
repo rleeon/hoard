@@ -2,7 +2,7 @@
 title: "So sicherst und synchronisierst du Emulator-Spielstände (RetroArch, Dolphin, PCSX2)"
 description: "Emulator-Spielstände zwischen PCs und Steam Deck sichern und syncen: RetroArch, Dolphin, PCSX2, DuckStation und mehr, mit Verlauf und allen Speicherorten."
 order: 6
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Emulator-Spielstände gehen leicht verloren: Speicherdateien und Savestates liegen in verstreuten Ordnern, und eine Neuinstallation oder ein neuer PC kann Jahre an Fortschritt löschen. Hoard sichert sie automatisch und hält sie zwischen deinen Rechnern synchron, Steam Deck eingeschlossen.
@@ -23,7 +23,7 @@ Weil Hoard Speicherordner mit derselben Community-Datenbank findet, auf der auch
 
 1. **Installiere Hoard** für Windows, macOS oder Linux und melde dich an.
 2. Öffne die **Bibliothek** und füge deinen Emulator hinzu, oder ergänze seinen Stände-/Savestate-Ordner manuell, falls du den Standardort geändert hast.
-3. Lass den **Automatikmodus** an. Hoard sichert nach jeder Sitzung und führt eine versionierte Historie.
+3. Lass den **Automatikmodus** an. Hoard sichert bei jedem Speichern des Emulators und noch einmal beim Beenden und führt eine versionierte Historie.
 4. Installiere Hoard mit demselben Konto auf deinen anderen PCs, um diese Stände überall zu synchronisieren — siehe [Spielstände zwischen PCs synchronisieren](/guides/sync-game-saves-across-pcs).
 
 ## Ludusavi für Emulatoren?
@@ -107,7 +107,7 @@ Die Stände liegen tief unter `sdmc/Nintendo 3DS/<id0>/<id1>/title/…`, und `id
 
 Auf dem Steam Deck kommen die Emulatoren meist als Flatpak, ihre Ordner liegen also unter `~/.var/app/<id>/` statt in den üblichen `~/.config` oder `~/.local/share`. EmuDeck sammelt alles unter `~/Emulation/saves/`, ein Ordner pro Emulator. So oder so: Ordner einmal hinzufügen, Hoard beobachtet ihn.
 
-Was auf einem Handheld zählt: Die Engine von Hoard läuft als Hintergrunddienst und sichert deshalb, wenn du ein Spiel im Spielmodus beendest, ganz ohne offenes Fenster. Nimmst du das Deck nach einer Session am Desktop in die Hand, ist der Spielstand schon da.
+Was auf einem Handheld zählt: Die Engine von Hoard läuft als Hintergrunddienst und sichert deshalb im Spielmodus, während du spielst und wenn du beendest, ganz ohne offenes Fenster. Nimmst du das Deck nach einer Session am Desktop in die Hand, ist der Spielstand schon da.
 
 ## Spielstand und Savestate sind nicht dasselbe
 
@@ -148,7 +148,7 @@ Ja, ein eingebautes Cloud Sync, das einen WebDAV-Server braucht, den du selbst b
 
 ### Funktioniert es auf dem Steam Deck im Spielmodus?
 
-Ja. Die Engine läuft als Hintergrunddienst, Spielstände werden also beim Beenden eines Spiels gesichert, ohne offenes Fenster. Flatpak- und EmuDeck-Ordner funktionieren wie jeder andere.
+Ja. Die Engine läuft als Hintergrunddienst, Spielstände werden also während des Spielens und beim Beenden gesichert, ohne offenes Fenster. Flatpak- und EmuDeck-Ordner funktionieren wie jeder andere.
 
 ### Mein Emulator ist portabel installiert. Geht das?
 

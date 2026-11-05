@@ -2,7 +2,7 @@
 title: "Palworld save location (PC & Steam Deck)"
 description: "Where Palworld keeps its worlds on PC and Steam Deck, what each file is, how co-op worlds work, and how to back up your saves and sync them between PCs."
 order: 24
-updated: 2026-10-09
+updated: 2026-11-05
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
@@ -47,7 +47,7 @@ The Steam version uses Steam Cloud, which keeps the latest state of your worlds 
 
 ## Keep it backed up and in sync with Hoard
 
-[Hoard](/download) backs up your worlds every time you stop playing and keeps every version off the machine, so a corrupted world or a lost drive isn't the end of a base you spent weeks on. It also syncs the worlds between your PCs and a Steam Deck.
+[Hoard](/download) backs up your worlds every time the game saves and again when you quit and keeps every version off the machine, so a corrupted world or a lost drive isn't the end of a base you spent weeks on. It also syncs the worlds between your PCs and a Steam Deck.
 
 1. Install Hoard and sign in, or point it at [your own server](/guides/self-host-hoard).
 2. Open the **Library**. Palworld is detected from your Steam library and the community save database.

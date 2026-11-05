@@ -1,8 +1,8 @@
 ---
 title: "So sicherst du deine Spielstände automatisch"
-description: "Sichere PC-Spielstände nach jeder Session automatisch und synchronisiere sie mit deinen anderen PCs und dem Steam Deck, mit Versionsverlauf."
+description: "Sichere PC-Spielstände bei jedem Speichern automatisch und synchronisiere sie mit deinen anderen PCs und dem Steam Deck, mit Versionsverlauf."
 order: 1
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Ein verlorener Spielstand bedeutet verlorene Stunden an Fortschritt. Hoard sichert deine PC-Spielstände automatisch, führt eine vollständige Versionshistorie, sodass du immer zurückgehen kannst, und hält jeden Spielstand zwischen deinen PCs und dem Steam Deck synchron, damit du überall dort weitermachst, wo du aufgehört hast.

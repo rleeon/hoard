@@ -2,7 +2,7 @@
 title: "OneDrive e i salvataggi dei giochi: cosa si rompe e come rimediare"
 description: "OneDrive ha spostato i Documenti e ora i salvataggi falliscono, spariscono o compaiono doppi. Perché succede, come rimediare e come sincronizzarli meglio."
 order: 15
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Su molti PC Windows, OneDrive fa il backup della cartella `Documenti`, spesso attivato durante la configurazione senza che nessuno se ne accorga. I giochi che salvano in `Documenti`, cioè quasi tutto `My Games`, la seguono dentro OneDrive. E lì cominciano i guai: salvataggi che non vengono scritti, salvataggi da scaricare prima di poterli caricare, e copie con il nome del tuo PC che il gioco non legge mai. Ecco perché succede e come rimediare.
@@ -33,9 +33,9 @@ In OneDrive, apri **Impostazioni → Sincronizzazione e backup → Gestisci back
 
 ## Una divisione migliore
 
-OneDrive è bravo con i documenti. I salvataggi hanno bisogno d'altro: un backup fatto quando il gioco è chiuso, versioni dell'intero salvataggio invece di file singoli, e la sincronizzazione con gli altri PC e con uno Steam Deck.
+OneDrive è bravo con i documenti. I salvataggi hanno bisogno d'altro: un backup fatto solo quando il gioco ha finito di scrivere, versioni dell'intero salvataggio invece di file singoli, e la sincronizzazione con gli altri PC e con uno Steam Deck.
 
-È quello che fa Hoard. Trova i tuoi salvataggi che `Documenti` sia in OneDrive o no, perché chiede a Windows dove si trova davvero la cartella. Li salva in automatico dopo ogni sessione, conserva ogni versione e li sincronizza con le altre macchine.
+È quello che fa Hoard. Trova i tuoi salvataggi che `Documenti` sia in OneDrive o no, perché chiede a Windows dove si trova davvero la cartella. Li salva in automatico a ogni salvataggio del gioco, conserva ogni versione e li sincronizza con le altre macchine.
 
 Una regola: la sincronizzazione tra PC deve gestirla un solo strumento. Se OneDrive fa il backup di `Documenti` su più PC da gioco con lo stesso account, sta già sincronizzando quei salvataggi tra di loro. Disattiva il backup di `Documenti` su quei PC e lascia i salvataggi a Hoard.
 

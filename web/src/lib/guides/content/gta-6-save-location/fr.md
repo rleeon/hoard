@@ -2,7 +2,7 @@
 title: "Emplacement des sauvegardes de GTA 6 : PS5, Xbox et PC (ce qu'on sait)"
 description: "GTA 6 sort sur PS5 et Xbox le 19 novembre 2026, encore sans version PC. Où sont les sauvegardes sur console, comment les protéger et à quoi s'attendre sur PC."
 order: 25
-updated: 2026-10-17
+updated: 2026-11-05
 ---
 
 GTA 6 sort le **19 novembre 2026, uniquement sur PS5 et Xbox Series X|S**. Il n'y a pas encore de version PC : Rockstar n'a annoncé aucune date, et la seule fenêtre qui circule vient d'un rapport d'octobre 2026, non confirmé, qui parle de début 2027. D'ici là, les sauvegardes de GTA 6 vivent sur la console et dans son cloud, pas dans un dossier que vous pouvez ouvrir. Voici comment ces sauvegardes sont conservées, comment les protéger et où les sauvegardes PC iront très probablement, à en juger par les dernières sorties PC de Rockstar. Dès que la version PC sortira, cette page donnera le vrai chemin.
@@ -40,7 +40,7 @@ Rockstar n'a pas dit comment GTA 6 gérera les sauvegardes sur PC. Utiliser le m
 
 ## Préparez la version PC avec Hoard
 
-[Hoard](/download) sauvegarde un dossier de sauvegardes à chaque fois que vous arrêtez de jouer et garde toutes les versions : une sauvegarde corrompue ou une mission que vous préférez refaire n'est qu'à une restauration. Il garde aussi le dossier synchronisé entre vos PC et un Steam Deck, et il fonctionne déjà avec GTA V et Red Dead Redemption 2.
+[Hoard](/download) sauvegarde un dossier de sauvegardes chaque fois que le jeu enregistre, et une fois de plus quand vous quittez, puis garde toutes les versions : une sauvegarde corrompue ou une mission que vous préférez refaire n'est qu'à une restauration. Il garde aussi le dossier synchronisé entre vos PC et un Steam Deck, et il fonctionne déjà avec GTA V et Red Dead Redemption 2.
 
 Quand GTA 6 arrivera sur PC :
 

@@ -1,8 +1,8 @@
 ---
 title: "Como fazer backup dos teus saves automaticamente"
-description: "Faz backup dos saves do PC automaticamente após cada sessão e sincroniza-os com os teus outros PCs e a Steam Deck, com histórico de versões."
+description: "Faz backup dos saves do PC automaticamente sempre que o jogo grava e sincroniza-os com os teus outros PCs e a Steam Deck, com histórico de versões."
 order: 1
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Perder um save significa perder horas de progresso. O Hoard faz backup dos teus saves de PC automaticamente, guarda um histórico completo de versões para que possas sempre voltar atrás, e mantém cada save sincronizado entre os teus PCs e a Steam Deck, para continuares onde paraste.

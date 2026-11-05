@@ -2,7 +2,7 @@
 title: "Alternative à Steam Cloud : synchronisez et sauvegardez les parties que Steam ignore"
 description: "Steam Cloud ignore beaucoup de jeux et ne garde aucun historique. Synchronisez et sauvegardez tous vos jeux, de tout launcher, entre PC et Steam Deck."
 order: 7
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Steam Cloud fait très bien le travail précis qu'il fait, et la plupart des gens en découvrent les limites le jour où ils perdent quelque chose. Ce guide explique où sont ces limites, et quoi faire des jeux qui restent en dehors.
@@ -26,7 +26,7 @@ Quand ça marche, c'est invisible et excellent : vous fermez le jeu sur un PC, v
 
 ## Ce que Hoard ajoute
 
-Hoard surveille le dossier dans lequel le jeu écrit vraiment et capture **une nouvelle version chaque fois que vous arrêtez de jouer** :
+Hoard surveille le dossier dans lequel le jeu écrit vraiment et capture **une nouvelle version chaque fois que le jeu enregistre** :
 
 - **La provenance du jeu lui est égale.** Steam, GOG, Epic, itch, émulateurs, ou un dossier que vous lui désignez.
 - **Toutes les versions sont conservées** : se remettre d'une sauvegarde corrompue ou d'une mauvaise décision coûte deux clics, pas une partie entière.
@@ -73,7 +73,7 @@ Oui, et c'est une bonne part de son intérêt. Il localise les sauvegardes via u
 
 ### Faire tourner les deux crée-t-il des conflits ?
 
-Non. Hoard capture une version après que vous avez arrêté et que le dossier s'est calmé, et n'écrase jamais sans avoir d'abord capturé ce qu'il remplace.
+Non. Hoard capture une version une fois que le jeu a fini d'écrire et que le dossier s'est calmé, et n'écrase jamais sans avoir d'abord capturé ce qu'il remplace.
 
 ### Puis-je garder mes sauvegardes hors des deux clouds ?
 

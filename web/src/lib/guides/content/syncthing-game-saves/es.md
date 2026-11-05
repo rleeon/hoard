@@ -2,7 +2,7 @@
 title: "Syncthing para partidas guardadas: qué funciona y qué se rompe"
 description: "Syncthing es un gran sincronizador, pero las partidas rompen tres de sus supuestos. Qué falla, cómo se esquiva y cuándo encaja mejor una herramienta de saves."
 order: 9
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Syncthing es la respuesta a la que mucha gente llega primero, y con razón: es gratis, open source, punto a punto, y funciona. Pero las partidas guardadas rompen tres de los supuestos sobre los que se construye un sincronizador de ficheros genérico, y los fallos son silenciosos. Esta guía va de qué se rompe de verdad, y de cuándo merece la pena usar algo que sepa lo que es una partida.
@@ -27,7 +27,7 @@ Nada de lo anterior es irresoluble. La gente lo apaña con patrones de exclusió
 
 ## Qué hace en su lugar una herramienta que entiende de partidas
 
-Hoard captura **cuando dejas de jugar**, una vez que la carpeta se queda quieta, así que una instantánea nunca es un fichero a medio escribir. Cada captura es una versión de la partida entera, no de ficheros sueltos, así que restaurar es un clic y lo devuelve todo junto. Sabe qué carpeta es de qué juego — leyendo el mismo manifiesto comunitario de ubicaciones que comparte el ecosistema open source, con más de 20.000 títulos — así que no hay rutas que mantener, y rastrea `<AppID>/remote/` y no la carpeta de encima.
+Hoard captura **cada vez que el juego termina de escribir una partida**, una vez que la carpeta se queda quieta, así que una instantánea nunca es un fichero a medio escribir. Cada captura es una versión de la partida entera, no de ficheros sueltos, así que restaurar es un clic y lo devuelve todo junto. Sabe qué carpeta es de qué juego — leyendo el mismo manifiesto comunitario de ubicaciones que comparte el ecosistema open source, con más de 20.000 títulos — así que no hay rutas que mantener, y rastrea `<AppID>/remote/` y no la carpeta de encima.
 
 ## Cuándo Syncthing es la mejor respuesta
 

@@ -2,7 +2,7 @@
 title: "Baldur's Gate 3 save location (PC & Steam Deck)"
 description: "Where Baldur's Gate 3 keeps its saves on Windows, Steam Deck and Mac, what's a save and what's mods or settings, Honour Mode, and how to back up and sync."
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 related: sync-game-saves-across-pcs, restore-a-game-save, steam-cloud-alternative
 ---
 
@@ -43,13 +43,13 @@ Yes. On Steam it uses Steam Cloud, which keeps the latest saves in step between 
 
 ## Keep it backed up and in sync with Hoard
 
-[Hoard](/download) backs up the save folder each time you stop playing and keeps every version, so a save broken by a mod update or a bad patch is one restore away. It also keeps the folder in sync between your PCs and a Steam Deck.
+[Hoard](/download) backs up the save folder every time the game saves and again when you quit and keeps every version, so a save broken by a mod update or a bad patch is one restore away. It also keeps the folder in sync between your PCs and a Steam Deck.
 
 1. Install Hoard and sign in, or point it at [your own server](/guides/self-host-hoard).
 2. Open the **Library**. Baldur's Gate 3 is detected from your Steam library and the community save database.
 3. Play. When you quit, the first version appears in the history.
 
-Each session adds a version with every save in it. To go back, open the history and [restore an earlier version](/guides/restore-a-game-save); what's on your PC right now is backed up first, so trying an old one is never a one-way trip.
+Each backup adds a version with every save in it. To go back, open the history and [restore an earlier version](/guides/restore-a-game-save); what's on your PC right now is backed up first, so trying an old one is never a one-way trip.
 
 <!-- faq -->
 

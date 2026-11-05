@@ -2,7 +2,7 @@
 title: "Palworld: Speicherort der Spielstände (PC & Steam Deck)"
 description: "Wo Palworld seine Welten auf PC und Steam Deck ablegt, was jede Datei ist, wie Koop-Welten funktionieren und wie du Spielstände sicherst und synchronisierst."
 order: 24
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Auf dem PC (Steam) legt Palworld seine Spielstände in `%LOCALAPPDATA%\Pal\Saved\SaveGames\<deine Steam-ID>` ab, darin ein Ordner pro Welt. Diesen Pfad nennt Pocketpair in seiner offiziellen FAQ. Darunter findest du den Pfad auf dem Steam Deck, was jede Datei tut, was sich im Koop ändert und wie du deine Welten gesichert und zwischen PC und Steam Deck synchron hältst.
@@ -46,7 +46,7 @@ Die Steam-Version nutzt Steam Cloud, die den neuesten Stand deiner Welten zwisch
 
 ## Automatisch sichern und synchronisieren mit Hoard
 
-[Hoard](/download) sichert deine Welten jedes Mal, wenn du aufhörst zu spielen, und behält jede Version außerhalb des Rechners — eine beschädigte Welt oder eine verlorene Platte ist also nicht das Ende einer Basis, an der du wochenlang gebaut hast. Außerdem synchronisiert es die Welten zwischen deinen PCs und einem Steam Deck.
+[Hoard](/download) sichert deine Welten bei jedem Speichern und noch einmal beim Beenden und behält jede Version außerhalb des Rechners — eine beschädigte Welt oder eine verlorene Platte ist also nicht das Ende einer Basis, an der du wochenlang gebaut hast. Außerdem synchronisiert es die Welten zwischen deinen PCs und einem Steam Deck.
 
 1. Installiere Hoard und melde dich an, oder richte es auf [deinen eigenen Server](/guides/self-host-hoard).
 2. Öffne die **Bibliothek**. Palworld wird über deine Steam-Bibliothek und die Community-Datenbank für Spielstände erkannt.

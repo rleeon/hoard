@@ -2,7 +2,7 @@
 title: "Ludusavi-Alternative: automatische Cloud-Synchronisierung für deine Spielstände"
 description: "Ludusavi ist top für lokale Backups. Hoard ergänzt automatischen Sync zwischen PCs und Steam Deck mit Versionsverlauf, auf derselben Spielstand-Datenbank."
 order: 5
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Wenn du nach einer Möglichkeit suchst, deine Spielstände zu sichern und zu synchronisieren, bist du wahrscheinlich auf **Ludusavi** gestoßen — und es ist hervorragend. Diese Anleitung ist ein ehrlicher Vergleich, damit du das richtige Tool wählst, und erklärt, wo Hoard passt, wenn du automatische Cloud-Synchronisierung über mehrere Geräte willst.
@@ -19,7 +19,7 @@ Die Lücke, auf die die meisten bei jedem lokalen Tool stoßen, ist die **Synchr
 
 Hoard macht daraus **verwaltete Cloud-Synchronisierung**:
 
-- **Anmelden und loslegen.** Keine Rclone-Remotes, keine Skripte. Hoard lädt deinen Stand nach dem Spielen hoch und vor dem Start die neueste Version herunter, auf jedem PC deines Kontos.
+- **Anmelden und loslegen.** Keine Rclone-Remotes, keine Skripte. Hoard lädt deinen Stand jedes Mal hoch, wenn das Spiel ihn schreibt, und vor dem Start die neueste Version herunter, auf jedem PC deines Kontos.
 - **Versionierte Historie in der Cloud.** Jedes Backup bleibt erhalten, du kannst also zu jedem früheren Stand zurück — sogar nach einem Festplattenausfall oder einer Neuinstallation.
 - **Konfliktbewusst.** Hoard vergleicht Zeitstempel und behält eine lokale Kopie von allem, was es ersetzt, sodass eine Synchronisierung nie stillschweigend Fortschritt zerstört.
 - **Weiterhin Open Source und selbst hostbar.** Wie bei Ludusavi gibt es keine Bindung — nutze Hoard One oder hoste den Server selbst.
@@ -31,7 +31,8 @@ Hoard macht daraus **verwaltete Cloud-Synchronisierung**:
 | Lokale Backups | Ja | Ja |
 | Erkennung der Stände | Community-Manifest | Dasselbe Manifest, dazu Steam-Bibliotheken, laufende Prozesse und ein Dateisystem-Scan |
 | Cloud-Speicher | Eigener, über Rclone | Enthalten, oder dein eigener Server |
-| Synchronisierung zwischen PCs | Manuell: hier sichern, dort wiederherstellen | Automatisch, nach dem Spielen und vor dem Start |
+| Synchronisierung zwischen PCs | Manuell: hier sichern, dort wiederherstellen | Automatisch, bei jedem Speichern und vor dem Start |
+| Anderer PC darf aus sein | Nur mit einem Rclone-Remote | Ja, der Stand wartet auf dem Server |
 | Versionshistorie | Lokale Backups, die du selbst aufräumst | Jede Version in der Cloud, dedupliziert per Inhalts-Hash |
 | Emulatoren | Ja | Ja |
 | Oberflächen | Desktop-App und CLI | Desktop-App, CLI und ein Overlay im Spiel |

@@ -2,7 +2,7 @@
 title: "Syncthing per i salvataggi: cosa funziona e cosa si rompe"
 description: "Syncthing è un ottimo sincronizzatore, ma i salvataggi rompono tre sue ipotesi. Cosa va storto, come aggirarlo e quando serve uno strumento dedicato."
 order: 9
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Syncthing è la risposta a cui molti arrivano per primi, e per buone ragioni: è gratuito, open source, peer-to-peer e funziona. Ma i salvataggi infrangono tre presupposti su cui si regge un sincronizzatore generico, e i guasti sono silenziosi. Questa guida parla di cosa va storto davvero, e di quando vale la pena usare qualcosa che sappia cos'è un salvataggio.
@@ -27,7 +27,7 @@ Niente di tutto ciò è irrisolvibile. Ci si arrangia con pattern di esclusione 
 
 ## Cosa fa invece uno strumento che conosce i salvataggi
 
-Hoard cattura **dopo che hai smesso di giocare**, quando la cartella si è calmata, quindi uno snapshot non è mai un file scritto a metà. Ogni cattura è una versione dell'intero salvataggio, non dei singoli file, quindi ripristinare è un clic e rimette tutto insieme. Sa quale cartella appartiene a quale gioco — legge lo stesso manifest comunitario delle posizioni condiviso dall'ecosistema open source, oltre 20.000 titoli — quindi non ci sono percorsi da mantenere, e traccia `<AppID>/remote/` invece della cartella superiore.
+Hoard cattura **ogni volta che il gioco finisce di scrivere un salvataggio**, quando la cartella si è calmata, quindi uno snapshot non è mai un file scritto a metà. Ogni cattura è una versione dell'intero salvataggio, non dei singoli file, quindi ripristinare è un clic e rimette tutto insieme. Sa quale cartella appartiene a quale gioco — legge lo stesso manifest comunitario delle posizioni condiviso dall'ecosistema open source, oltre 20.000 titoli — quindi non ci sono percorsi da mantenere, e traccia `<AppID>/remote/` invece della cartella superiore.
 
 ## Quando Syncthing è la risposta migliore
 

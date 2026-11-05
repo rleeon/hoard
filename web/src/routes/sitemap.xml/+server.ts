@@ -14,6 +14,7 @@ const PATHS = [
   '/ai',
   '/press',
   '/guides',
+  '/saves',
   ...guideSlugs().map((slug) => `/guides/${slug}`),
   '/legal/terms',
   '/legal/privacy',

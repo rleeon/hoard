@@ -2,7 +2,7 @@
 title: "Spielstand beschädigt? So stellst du ihn wieder her"
 description: "Ein Spielstand, der nicht lädt, ist nicht immer verloren. Wo eine heile Kopie liegt (Spiel-Backups, Steam Cloud, Windows, OneDrive) und wie du vorsorgst."
 order: 12
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Ein Spielstand, der nicht lädt, ist selten endgültig verloren. Meist gibt es irgendwo eine funktionierende Kopie: ein Backup, das das Spiel selbst angelegt hat, die Kopie in Steam Cloud, eine frühere Version bei Windows oder OneDrive oder den Spielstand auf einem anderen PC. Die Reihenfolge zählt aber, denn ein falscher Schritt kann die gute Kopie mit der kaputten überschreiben. Fang hier an.
@@ -73,7 +73,7 @@ Für einige beliebte Spiele gibt es Spielstand-Editoren oder Reparaturtools aus 
 
 ## Nie wieder festsitzen
 
-Jede Rettung oben hängt vom Glück ab: dass das Spiel zufällig ein Backup hatte oder Steam noch nicht synchronisiert hatte. Ein versioniertes Backup nimmt das Glück aus der Rechnung. Genau das macht Hoard: Es sichert jeden Spielstand automatisch, nachdem du aufgehört hast zu spielen, sobald der Ordner zur Ruhe kommt, also ist ein Backup nie eine halb geschriebene Datei. Jede Version bleibt erhalten. Geht etwas kaputt, öffnest du die **Historie** des Spiels und stellst mit einem Klick die letzte gute wieder her; dein aktueller Spielstand wird vorher gesichert, also lässt sich sogar das rückgängig machen. Und weil Hoard deine Spielstände auch synchron hält, ist die Kopie auf Laptop oder Steam Deck nie eine alte, vergessene: Alle Geräte arbeiten mit derselben Historie.
+Jede Rettung oben hängt vom Glück ab: dass das Spiel zufällig ein Backup hatte oder Steam noch nicht synchronisiert hatte. Ein versioniertes Backup nimmt das Glück aus der Rechnung. Genau das macht Hoard: Es sichert jeden Spielstand automatisch, sobald das Spiel ihn geschrieben hat und der Ordner zur Ruhe kommt, also ist ein Backup nie eine halb geschriebene Datei. Jede Version bleibt erhalten. Geht etwas kaputt, öffnest du die **Historie** des Spiels und stellst mit einem Klick die letzte gute wieder her; dein aktueller Spielstand wird vorher gesichert, also lässt sich sogar das rückgängig machen. Und weil Hoard deine Spielstände auch synchron hält, ist die Kopie auf Laptop oder Steam Deck nie eine alte, vergessene: Alle Geräte arbeiten mit derselben Historie.
 
 Ein Tipp, um den Moment zu finden, in dem es passiert ist: Ein plötzlicher Größenabfall zwischen zwei Versionen deutet meist auf einen abgeschnittenen Spielstand hin. Mehr unter [einen alten Spielstand wiederherstellen](/guides/restore-a-game-save).
 
@@ -101,4 +101,4 @@ Das Spiel hat angefangen zu schreiben und nie aufgehört: Absturz, Stromausfall 
 
 ### Wie verhindere ich, dass das wieder passiert?
 
-Mit versionierten Backups, die entstehen, wenn das Spiel nicht läuft. Hoard macht das nach jeder Sitzung automatisch und behält jede Version, sodass du zu jeder zurückkannst.
+Mit versionierten Backups, die nie mitten im Schreiben entstehen. Hoard macht das bei jedem Speichern automatisch, wartet, bis die Datei fertig ist, und behält jede Version, sodass du zu jeder zurückkannst.

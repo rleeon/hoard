@@ -2,7 +2,7 @@
 title: "OneDrive e os saves dos jogos: o que se estraga e como resolver"
 description: "O OneDrive mudou os teus Documentos e agora os saves falham, desaparecem ou aparecem a dobrar. Porque acontece, como resolver e uma forma melhor de sincronizar."
 order: 15
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Em muitos PCs com Windows, o OneDrive faz cópia de segurança da pasta `Documentos`, muitas vezes ativada durante a instalação sem ninguém dar por isso. Os jogos que guardam em `Documentos`, ou seja, quase tudo em `My Games`, seguem-na para dentro do OneDrive. E aí começam os problemas: saves que não são escritos, saves que têm de ser descarregados antes de carregarem, e cópias com o nome do teu PC que o jogo nunca lê. Eis porque acontece e como resolver.
@@ -33,9 +33,9 @@ No OneDrive, abre **Definições → Sincronização e cópia de segurança → 
 
 ## Uma divisão melhor
 
-O OneDrive é bom com documentos. Os saves precisam de outra coisa: um backup feito quando o jogo já fechou, versões do save inteiro em vez de ficheiros soltos, e sincronização com os teus outros PCs e com um Steam Deck.
+O OneDrive é bom com documentos. Os saves precisam de outra coisa: um backup feito só quando o jogo acabou de escrever, versões do save inteiro em vez de ficheiros soltos, e sincronização com os teus outros PCs e com um Steam Deck.
 
-É isso que o Hoard faz. Encontra os teus saves quer `Documentos` esteja no OneDrive quer não, porque pergunta ao Windows onde a pasta está de facto. Faz backup deles automaticamente depois de cada sessão, guarda todas as versões e sincroniza-os com as tuas outras máquinas.
+É isso que o Hoard faz. Encontra os teus saves quer `Documentos` esteja no OneDrive quer não, porque pergunta ao Windows onde a pasta está de facto. Faz backup deles automaticamente sempre que o jogo grava, guarda todas as versões e sincroniza-os com as tuas outras máquinas.
 
 Uma regra: a sincronização entre PCs deve ficar a cargo de uma só ferramenta. Se o OneDrive faz cópia de `Documentos` em vários PCs de jogo com a mesma conta, já está a sincronizar esses saves entre eles. Desativa a cópia de `Documentos` nesses PCs e deixa os saves ao Hoard.
 

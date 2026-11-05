@@ -2,7 +2,7 @@
 title: "How to sync game saves across multiple PCs"
 description: "Play on your desktop, laptop and Steam Deck without losing progress: sync game saves between PCs automatically, with version history. Step by step."
 order: 2
-updated: 2026-10-18
+updated: 2026-11-05
 related: steam-cloud-alternative, back-up-emulator-saves, self-host-hoard, sync-saves-steam-deck-pc, transfer-game-saves-to-new-pc, dual-boot-game-saves, rog-ally-legion-go-save-sync
 ---
 
@@ -17,13 +17,13 @@ Hoard backs up each save to your cloud and pulls the latest version down on your
 1. Install **Hoard** on every PC you play on (Windows, macOS or Linux).
 2. Sign in with the **same account** on each machine, or connect them to the same self-hosted server.
 3. Add the same games to your **Library** on each PC. Hoard matches them by game, so a save backed up on one shows up on the others.
-4. Keep **automatic mode** on. Hoard uploads after you play and downloads the latest before you start.
+4. Keep **automatic mode** on. Hoard uploads every time the game saves and downloads the latest before you start.
 
 ## Coming from Ludusavi?
 
 Ludusavi is a great open-source tool for backing up and restoring saves locally, and it can push those backups to a cloud you configure yourself with Rclone. But syncing across devices is something you wire up manually: schedule the backup, set up the remote, then restore on the other PC before you play.
 
-Hoard turns that into managed sync. It uses the same community save-location data as Ludusavi to find your saves, then uploads after each session and downloads the latest before the next one — across every PC on your account, with versioned history in the cloud. No Rclone remotes, no scripts. And like Ludusavi, Hoard is open source and can be self-hosted. See the full [Ludusavi alternative comparison](/guides/ludusavi-alternative).
+Hoard turns that into managed sync. It uses the same community save-location data as Ludusavi to find your saves, then uploads every time the game saves and downloads the latest before you start, across every PC on your account, with versioned history in the cloud. No Rclone remotes, no scripts. And like Ludusavi, Hoard is open source and can be self-hosted. See the full [Ludusavi alternative comparison](/guides/ludusavi-alternative).
 
 ## Avoiding conflicts
 
@@ -62,7 +62,7 @@ Saves do. Settings, by default, don't, and that's on purpose. The Steam Deck sho
 
 So Hoard sorts what it finds in a save folder:
 
-- **Saves** sync between machines, every session.
+- **Saves** sync between machines, every time the game writes one.
 - **Settings files** (`graphics.ini`, `settings.cfg` and the like) are kept in every backup, so they're never lost, but a restore doesn't write them over another machine's copy. If the game's entry in the save database says a `.ini` *is* the save, it's treated as a save.
 - **Clutter** such as crash dumps, temporary files, engine logs like `Player.log` and Steam's own bookkeeping isn't backed up at all, so simply opening a game doesn't create a new version.
 
@@ -91,11 +91,11 @@ Three on the free tier, unlimited on Pro, and unlimited when you self-host — y
 
 ### Do both machines have to be online at the same time?
 
-No. Your save goes up to the server when you finish playing and comes down when the other machine asks for it, so the second PC can be switched off for a week and still get the latest version when it wakes up.
+No. Your save goes up to the server every time the game writes it and comes down when the other machine asks for it, so the second PC can be switched off for a week and still get the latest version when it wakes up.
 
 ### What if I play offline?
 
-Fine. The snapshot is taken locally when you stop playing, and it uploads on its own once the machine has a connection again.
+Fine. Hoard notes what changed while you play offline and uploads the latest save on its own once the machine has a connection again.
 
 ### Does it sync my mods and settings too?
 

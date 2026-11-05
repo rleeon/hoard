@@ -2,7 +2,7 @@
 title: "Salvataggi cloud di Epic e GOG: cosa coprono e come sincronizzare il resto"
 description: "Il cloud di Epic e GOG funziona solo per alcuni giochi, solo nel loro launcher e senza cronologia. Cosa copre e come sincronizzare il resto in automatico."
 order: 19.5
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Sia Epic sia GOG hanno i salvataggi nel cloud, con gli stessi limiti di Steam: lo sviluppatore deve supportarli gioco per gioco, funzionano solo tramite il launcher del negozio e tengono l'ultima copia invece di una cronologia. Ecco cosa copre ciascuno, dove sono i buchi e come tenere sincronizzati tutti i tuoi giochi tra i PC e uno Steam Deck, ovunque tu li abbia comprati.
@@ -35,13 +35,13 @@ Ubisoft Connect e l'app EA hanno salvataggi cloud per molti dei loro giochi, cia
 
 ## Sincronizzare il resto
 
-Hoard lavora per gioco, non per negozio. Trova la cartella di salvataggio di ogni gioco grazie a un database della community che copre migliaia di titoli, da dovunque arrivi il gioco, la salva in automatico quando smetti di giocare e la sincronizza con gli altri PC e lo Steam Deck, conservando ogni versione.
+Hoard lavora per gioco, non per negozio. Trova la cartella di salvataggio di ogni gioco grazie a un database della community che copre migliaia di titoli, da dovunque arrivi il gioco, la salva in automatico a ogni salvataggio del gioco e la sincronizza con gli altri PC e lo Steam Deck, conservando ogni versione.
 
 Questo copre i buchi qui sopra:
 
 - **Qualsiasi launcher, o nessuno.** Epic, GOG, Galaxy o l'installer offline, Heroic su Linux, un gioco estratto in una cartella.
 - **Tra negozi.** La maggior parte dei giochi salva nello stesso posto qualunque sia il negozio che li ha venduti, di solito in `AppData` o `Documents`, quindi un'installazione GOG su un PC e una Steam su un altro possono condividere un salvataggio. Alcuni aggiungono una cartella con l'ID dell'account o cambiano nome a seconda del negozio; controlla prima di contarci.
-- **Una cronologia.** Ogni sessione è una versione a cui puoi tornare.
+- **Una cronologia.** Ogni salvataggio è una versione a cui puoi tornare.
 
 Dove il cloud di un launcher sincronizza già un gioco, lascialo fare. Hoard aggiunge la cronologia e sincronizza tutto il resto.
 

@@ -2,7 +2,7 @@
 title: "Steam-Cloud-Alternative: synchronisiere und sichere die Spielstände, die Steam nicht sichert"
 description: "Steam Cloud lässt viele Spiele aus und hat keinen Verlauf. Synchronisiere und sichere jedes Spiel aus jedem Launcher zwischen PCs und Steam Deck, mit Versionen."
 order: 7
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Steam Cloud macht die eng umrissene Aufgabe, die sie hat, wirklich gut, und die meisten stoßen erst an dem Tag an ihre Grenzen, an dem etwas verloren geht. Diese Anleitung zeigt, wo diese Grenzen liegen und was mit den Spielen zu tun ist, die dahinter liegen.
@@ -26,7 +26,7 @@ Wenn es funktioniert, ist es unsichtbar und hervorragend: Spiel auf dem einen PC
 
 ## Was Hoard ergänzt
 
-Hoard beobachtet den Ordner, in den ein Spiel wirklich schreibt, und sichert **nach jedem Spielen eine neue Version**:
+Hoard beobachtet den Ordner, in den ein Spiel wirklich schreibt, und sichert **bei jedem Speichern eine neue Version**:
 
 - **Woher das Spiel stammt, ist egal.** Steam, GOG, Epic, itch, Emulatoren oder ein Ordner, auf den du es von Hand richtest.
 - **Jede Version bleibt erhalten**, ein beschädigter Stand oder eine schlechte Entscheidung kosten also zwei Klicks statt eines Spieldurchgangs.
@@ -73,7 +73,7 @@ Ja, das ist ein Großteil des Sinns. Es findet Spielstände über eine Community
 
 ### Gibt es Konflikte, wenn beides läuft?
 
-Nein. Hoard sichert eine Version, nachdem du aufgehört hast und der Ordner zur Ruhe kommt, und überschreibt nie, ohne das Ersetzte vorher zu sichern.
+Nein. Hoard sichert eine Version, sobald das Spiel fertig geschrieben hat und der Ordner zur Ruhe kommt, und überschreibt nie, ohne das Ersetzte vorher zu sichern.
 
 ### Kann ich meine Stände aus beiden Clouds heraushalten?
 

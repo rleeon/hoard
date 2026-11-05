@@ -2,7 +2,7 @@
 title: "Dove sono i salvataggi di Crimson Desert (PC e Steam Deck)"
 description: "Dove Crimson Desert tiene i salvataggi su Windows, Steam Deck e Mac, quale cartella li contiene davvero e come farne il backup e sincronizzarli tra PC."
 order: 21
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Su Windows, Crimson Desert tiene i salvataggi in `%LOCALAPPDATA%\Pearl Abyss\CD\save`. È la cartella che Pearl Abyss indica nella propria FAQ. Qui sotto trovi i percorsi su Steam Deck e Mac, cosa c'è dentro e come tenerla al sicuro e sincronizzata tra PC e Steam Deck.
@@ -43,13 +43,13 @@ Va bene come copia occasionale prima di un grosso aggiornamento o di una reinsta
 
 ## Backup e sync automatici con Hoard
 
-[Hoard](/download) fa il backup della cartella ogni volta che smetti di giocare e tiene tutte le versioni, così puoi tornare indietro da un salvataggio rotto o da una scelta di cui ti penti. Tiene anche la cartella sincronizzata tra i tuoi PC e una Steam Deck.
+[Hoard](/download) fa il backup della cartella ogni volta che il gioco salva e un'altra volta quando esci, e tiene tutte le versioni, così puoi tornare indietro da un salvataggio rotto o da una scelta di cui ti penti. Tiene anche la cartella sincronizzata tra i tuoi PC e una Steam Deck.
 
 1. Installa Hoard e accedi, oppure puntalo verso [il tuo server](/guides/self-host-hoard).
 2. Apri la **Libreria**. Crimson Desert viene rilevato dalla tua libreria Steam e dal database comunitario dei salvataggi, nel percorso qui sopra.
 3. Gioca. Quando esci, la prima versione compare nella cronologia.
 
-Da lì ogni sessione aggiunge una versione, e la più recente è sulla macchina a cui ti siedi dopo. Se un salvataggio si rompe, [ripristinarne uno precedente](/guides/restore-a-game-save) richiede un paio di clic.
+Da lì ogni salvataggio aggiunge una versione, e la più recente è sulla macchina a cui ti siedi dopo. Se un salvataggio si rompe, [ripristinarne uno precedente](/guides/restore-a-game-save) richiede un paio di clic.
 
 <!-- faq -->
 
@@ -69,4 +69,4 @@ Quella con il nome numerico dentro `save`. Fai comunque il backup dell'intera ca
 
 ### Posso giocare sul fisso e sulla Steam Deck con lo stesso salvataggio?
 
-Sì. Steam Cloud lo fa per l'ultimo salvataggio sullo stesso account Steam. Anche Hoard, e tiene una versione per sessione, così puoi tornare indietro se qualcosa si rompe.
+Sì. Steam Cloud lo fa per l'ultimo salvataggio sullo stesso account Steam. Anche Hoard, e tiene una versione a ogni salvataggio, così puoi tornare indietro se qualcosa si rompe.

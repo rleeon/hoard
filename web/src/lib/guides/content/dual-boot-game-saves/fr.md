@@ -2,7 +2,7 @@
 title: "Synchroniser ses sauvegardes entre Windows et Linux sur un PC en dual boot"
 description: "Un PC, deux systèmes, deux dossiers de sauvegarde. Synchronisez vos parties entre Windows et Linux, pourquoi un dossier NTFS partagé casse, et les pièges."
 order: 18
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Sur un PC en dual boot, le même jeu garde deux sauvegardes séparées : une dans votre dossier utilisateur Windows, et une dans un préfixe Proton sous Linux. Steam Cloud fait le lien pour les jeux compatibles ; tout le reste se désynchronise dès que vous changez de système. Hoard les garde synchronisées automatiquement. Installez-le sur les deux systèmes avec le même compte, et la sauvegarde de chaque jeu vous suit, quel que soit le système que vous démarrez.
@@ -41,7 +41,7 @@ Laisser chaque système garder ses sauvegardes là où le jeu les attend, et les
 
 Avec deux PC distincts, la sauvegarde attend sur le serveur que l'autre machine la demande. Sur un PC en dual boot, « l'autre machine » est le même ordinateur après un redémarrage, et cela change une habitude.
 
-Hoard envoie une sauvegarde une fois le jeu fermé et le dossier au repos. **Si vous quittez le jeu et redémarrez aussitôt, l'envoi n'a peut-être pas encore eu lieu**, et l'autre système démarre sans votre dernière progression. Il rattrapera la prochaine fois que vous redémarrerez sur le premier, mais d'ici là vous aurez peut-être joué sur l'ancienne sauvegarde.
+Hoard envoie une sauvegarde quelques secondes après que le jeu l'a écrite, une fois le dossier au repos. **Si vous sauvegardez et redémarrez aussitôt, l'envoi n'a peut-être pas encore eu lieu**, et l'autre système démarre sans votre dernière progression. Il rattrapera la prochaine fois que vous redémarrerez sur le premier, mais d'ici là vous aurez peut-être joué sur l'ancienne sauvegarde.
 
 Donc : quittez le jeu, laissez un instant à Hoard, vérifiez dans l'application que la sauvegarde est à jour, puis redémarrez.
 

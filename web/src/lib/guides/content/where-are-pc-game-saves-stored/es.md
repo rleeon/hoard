@@ -2,7 +2,7 @@
 title: "¿Dónde se guardan las partidas en PC? Todas las ubicaciones"
 description: "Dónde guardan las partidas los juegos de PC en Windows, Steam Deck, Linux y Mac, qué launchers añaden carpetas propias y cómo encontrar las de cualquier juego."
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 No hay una sola carpeta. En Windows, casi todos los juegos guardan en uno de seis sitios: `Documents`, `Saved Games`, una de las tres carpetas de `AppData`, el `userdata` de Steam o su propia carpeta de instalación. Lo decide el motor y el desarrollador, no la tienda donde lo compraste. Aquí tienes todas las ubicaciones habituales, los launchers que añaden una capa propia y una forma rápida de encontrar las partidas de cualquier juego, incluso de uno que nadie ha documentado.
@@ -61,7 +61,7 @@ Cuando un juego no sale en ninguna lista, tres trucos lo encuentran en un par de
 
 ## O deja que alguien las encuentre por ti
 
-Hoard lee esa misma base de datos comunitaria, que cubre miles de juegos, y comprueba cada ruta candidata en tu equipo: prefijos de Proton, Heroic y Lutris, el `Documentos` de OneDrive, emuladores, instalaciones portátiles. Lo que encuentra se respalda automáticamente cada vez que dejas de jugar, con todas las versiones guardadas, y se mantiene sincronizado entre tus PC y tu Steam Deck. Lo que se le escape lo añades señalando la carpeta una vez. Mira [cómo hacer copia de tus partidas automáticamente](/guides/back-up-game-saves).
+Hoard lee esa misma base de datos comunitaria, que cubre miles de juegos, y comprueba cada ruta candidata en tu equipo: prefijos de Proton, Heroic y Lutris, el `Documentos` de OneDrive, emuladores, instalaciones portátiles. Lo que encuentra se respalda automáticamente cada vez que el juego guarda, con todas las versiones guardadas, y se mantiene sincronizado entre tus PC y tu Steam Deck. Lo que se le escape lo añades señalando la carpeta una vez. Mira [cómo hacer copia de tus partidas automáticamente](/guides/back-up-game-saves), o busca un juego en la [lista de ubicaciones de cientos de juegos populares](/saves).
 
 También hay páginas con las rutas exactas de algunos juegos populares: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location), [Palworld](/guides/palworld-save-location), [Crimson Desert](/guides/crimson-desert-save-location) y [Marvel's Spider-Man 2](/guides/spider-man-2-save-location).
 

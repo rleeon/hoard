@@ -2,7 +2,7 @@
 title: "Crimson Desert: Speicherort der Spielstände (PC & Steam Deck)"
 description: "Wo Crimson Desert seine Spielstände unter Windows, Steam Deck und Mac ablegt, welcher Ordner sie enthält und wie du sie sicherst und synchronisierst."
 order: 21
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Unter Windows legt Crimson Desert seine Spielstände in `%LOCALAPPDATA%\Pearl Abyss\CD\save` ab. Diesen Ordner nennt Pearl Abyss in seiner eigenen FAQ. Darunter findest du die Pfade für Steam Deck und Mac, was drinsteckt und wie du ihn gesichert und zwischen PC und Steam Deck synchron hältst.
@@ -43,13 +43,13 @@ Als einmalige Sicherung vor einem großen Update oder einer Neuinstallation ist 
 
 ## Automatisch sichern und synchronisieren mit Hoard
 
-[Hoard](/download) sichert den Spielstand-Ordner jedes Mal, wenn du aufhörst zu spielen, und behält jede Version — so kommst du von einem kaputten Spielstand oder einer bereuten Entscheidung zurück. Außerdem hält es den Ordner zwischen deinen PCs und einem Steam Deck synchron.
+[Hoard](/download) sichert den Spielstand-Ordner bei jedem Speichern und noch einmal beim Beenden und behält jede Version — so kommst du von einem kaputten Spielstand oder einer bereuten Entscheidung zurück. Außerdem hält es den Ordner zwischen deinen PCs und einem Steam Deck synchron.
 
 1. Installiere Hoard und melde dich an, oder richte es auf [deinen eigenen Server](/guides/self-host-hoard).
 2. Öffne die **Bibliothek**. Crimson Desert wird über deine Steam-Bibliothek und die Community-Datenbank für Spielstände erkannt, am obigen Pfad.
 3. Spiele. Beim Beenden erscheint die erste Version im Verlauf.
 
-Ab dann fügt jede Session eine Version hinzu, und die neueste liegt auf dem Rechner, an den du dich als Nächstes setzt. Geht ein Spielstand kaputt, ist [eine ältere Version wiederherzustellen](/guides/restore-a-game-save) eine Sache von zwei Klicks.
+Ab dann fügt jedes Speichern eine Version hinzu, und die neueste liegt auf dem Rechner, an den du dich als Nächstes setzt. Geht ein Spielstand kaputt, ist [eine ältere Version wiederherzustellen](/guides/restore-a-game-save) eine Sache von zwei Klicks.
 
 <!-- faq -->
 
@@ -69,4 +69,4 @@ Er ist standardmäßig versteckt. Füge `%LOCALAPPDATA%\Pearl Abyss\CD\save` in 
 
 ### Kann ich auf Desktop und Steam Deck mit demselben Spielstand spielen?
 
-Ja. Steam Cloud macht das für den neuesten Spielstand auf demselben Steam-Konto. Hoard auch, und es behält eine Version pro Session, sodass du zurückkannst, wenn etwas kaputtgeht.
+Ja. Steam Cloud macht das für den neuesten Spielstand auf demselben Steam-Konto. Hoard auch, und es behält eine Version bei jedem Speichern, sodass du zurückkannst, wenn etwas kaputtgeht.

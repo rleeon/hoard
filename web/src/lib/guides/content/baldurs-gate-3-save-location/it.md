@@ -2,7 +2,7 @@
 title: "Dove sono i salvataggi di Baldur's Gate 3 (PC e Steam Deck)"
 description: "Dove Baldur's Gate 3 tiene i salvataggi su Windows, Steam Deck e Mac, cosa è salvataggio e cosa sono mod o impostazioni, la modalità Onore, backup e sync."
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Su Windows, Baldur's Gate 3 tiene i salvataggi in `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, una cartella per salvataggio. È il percorso che Larian indica nella propria FAQ di supporto. Qui sotto trovi i percorsi su Steam Deck e Mac, cosa c'è accanto ai salvataggi, la modalità Onore e come tenere tutto al sicuro e sincronizzato tra PC e Steam Deck.
@@ -42,13 +42,13 @@ Sì. Su Steam usa Steam Cloud, che tiene allineati gli ultimi salvataggi tra le 
 
 ## Backup e sync automatici con Hoard
 
-[Hoard](/download) fa il backup della cartella ogni volta che smetti di giocare e tiene tutte le versioni, così un salvataggio rotto dall'aggiornamento di una mod o da una patch è a un ripristino di distanza. Tiene anche la cartella sincronizzata tra i tuoi PC e una Steam Deck.
+[Hoard](/download) fa il backup della cartella ogni volta che il gioco salva e un'altra volta quando esci, e tiene tutte le versioni, così un salvataggio rotto dall'aggiornamento di una mod o da una patch è a un ripristino di distanza. Tiene anche la cartella sincronizzata tra i tuoi PC e una Steam Deck.
 
 1. Installa Hoard e accedi, oppure puntalo verso [il tuo server](/guides/self-host-hoard).
 2. Apri la **Libreria**. Baldur's Gate 3 viene rilevato dalla tua libreria Steam e dal database comunitario dei salvataggi.
 3. Gioca. Quando esci, la prima versione compare nella cronologia.
 
-Ogni sessione aggiunge una versione con tutti i salvataggi dentro. Per tornare indietro, apri la cronologia e [ripristina una versione precedente](/guides/restore-a-game-save); quello che hai ora sul PC viene salvato prima, quindi provare una versione vecchia non è mai un viaggio di sola andata.
+Ogni backup aggiunge una versione con tutti i salvataggi dentro. Per tornare indietro, apri la cronologia e [ripristina una versione precedente](/guides/restore-a-game-save); quello che hai ora sul PC viene salvato prima, quindi provare una versione vecchia non è mai un viaggio di sola andata.
 
 <!-- faq -->
 

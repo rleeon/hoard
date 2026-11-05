@@ -2,7 +2,7 @@
 title: "Cómo sincronizar partidas guardadas entre varios PC"
 description: "Juega en tu sobremesa, tu portátil y tu Steam Deck sin perder progreso: sincroniza tus partidas entre PC automáticamente, con historial. Paso a paso."
 order: 2
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Si juegas en más de un ordenador —un sobremesa en casa y un portátil de viaje— Hoard mantiene tus partidas sincronizadas para que siempre retomes donde lo dejaste.
@@ -16,13 +16,13 @@ Hoard sube cada partida a tu nube y descarga la última versión en tus otros eq
 1. Instala **Hoard** en cada PC en el que juegues (Windows, macOS o Linux).
 2. Inicia sesión con la **misma cuenta** en cada equipo, o conéctalos al mismo servidor autoalojado.
 3. Añade los mismos juegos a tu **Biblioteca** en cada PC. Hoard los empareja por juego, así que una partida guardada en uno aparece en los demás.
-4. Mantén el **modo automático** activado. Hoard sube cuando terminas de jugar y descarga la última versión antes de empezar.
+4. Mantén el **modo automático** activado. Hoard sube cada vez que el juego guarda y descarga la última versión antes de empezar.
 
 ## ¿Vienes de Ludusavi?
 
 Ludusavi es una gran herramienta open source para hacer copias y restaurar partidas en local, y puede subir esas copias a una nube que configures tú mismo con Rclone. Pero sincronizar entre dispositivos es algo que montas a mano: programas la copia, configuras el remoto y luego restauras en el otro PC antes de jugar.
 
-Hoard convierte eso en sincronización gestionada. Usa los mismos datos comunitarios de ubicación de partidas que Ludusavi para encontrar tus saves, y luego sube tras cada sesión y descarga la última versión antes de la siguiente, en todos los PC de tu cuenta y con historial versionado en la nube. Sin remotos de Rclone, sin scripts. Y, como Ludusavi, Hoard es open source y se puede autoalojar. Mira la [comparativa completa con Ludusavi](/guides/ludusavi-alternative).
+Hoard convierte eso en sincronización gestionada. Usa los mismos datos comunitarios de ubicación de partidas que Ludusavi para encontrar tus saves, y luego sube cada vez que el juego guarda y descarga la última versión antes de empezar, en todos los PC de tu cuenta y con historial versionado en la nube. Sin remotos de Rclone, sin scripts. Y, como Ludusavi, Hoard es open source y se puede autoalojar. Mira la [comparativa completa con Ludusavi](/guides/ludusavi-alternative).
 
 ## Evitar conflictos
 
@@ -61,7 +61,7 @@ Las partidas sí. Los ajustes, por defecto, no, y es a propósito. La Steam Deck
 
 Por eso Hoard clasifica lo que encuentra en una carpeta de partidas:
 
-- **Las partidas** se sincronizan entre máquinas, en cada sesión.
+- **Las partidas** se sincronizan entre máquinas, cada vez que el juego escribe una.
 - **Los ficheros de ajustes** (`graphics.ini`, `settings.cfg` y similares) se guardan en cada copia, así que nunca se pierden, pero una restauración no los escribe encima de los de otra máquina. Si la entrada del juego en la base de datos de partidas dice que un `.ini` *es* la partida, se trata como partida.
 - **La basura**, como volcados de errores, ficheros temporales, registros del motor tipo `Player.log` y la contabilidad propia de Steam, no se copia, para que abrir un juego sin más no cree una versión nueva.
 
@@ -90,11 +90,11 @@ Tres en el plan gratuito, ilimitados en Pro, e ilimitados si te autoalojas: tu s
 
 ### ¿Tienen que estar las dos máquinas encendidas a la vez?
 
-No. Tu partida sube al servidor cuando terminas de jugar y baja cuando la otra máquina la pide, así que el segundo PC puede estar apagado una semana y aun así recibir la última versión al encenderse.
+No. Tu partida sube al servidor cada vez que el juego la escribe y baja cuando la otra máquina la pide, así que el segundo PC puede estar apagado una semana y aun así recibir la última versión al encenderse.
 
 ### ¿Y si juego sin conexión?
 
-Sin problema. La instantánea se toma en local al dejar de jugar, y se sube sola en cuanto la máquina vuelve a tener conexión.
+Sin problema. Hoard apunta lo que cambia mientras juegas sin conexión y sube la última partida él solo en cuanto la máquina vuelve a tener conexión.
 
 ### ¿Sincroniza también mods y ajustes?
 

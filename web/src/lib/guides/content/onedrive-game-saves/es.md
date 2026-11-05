@@ -2,7 +2,7 @@
 title: "OneDrive y las partidas guardadas: qué se rompe y cómo arreglarlo"
 description: "OneDrive movió Documentos y ahora las partidas fallan, desaparecen o salen duplicadas. Por qué pasa, cómo arreglarlo y una forma mejor de sincronizar."
 order: 15
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 En muchos PC con Windows, OneDrive hace copia de la carpeta `Documentos`, a menudo activada durante la instalación sin que nadie se dé cuenta. Los juegos que guardan en `Documentos`, que es casi todo `My Games`, la siguen dentro de OneDrive. Y ahí empiezan los problemas: partidas que no se guardan, partidas que necesitan descargarse antes de cargar, y copias con el nombre de tu PC pegado que el juego nunca lee. Aquí tienes por qué pasa y cómo arreglarlo.
@@ -33,9 +33,9 @@ En OneDrive, abre **Configuración → Sincronización y copia de seguridad → 
 
 ## Un reparto mejor
 
-OneDrive es bueno con los documentos. Las partidas necesitan otra cosa: una copia hecha cuando el juego se ha cerrado, versiones de la partida entera y no de ficheros sueltos, y sincronización con tus otros PC y con una Steam Deck.
+OneDrive es bueno con los documentos. Las partidas necesitan otra cosa: una copia hecha solo cuando el juego ha terminado de escribir, versiones de la partida entera y no de ficheros sueltos, y sincronización con tus otros PC y con una Steam Deck.
 
-Eso es lo que hace Hoard. Encuentra tus partidas tanto si `Documentos` está en OneDrive como si no, porque le pregunta a Windows dónde está de verdad la carpeta. Las respalda automáticamente después de cada sesión, guarda todas las versiones y las sincroniza con tus otras máquinas.
+Eso es lo que hace Hoard. Encuentra tus partidas tanto si `Documentos` está en OneDrive como si no, porque le pregunta a Windows dónde está de verdad la carpeta. Las respalda automáticamente cada vez que el juego guarda, guarda todas las versiones y las sincroniza con tus otras máquinas.
 
 Una regla: que la sincronización entre PC sea cosa de una sola herramienta. Si OneDrive hace copia de `Documentos` en varios PC de juego con la misma cuenta, ya está sincronizando esas partidas entre ellos. Desactiva la copia de `Documentos` en esos PC y deja las partidas a Hoard.
 

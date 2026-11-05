@@ -1,5 +1,6 @@
 import { marked, type Tokens } from 'marked';
 import { LOCALES, DEFAULT_LOCALE, type Locale } from '$lib/i18n/locales';
+import { GAMES_UPDATED, GAME_RELATED, gameBySlug, gameMarkdown, gameSlugs } from '$lib/saves';
 
 /**
  * File-based guide content. Each guide is a folder under `content/<slug>/` with
@@ -143,10 +144,40 @@ for (const [path, src] of Object.entries(raw)) {
   };
 }
 
+// The generated per-game pages live outside `registry` on purpose: there are
+// hundreds of them in eight languages, and rendering them all at import time
+// would run on every client that opens any guide. They are built on first ask
+// and cached instead, and `listGuides` never sees them, so the index page and
+// llms.txt stay the hand-written set.
+const generated = new Map<string, Guide>();
+
+function gameGuide(slug: string, locale: Locale): Guide | null {
+  const game = gameBySlug(slug);
+  if (!game) return null;
+  const key = `${locale}/${slug}`;
+  let guide = generated.get(key);
+  if (!guide) {
+    const { title, description, body } = gameMarkdown(game, locale);
+    guide = {
+      slug,
+      title,
+      description,
+      order: 1000,
+      featured: false,
+      updated: GAMES_UPDATED,
+      related: GAME_RELATED,
+      html: marked.parse(body) as string,
+      faq: extractFaq(body)
+    };
+    generated.set(key, guide);
+  }
+  return guide;
+}
+
 /** Resolve a guide for a locale, falling back to English if untranslated. */
 export function getGuide(slug: string, locale: Locale): Guide | null {
   const byLang = registry[slug];
-  if (!byLang) return null;
+  if (!byLang) return gameGuide(slug, locale);
   return byLang[locale] ?? byLang[DEFAULT_LOCALE] ?? null;
 }
 
@@ -164,14 +195,14 @@ export function listGuides(locale: Locale): GuideMeta[] {
  * unknown slug is skipped rather than rendered as a dead link.
  */
 export function relatedGuides(slug: string, locale: Locale): GuideMeta[] {
-  const picks = registry[slug]?.[DEFAULT_LOCALE]?.related ?? [];
+  const picks = registry[slug]?.[DEFAULT_LOCALE]?.related ?? (gameBySlug(slug) ? GAME_RELATED : []);
   return picks
     .filter((s) => s !== slug)
     .map((s) => getGuide(s, locale))
     .filter((g): g is Guide => g !== null);
 }
 
-/** Every guide slug (for prerender entries). */
+/** Every guide slug, generated ones included (for prerender entries and the sitemap). */
 export function guideSlugs(): string[] {
-  return Object.keys(registry);
+  return [...Object.keys(registry), ...gameSlugs()];
 }

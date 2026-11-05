@@ -2,7 +2,7 @@
 title: "OneDrive und Spielstände: was kaputtgeht und wie du es behebst"
 description: "OneDrive hat deine Dokumente verschoben und jetzt scheitern Spielstände, verschwinden oder tauchen doppelt auf. Warum, wie du es behebst, und ein besserer Sync."
 order: 15
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Auf vielen Windows-PCs sichert OneDrive den Ordner `Dokumente`, oft schon bei der Einrichtung eingeschaltet, ohne dass es jemand merkt. Spiele, die in `Dokumente` speichern, also fast alles in `My Games`, folgen ihm in OneDrive hinein. Dann geht es los: Spielstände, die nicht geschrieben werden, Spielstände, die vor dem Laden erst heruntergeladen werden müssen, und Kopien mit dem Namen deines PCs, die das Spiel nie liest. Hier steht, warum das passiert und wie du es behebst.
@@ -33,9 +33,9 @@ Rechtsklick auf `Dokumente\My Games` (oder den Ordner des Spiels) und **Immer au
 
 ## Eine bessere Aufteilung
 
-OneDrive kann gut mit Dokumenten. Spielstände brauchen etwas anderes: ein Backup, das entsteht, wenn das Spiel geschlossen ist, Versionen des ganzen Spielstands statt einzelner Dateien und Sync zu deinen anderen PCs und einem Steam Deck.
+OneDrive kann gut mit Dokumenten. Spielstände brauchen etwas anderes: ein Backup, das erst entsteht, wenn das Spiel fertig geschrieben hat, Versionen des ganzen Spielstands statt einzelner Dateien und Sync zu deinen anderen PCs und einem Steam Deck.
 
-Genau das macht Hoard. Es findet deine Spielstände, ob `Dokumente` in OneDrive liegt oder nicht, weil es Windows fragt, wo der Ordner wirklich ist. Es sichert sie nach jeder Sitzung automatisch, behält jede Version und synchronisiert sie mit deinen anderen Geräten.
+Genau das macht Hoard. Es findet deine Spielstände, ob `Dokumente` in OneDrive liegt oder nicht, weil es Windows fragt, wo der Ordner wirklich ist. Es sichert sie bei jedem Speichern automatisch, behält jede Version und synchronisiert sie mit deinen anderen Geräten.
 
 Eine Regel: Das Synchronisieren zwischen PCs sollte ein einziges Tool übernehmen. Sichert OneDrive `Dokumente` auf mehreren Spiele-PCs mit demselben Konto, synchronisiert es diese Spielstände schon zwischen ihnen. Schalte die Sicherung von `Dokumente` auf diesen PCs aus und überlass die Spielstände Hoard.
 

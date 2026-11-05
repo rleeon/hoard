@@ -2,7 +2,7 @@
 title: "Onde ficam os saves dos jogos de PC? Todas as localizações"
 description: "Onde os jogos de PC guardam os saves no Windows, Steam Deck, Linux e Mac, que launchers acrescentam pastas próprias e como encontrar os de qualquer jogo."
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Não há uma só pasta. No Windows, quase todos os jogos guardam num de seis sítios: `Documents`, `Saved Games`, uma das três pastas `AppData`, o `userdata` do Steam ou a própria pasta de instalação. Quem decide é o motor e o programador, não a loja onde o compraste. Esta página lista todas as localizações habituais, os launchers que acrescentam uma camada própria e uma forma rápida de encontrar os saves de qualquer jogo, mesmo de um que ninguém documentou.
@@ -61,7 +61,7 @@ Quando um jogo não está em nenhuma lista, três truques encontram-no em poucos
 
 ## Ou deixa alguém encontrá-los por ti
 
-O Hoard lê essa mesma base de dados comunitária, que cobre milhares de jogos, e verifica cada caminho possível na tua máquina: prefixos do Proton, Heroic e Lutris, a pasta `Documentos` do OneDrive, emuladores, instalações portáteis. O que encontra é guardado automaticamente sempre que deixas de jogar, com todas as versões guardadas, e mantido sincronizado entre os teus PCs e a Steam Deck. O que lhe escapar, acrescentas apontando para a pasta uma vez. Vê [como fazer backup automático dos teus saves](/guides/back-up-game-saves).
+O Hoard lê essa mesma base de dados comunitária, que cobre milhares de jogos, e verifica cada caminho possível na tua máquina: prefixos do Proton, Heroic e Lutris, a pasta `Documentos` do OneDrive, emuladores, instalações portáteis. O que encontra é guardado automaticamente sempre que o jogo grava, com todas as versões guardadas, e mantido sincronizado entre os teus PCs e a Steam Deck. O que lhe escapar, acrescentas apontando para a pasta uma vez. Vê [como fazer backup automático dos teus saves](/guides/back-up-game-saves), ou procura um jogo na [lista de localizações de centenas de jogos populares](/saves).
 
 Também há páginas com os caminhos exatos de alguns jogos populares: [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location), [Palworld](/guides/palworld-save-location), [Crimson Desert](/guides/crimson-desert-save-location) e [Marvel's Spider-Man 2](/guides/spider-man-2-save-location).
 

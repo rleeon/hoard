@@ -2,7 +2,7 @@
 title: "Alternativa ao Ludusavi: sincronização automática de saves na nuvem"
 description: "O Ludusavi é ótimo para backups locais. O Hoard junta sincronização automática entre PC e Steam Deck com histórico, sobre a mesma base de dados de saves."
 order: 5
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Se procuras uma forma de fazer backup e sincronizar os teus saves, é provável que tenhas encontrado o **Ludusavi** — e é excelente. Este guia é uma comparação honesta para te ajudar a escolher a ferramenta certa, e explica onde o Hoard se encaixa se quiseres sincronização na nuvem automática entre máquinas.
@@ -19,7 +19,7 @@ O ponto onde a maioria esbarra com qualquer ferramenta local é a **sincronizaç
 
 O Hoard transforma isso em **sincronização na nuvem gerida**:
 
-- **Inicia sessão e pronto.** Sem remotos Rclone, sem scripts. O Hoard envia o teu save depois de jogares e descarrega a versão mais recente antes de começares, em cada PC da tua conta.
+- **Inicia sessão e pronto.** Sem remotos Rclone, sem scripts. O Hoard envia o teu save sempre que o jogo o escreve e descarrega a versão mais recente antes de começares, em cada PC da tua conta.
 - **Histórico versionado na nuvem.** Cada backup é guardado, por isso podes voltar a qualquer save anterior — mesmo depois de uma falha de disco ou de uma instalação limpa.
 - **Tem em conta os conflitos.** O Hoard compara os timestamps e guarda uma cópia local de tudo o que substitui, por isso uma sincronização nunca destrói progresso em silêncio.
 - **Continua open source e self-hostable.** Como o Ludusavi, não há aprisionamento — usa o Hoard One ou aloja o servidor tu mesmo.
@@ -31,7 +31,8 @@ O Hoard transforma isso em **sincronização na nuvem gerida**:
 | Backups locais | Sim | Sim |
 | Deteção de saves | Manifesto comunitário | O mesmo manifesto, mais bibliotecas Steam, processos em execução e uma varredura do disco |
 | Armazenamento na nuvem | O teu, via Rclone | Incluído, ou o teu próprio servidor |
-| Sincronização entre PCs | Manual: backup aqui, restauro ali | Automática, depois de jogares e antes de começares |
+| Sincronização entre PCs | Manual: backup aqui, restauro ali | Automática, sempre que o jogo grava e antes de começares |
+| O outro PC pode estar desligado | Só com um remoto Rclone | Sim, o save espera no servidor |
 | Histórico de versões | Backups locais que limpas tu | Todas as versões na nuvem, deduplicadas por hash de conteúdo |
 | Emuladores | Sim | Sim |
 | Interfaces | App de ambiente de trabalho e CLI | App de ambiente de trabalho, CLI e overlay dentro do jogo |

@@ -2,7 +2,7 @@
 title: "Cómo hacer copia y sincronizar partidas de emuladores (RetroArch, Dolphin, PCSX2)"
 description: "Copia y sincroniza partidas de emuladores entre PC y Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation y más, con historial y dónde guarda cada uno."
 order: 6
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Las partidas de emulador se pierden con facilidad: los archivos de guardado y los estados guardados viven en carpetas dispersas, y una reinstalación o un PC nuevo pueden borrar años de progreso. Hoard hace la copia automáticamente y los mantiene sincronizados entre equipos, Steam Deck incluida.
@@ -23,7 +23,7 @@ Como Hoard localiza las carpetas de guardado con la misma base de datos comunita
 
 1. **Instala Hoard** para Windows, macOS o Linux e inicia sesión.
 2. Abre la **Biblioteca** y añade tu emulador, o añade manualmente su carpeta de guardados/estados si has cambiado la ubicación por defecto.
-3. Mantén el **modo automático** activado. Hoard hace la copia tras cada sesión y guarda un historial versionado.
+3. Mantén el **modo automático** activado. Hoard hace la copia cada vez que el emulador guarda, y otra vez al salir, y guarda un historial versionado.
 4. Instala Hoard en tus otros PC con la misma cuenta para sincronizar esas partidas en todas partes; mira [cómo sincronizar partidas entre PC](/guides/sync-game-saves-across-pcs).
 
 ## ¿Ludusavi para emuladores?
@@ -107,7 +107,7 @@ Las partidas están muy abajo, en `sdmc/Nintendo 3DS/<id0>/<id1>/title/…`, y `
 
 En una Steam Deck los emuladores suelen venir de Flatpak, así que sus carpetas están bajo `~/.var/app/<id>/` en vez de en los habituales `~/.config` o `~/.local/share`. EmuDeck lo reúne todo en `~/Emulation/saves/`, una carpeta por emulador. En cualquier caso, añades la carpeta una vez y Hoard la vigila.
 
-Lo que importa en una portátil: el motor de Hoard corre como un servicio en segundo plano, así que hace la copia al salir de un juego en el modo Juego sin ninguna ventana abierta. Coges la Deck después de una sesión en el sobremesa y la partida ya está ahí.
+Lo que importa en una portátil: el motor de Hoard corre como un servicio en segundo plano, así que hace la copia en el modo Juego, mientras juegas y al salir, sin ninguna ventana abierta. Coges la Deck después de una sesión en el sobremesa y la partida ya está ahí.
 
 ## Partida guardada y estado guardado no son lo mismo
 
@@ -148,7 +148,7 @@ Sí, un Cloud Sync integrado que necesita un servidor WebDAV que montes o alquil
 
 ### ¿Funciona en una Steam Deck en el modo Juego?
 
-Sí. El motor corre como un servicio en segundo plano, así que las partidas se copian al salir de un juego, sin ninguna ventana abierta. Las carpetas de Flatpak y de EmuDeck funcionan igual que cualquier otra.
+Sí. El motor corre como un servicio en segundo plano, así que las partidas se copian mientras juegas y al salir, sin ninguna ventana abierta. Las carpetas de Flatpak y de EmuDeck funcionan igual que cualquier otra.
 
 ### Mi emulador es portable. ¿Funciona igual?
 

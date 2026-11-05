@@ -2,7 +2,7 @@
 title: "Emplacement des sauvegardes de Baldur's Gate 3 (PC et Steam Deck)"
 description: "Où Baldur's Gate 3 range ses sauvegardes sous Windows, Steam Deck et Mac, sauvegarde ou mod, le mode Honneur, et comment sauvegarder et synchroniser."
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Sous Windows, Baldur's Gate 3 range ses sauvegardes dans `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story`, un dossier par sauvegarde. C'est le chemin que donne Larian dans sa propre FAQ. Vous trouverez ci-dessous les chemins sur Steam Deck et Mac, ce qui se trouve à côté des sauvegardes, le mode Honneur et comment tout garder sauvegardé et synchronisé entre votre PC et votre Steam Deck.
@@ -42,13 +42,13 @@ Oui. Sur Steam, il utilise Steam Cloud, qui garde les dernières sauvegardes syn
 
 ## Sauvegarde et synchro automatiques avec Hoard
 
-[Hoard](/download) sauvegarde le dossier à chaque fois que vous arrêtez de jouer et garde toutes les versions : une sauvegarde cassée par la mise à jour d'un mod ou un patch n'est qu'à une restauration. Il garde aussi le dossier synchronisé entre vos PC et un Steam Deck.
+[Hoard](/download) sauvegarde le dossier chaque fois que le jeu enregistre, et une fois de plus quand vous quittez, puis garde toutes les versions : une sauvegarde cassée par la mise à jour d'un mod ou un patch n'est qu'à une restauration. Il garde aussi le dossier synchronisé entre vos PC et un Steam Deck.
 
 1. Installez Hoard et connectez-vous, ou pointez-le vers [votre propre serveur](/guides/self-host-hoard).
 2. Ouvrez la **Bibliothèque**. Baldur's Gate 3 est détecté à partir de votre bibliothèque Steam et de la base de données communautaire des sauvegardes.
 3. Jouez. En quittant, la première version apparaît dans l'historique.
 
-Chaque session ajoute une version contenant toutes les sauvegardes. Pour revenir en arrière, ouvrez l'historique et [restaurez une version antérieure](/guides/restore-a-game-save) ; ce qui se trouve sur votre PC est sauvegardé avant, donc essayer une ancienne version n'est jamais un aller simple.
+Chaque copie ajoute une version contenant toutes les sauvegardes. Pour revenir en arrière, ouvrez l'historique et [restaurez une version antérieure](/guides/restore-a-game-save) ; ce qui se trouve sur votre PC est sauvegardé avant, donc essayer une ancienne version n'est jamais un aller simple.
 
 <!-- faq -->
 

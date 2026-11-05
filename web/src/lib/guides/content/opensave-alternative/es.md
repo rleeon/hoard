@@ -2,7 +2,7 @@
 title: "Alternativa a OpenSave: entre equipos o con un servidor tuyo"
 description: "OpenSave sincroniza de igual a igual; Hoard lo hace a través de un servidor, el nuestro o el tuyo, y guarda cada versión. Cuándo gana cada diseño."
 order: 8
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Las dos herramientas resuelven el mismo problema y discrepan en la arquitectura, que es lo único que merece compararse. Esta página pone los dos diseños uno al lado del otro, incluidos los casos en los que el otro es mejor respuesta.
@@ -11,14 +11,14 @@ Las dos herramientas resuelven el mismo problema y discrepan en la arquitectura,
 
 **OpenSave** es punto a punto. Tus máquinas hablan entre ellas directamente y no hay nada en medio. No hay cuenta ni almacenamiento que pagar, y opcionalmente puede espejar una copia en una nube que ya tengas.
 
-**Hoard** sincroniza a través de un servidor. Ese servidor es Hoard One, gestionado por nosotros, o `hoard-server` corriendo en tu propio PC o NAS. Tu partida sube cuando dejas de jugar y baja cuando otra máquina la pide.
+**Hoard** sincroniza a través de un servidor. Ese servidor es Hoard One, gestionado por nosotros, o `hoard-server` corriendo en tu propio PC o NAS. Tu partida sube cada vez que el juego la escribe, y baja cuando otra máquina la pide.
 
 Todo lo demás sale de esa única decisión.
 
 ## Qué te da tener un servidor
 
 - **La otra máquina no tiene que estar encendida.** Terminas en el sobremesa, el portátil sigue cerrado una semana, y la última partida está esperando cuando lo abres. Lo punto a punto necesita los dos extremos despiertos a la vez, que es perfecto en un escritorio e incómodo con una consola de mano que coges dos veces al mes.
-- **Un historial de versiones, no sólo el último estado.** Cada sesión es una versión a la que puedes volver. Es la parte que importa el día que un mod se come tu mundo o una partida se escribe a medias: una sincronización directa copia fielmente el fichero roto al otro PC.
+- **Un historial de versiones, no sólo el último estado.** Cada partida guardada es una versión a la que puedes volver. Es la parte que importa el día que un mod se come tu mundo o una partida se escribe a medias: una sincronización directa copia fielmente el fichero roto al otro PC.
 - **Una copia que sobrevive al hardware.** Que tus dos PC mueran en el mismo piso no es un escenario exótico. Una partida que sólo existió en esas dos máquinas se muere con ellas.
 - **Nada que preparar en la red.** Ningún NAT que atravesar, ningún puerto que abrir, ninguna condición de estar los dos en la misma LAN.
 
@@ -66,11 +66,11 @@ Sí. Levanta `hoard-server` en un PC o en un NAS y tus partidas van de tu máqui
 
 ### ¿Tienen que estar los dos PC encendidos a la vez?
 
-No, y ésa es la ventaja práctica de sincronizar a través de un servidor. Tu partida sube cuando dejas de jugar y baja cuando la otra máquina la pida.
+No, y ésa es la ventaja práctica de sincronizar a través de un servidor. Tu partida sube cada vez que el juego la escribe y baja cuando la otra máquina la pida.
 
 ### ¿Una transferencia directa guarda historial de versiones?
 
-No de por sí: copiar un fichero a otra máquina te deja el estado actual en las dos. Hoard captura cada sesión como una versión, y eso es lo que hace posible volver atrás desde una partida corrupta.
+No de por sí: copiar un fichero a otra máquina te deja el estado actual en las dos. Hoard guarda cada partida como una versión, y eso es lo que hace posible volver atrás desde una partida corrupta.
 
 ### ¿Hoard también es open source?
 

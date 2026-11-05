@@ -2,7 +2,7 @@
 title: "Save corrompido? Como o recuperar"
 description: "Um save que não carrega nem sempre está perdido. Onde encontrar uma cópia boa (backups do jogo, Steam Cloud, Windows, OneDrive) e como não voltar a perdê-lo."
 order: 12
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Um save que não carrega raramente está perdido de vez. Na maior parte das vezes existe uma cópia boa algures: um backup feito pelo próprio jogo, a cópia do Steam Cloud, uma versão anterior guardada pelo Windows ou pelo OneDrive, ou o save noutro PC. Mas a ordem importa, porque um passo errado pode escrever a cópia estragada por cima da boa. Começa por aqui.
@@ -73,7 +73,7 @@ Para alguns jogos populares, a comunidade tem editores de saves ou ferramentas d
 
 ## Nunca mais ficar sem save
 
-Todas as recuperações acima dependem da sorte: que o jogo tenha feito um backup, ou que o Steam ainda não tenha sincronizado. Um backup com versões tira a sorte da equação. É o que faz o Hoard: faz backup de cada save automaticamente depois de deixares de jogar, assim que a pasta fica parada, por isso um backup nunca é um ficheiro a meio. Todas as versões ficam guardadas. Quando algo se estraga, abres o **Histórico** do jogo e restauras a última boa com um clique; o teu save atual é guardado primeiro, por isso até isso se pode desfazer. E como o Hoard também mantém os saves sincronizados, a cópia no portátil ou na Steam Deck nunca é uma cópia antiga e esquecida: todas as tuas máquinas trabalham com o mesmo histórico.
+Todas as recuperações acima dependem da sorte: que o jogo tenha feito um backup, ou que o Steam ainda não tenha sincronizado. Um backup com versões tira a sorte da equação. É o que faz o Hoard: faz backup de cada save automaticamente sempre que o jogo o escreve, assim que a pasta fica parada, por isso um backup nunca é um ficheiro a meio. Todas as versões ficam guardadas. Quando algo se estraga, abres o **Histórico** do jogo e restauras a última boa com um clique; o teu save atual é guardado primeiro, por isso até isso se pode desfazer. E como o Hoard também mantém os saves sincronizados, a cópia no portátil ou na Steam Deck nunca é uma cópia antiga e esquecida: todas as tuas máquinas trabalham com o mesmo histórico.
 
 Uma dica para perceber quando se estragou: uma queda brusca de tamanho entre duas versões costuma indicar um save truncado. Mais em [como restaurar um save antigo](/guides/restore-a-game-save).
 
@@ -101,4 +101,4 @@ O jogo começou a escrevê-lo e nunca acabou: um crash, um corte de luz ou o dis
 
 ### Como evito que volte a acontecer?
 
-Com backups com versões feitos quando o jogo não está aberto. O Hoard faz isso automaticamente depois de cada sessão e guarda cada versão, por isso podes voltar a qualquer uma.
+Com backups com versões que nunca são feitos a meio de uma escrita. O Hoard faz isso automaticamente sempre que o jogo grava, à espera de que o ficheiro esteja completo, e guarda cada versão, por isso podes voltar a qualquer uma.

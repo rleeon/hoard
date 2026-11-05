@@ -1,8 +1,8 @@
 ---
 title: "Come fare il backup dei salvataggi automaticamente"
-description: "Backup automatico dei salvataggi PC dopo ogni sessione e sincronizzazione con gli altri PC e lo Steam Deck, con cronologia: non perdi più nulla."
+description: "Backup automatico dei salvataggi PC a ogni salvataggio e sincronizzazione con gli altri PC e lo Steam Deck, con cronologia: non perdi più nulla."
 order: 1
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Perdere un salvataggio significa perdere ore di progressi. Hoard fa il backup dei tuoi salvataggi PC automaticamente, conserva una cronologia completa delle versioni così puoi sempre tornare indietro, e tiene ogni salvataggio sincronizzato tra i tuoi PC e lo Steam Deck, così riprendi da dove avevi lasciato.

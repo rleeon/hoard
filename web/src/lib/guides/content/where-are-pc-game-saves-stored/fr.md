@@ -2,7 +2,7 @@
 title: "Où sont stockées les sauvegardes des jeux PC ? Tous les emplacements"
 description: "Où les jeux PC rangent leurs sauvegardes sous Windows, Steam Deck, Linux et Mac, les launchers à part, et comment trouver celles de n'importe quel jeu."
 order: 11
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Il n'y a pas un seul dossier. Sous Windows, presque tous les jeux sauvegardent à l'un de six endroits : `Documents`, `Saved Games`, l'un des trois dossiers `AppData`, le `userdata` de Steam ou leur propre dossier d'installation. C'est le moteur et le développeur qui décident, pas la boutique où vous l'avez acheté. Cette page liste tous les emplacements courants, les launchers qui ajoutent leur propre couche, et une méthode rapide pour trouver les sauvegardes de n'importe quel jeu, même un jeu que personne n'a documenté.
@@ -61,7 +61,7 @@ Quand un jeu ne figure sur aucune liste, trois astuces le retrouvent en quelques
 
 ## Ou laissez quelqu'un les trouver pour vous
 
-Hoard lit cette même base communautaire, qui couvre des milliers de jeux, et vérifie chaque chemin possible sur votre machine : préfixes Proton, Heroic et Lutris, le `Documents` de OneDrive, émulateurs, installations portables. Ce qu'il trouve est sauvegardé automatiquement chaque fois que vous arrêtez de jouer, chaque version est conservée, et tout reste synchronisé entre vos PC et votre Steam Deck. Ce qu'il manque, vous l'ajoutez en indiquant le dossier une fois. Voir [comment sauvegarder ses parties automatiquement](/guides/back-up-game-saves).
+Hoard lit cette même base communautaire, qui couvre des milliers de jeux, et vérifie chaque chemin possible sur votre machine : préfixes Proton, Heroic et Lutris, le `Documents` de OneDrive, émulateurs, installations portables. Ce qu'il trouve est sauvegardé automatiquement à chaque sauvegarde du jeu, chaque version est conservée, et tout reste synchronisé entre vos PC et votre Steam Deck. Ce qu'il manque, vous l'ajoutez en indiquant le dossier une fois. Voir [comment sauvegarder ses parties automatiquement](/guides/back-up-game-saves), ou cherchez un jeu dans les [emplacements de sauvegarde de centaines de jeux populaires](/saves).
 
 Il existe aussi des pages avec les chemins exacts de quelques jeux populaires : [Cyberpunk 2077](/guides/cyberpunk-2077-save-location), [Baldur's Gate 3](/guides/baldurs-gate-3-save-location), [Palworld](/guides/palworld-save-location), [Crimson Desert](/guides/crimson-desert-save-location) et [Marvel's Spider-Man 2](/guides/spider-man-2-save-location).
 

@@ -2,7 +2,7 @@
 title: "Spielstände zwischen Windows und Linux auf einem Dual-Boot-PC synchronisieren"
 description: "Ein PC, zwei Systeme, zwei Speicherordner: Spielstände automatisch zwischen Windows und Linux synchronisieren, warum NTFS-Teilen bricht, und die Fallen."
 order: 18
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Auf einem Dual-Boot-PC hat dasselbe Spiel zwei getrennte Spielstände: einen in deinem Windows-Benutzerordner und einen in einem Proton-Präfix unter Linux. Steam Cloud verbindet die beiden bei Spielen, die es unterstützen; alles andere läuft beim ersten Systemwechsel auseinander. Hoard hält sie automatisch synchron. Installiere es auf beiden Systemen mit demselben Konto, und der Spielstand jedes Spiels folgt dir, egal welches System du startest.
@@ -41,7 +41,7 @@ Jedes System seine Spielstände dort ablegen zu lassen, wo das Spiel sie erwarte
 
 Bei zwei getrennten PCs wartet der Spielstand auf dem Server, bis das andere Gerät ihn abholt. Auf einem Dual-Boot-PC ist das „andere Gerät“ derselbe Rechner nach einem Neustart, und das ändert eine Gewohnheit.
 
-Hoard lädt einen Spielstand hoch, sobald das Spiel geschlossen ist und der Ordner zur Ruhe kommt. **Beendest du das Spiel und startest sofort neu, ist der Upload womöglich noch nicht passiert**, und das andere System startet ohne deinen letzten Fortschritt. Es holt das nach, wenn du das nächste Mal ins erste System bootest, aber bis dahin hast du vielleicht auf dem alten Spielstand weitergespielt.
+Hoard lädt einen Spielstand ein paar Sekunden, nachdem das Spiel ihn geschrieben hat, hoch, sobald der Ordner zur Ruhe kommt. **Speicherst du und startest sofort neu, ist der Upload womöglich noch nicht passiert**, und das andere System startet ohne deinen letzten Fortschritt. Es holt das nach, wenn du das nächste Mal ins erste System bootest, aber bis dahin hast du vielleicht auf dem alten Spielstand weitergespielt.
 
 Also: Spiel beenden, Hoard einen Moment geben, in der App prüfen, dass der Spielstand aktuell ist, und dann neu starten.
 

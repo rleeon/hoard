@@ -2,7 +2,7 @@
 title: "How to back up and sync emulator saves (RetroArch, Dolphin, PCSX2)"
 description: "Back up and sync emulator saves between PCs and Steam Deck: RetroArch, Dolphin, PCSX2, DuckStation and more, with version history and where each one saves."
 order: 6
-updated: 2026-10-18
+updated: 2026-11-05
 related: sync-game-saves-across-pcs, back-up-game-saves, ludusavi-alternative, retroarch-save-sync, pcsx2-cloud-saves, dolphin-cloud-saves
 ---
 
@@ -24,7 +24,7 @@ Because Hoard locates save folders using the same community database that powers
 
 1. **Install Hoard** for Windows, macOS or Linux and sign in.
 2. Open the **Library** and add your emulator, or add its saves/states folder manually if you've changed the default location.
-3. Keep **automatic mode** on. Hoard backs up after each session and keeps a versioned history.
+3. Keep **automatic mode** on. Hoard backs up every time the emulator saves, and again when you quit, and keeps a versioned history.
 4. Install Hoard on your other PCs with the same account to sync those saves everywhere — see [syncing saves across PCs](/guides/sync-game-saves-across-pcs).
 
 ## Ludusavi for emulators?
@@ -108,7 +108,7 @@ Saves sit deep under `sdmc/Nintendo 3DS/<id0>/<id1>/title/…`, and `id0`/`id1` 
 
 On a Steam Deck the emulators usually come from Flatpak, so their folders sit under `~/.var/app/<id>/` rather than the usual `~/.config` or `~/.local/share`. EmuDeck gathers everything under `~/Emulation/saves/`, one folder per emulator. Either way, add the folder once and Hoard watches it.
 
-The part that matters on a handheld: Hoard's engine runs as a background service, so it backs up after you quit a game in Game Mode without any window open. Pick the Deck up after a session on the desktop and the save is already there.
+The part that matters on a handheld: Hoard's engine runs as a background service, so it backs up in Game Mode, while you play and when you quit, without any window open. Pick the Deck up after a session on the desktop and the save is already there.
 
 ## Save files and save states are not the same thing
 
@@ -149,7 +149,7 @@ Yes, a built-in Cloud Sync that needs a WebDAV server you run or rent. Hoard is 
 
 ### Does it work on a Steam Deck in Game Mode?
 
-Yes. The engine runs as a background service, so saves are backed up when you quit a game, with no window open. Flatpak and EmuDeck folders work the same as any other.
+Yes. The engine runs as a background service, so saves are backed up while you play and when you quit, with no window open. Flatpak and EmuDeck folders work the same as any other.
 
 ### My emulator is a portable install. Does that work?
 

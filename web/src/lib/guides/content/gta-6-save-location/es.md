@@ -2,7 +2,7 @@
 title: "Dónde están las partidas de GTA 6: PS5, Xbox y PC (lo que se sabe)"
 description: "GTA 6 sale en PS5 y Xbox el 19 de noviembre de 2026, sin versión de PC por ahora. Dónde están las partidas en consola, cómo protegerlas y qué esperar en PC."
 order: 25
-updated: 2026-10-17
+updated: 2026-11-05
 ---
 
 GTA 6 sale el **19 de noviembre de 2026, solo en PS5 y Xbox Series X|S**. Todavía no hay versión de PC: Rockstar no ha anunciado fecha, y lo único que circula es un informe de octubre de 2026, sin confirmar, que la sitúa a principios de 2027. Hasta entonces, las partidas de GTA 6 viven en la consola y en su nube, no en una carpeta que puedas abrir. Debajo tienes cómo se guardan, cómo protegerlas y dónde acabarán muy probablemente las partidas de PC, a juzgar por los últimos lanzamientos de Rockstar en PC. En cuanto salga la versión de PC, esta página tendrá la ruta real.
@@ -40,7 +40,7 @@ Rockstar no ha dicho cómo gestionará GTA 6 las partidas en PC. Usar la misma n
 
 ## Prepárate para la versión de PC con Hoard
 
-[Hoard](/download) copia la carpeta de partidas cada vez que dejas de jugar y guarda todas las versiones, así que una partida corrupta o una misión que prefieres repetir están a una restauración de distancia. También mantiene la carpeta sincronizada entre tus PC y una Steam Deck, y ya funciona con GTA V y Red Dead Redemption 2.
+[Hoard](/download) copia la carpeta de partidas cada vez que el juego guarda y otra vez al salir, y guarda todas las versiones, así que una partida corrupta o una misión que prefieres repetir están a una restauración de distancia. También mantiene la carpeta sincronizada entre tus PC y una Steam Deck, y ya funciona con GTA V y Red Dead Redemption 2.
 
 Cuando GTA 6 llegue a PC:
 

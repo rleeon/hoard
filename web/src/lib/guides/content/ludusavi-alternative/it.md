@@ -2,7 +2,7 @@
 title: "Alternativa a Ludusavi: sincronizzazione cloud automatica dei salvataggi"
 description: "Ludusavi è ottimo per i backup locali. Hoard aggiunge il sync automatico tra PC e Steam Deck con cronologia, sullo stesso database dei salvataggi."
 order: 5
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Se cerchi un modo per fare backup e sincronizzare i tuoi salvataggi, probabilmente hai trovato **Ludusavi** — ed è eccellente. Questa guida è un confronto onesto per aiutarti a scegliere lo strumento giusto, e spiega dove si inserisce Hoard se vuoi sincronizzazione cloud automatica tra macchine.
@@ -19,7 +19,7 @@ Il punto in cui quasi tutti si bloccano con qualsiasi strumento locale è la **s
 
 Hoard la trasforma in **sincronizzazione cloud gestita**:
 
-- **Accedi e via.** Niente remoti Rclone, niente script. Hoard carica il salvataggio dopo che giochi e scarica l'ultima versione prima che inizi, su ogni PC del tuo account.
+- **Accedi e via.** Niente remoti Rclone, niente script. Hoard carica il salvataggio ogni volta che il gioco lo scrive e scarica l'ultima versione prima che inizi, su ogni PC del tuo account.
 - **Cronologia versionata nel cloud.** Ogni backup viene conservato, quindi puoi tornare a qualsiasi salvataggio precedente — anche dopo un guasto del disco o un'installazione pulita.
 - **Consapevole dei conflitti.** Hoard confronta i timestamp e conserva una copia locale di tutto ciò che sostituisce, così una sincronizzazione non distrugge mai i progressi in silenzio.
 - **Sempre open source e self-hostable.** Come Ludusavi, nessun vincolo — usa Hoard One o ospita il server tu stesso.
@@ -31,7 +31,8 @@ Hoard la trasforma in **sincronizzazione cloud gestita**:
 | Backup locali | Sì | Sì |
 | Rilevamento dei salvataggi | Manifest comunitario | Lo stesso manifest, più le librerie Steam, i processi in esecuzione e una scansione del disco |
 | Spazio cloud | Il tuo, tramite Rclone | Incluso, oppure il tuo server |
-| Sincronizzazione tra PC | Manuale: backup qui, ripristino là | Automatica, dopo che smetti di giocare e prima che inizi |
+| Sincronizzazione tra PC | Manuale: backup qui, ripristino là | Automatica, a ogni salvataggio e prima che inizi |
+| L'altro PC può essere spento | Solo con un remoto Rclone | Sì, il salvataggio aspetta sul server |
 | Cronologia versioni | Backup locali che poti tu | Ogni versione nel cloud, deduplicata per hash del contenuto |
 | Emulatori | Sì | Sì |
 | Interfacce | App desktop e CLI | App desktop, CLI e overlay in gioco |

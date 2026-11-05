@@ -2,7 +2,7 @@
 title: "Marvel's Spider-Man 2 のセーブデータの場所（PC・Steam Deck）"
 description: "Marvel's Spider-Man 2のPC版セーブデータの場所、長い数字のフォルダーの正体、OneDriveの落とし穴、Steam Deckでのパス、バックアップと同期の方法を解説。"
 order: 22
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 PC 版の Marvel's Spider-Man 2 は、セーブデータを `ドキュメント\Marvel's Spider-Man 2\` の中の、長い数字の名前のサブフォルダーに保存します。Steam では、その数字はあなたの Steam ID です。以下では、それが実際に意味すること、OneDrive の落とし穴、Steam Deck でのパス、そしてセーブをバックアップしながら PC と Steam Deck で同期する方法を説明します。
@@ -41,7 +41,7 @@ PC 版を手がけたスタジオ Nixxes は、セーブフォルダーを `ド�
 
 ## Hoard で自動バックアップと同期
 
-[Hoard](/download) は、プレイをやめるたびにセーブフォルダーをバックアップし、すべてのバージョンを保持します。さらに PC と Steam Deck の間で同期するので、どちらでも続きから遊べます。
+[Hoard](/download) は、ゲームがセーブするたびと終了時にセーブフォルダーをバックアップし、すべてのバージョンを保持します。さらに PC と Steam Deck の間で同期するので、どちらでも続きから遊べます。
 
 1. Hoard をインストールしてサインインするか、[自分のサーバー](/guides/self-host-hoard)を指定します。
 2. **ライブラリ** を開き、Spider-Man 2 に表示されているフォルダーが `ドキュメント`（または `OneDrive\Documents`）の下のものか確認します。別の場所を指していたら、そのフォルダーに変更してください。

@@ -2,7 +2,7 @@
 title: "Onde ficam os saves de Cyberpunk 2077 (PC e Steam Deck)"
 description: "Onde o Cyberpunk 2077 guarda os saves no Windows, Steam Deck e Mac, o que há em cada pasta e como fazer backup e sincronizá-los entre PCs."
 order: 20
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 No Windows, o Cyberpunk 2077 guarda os saves em `%USERPROFILE%\Saved Games\CD Projekt Red\Cyberpunk 2077`, uma pasta por save. Essa é a resposta curta. O resto da página cobre os caminhos na Steam Deck e no Mac, o que há realmente na pasta e como mantê-la com backup e sincronizada entre o PC e a Steam Deck.
@@ -45,7 +45,7 @@ Funciona, mas só com a frequência com que te lembrares, e só tens a cópia da
 
 ## Backup e sincronização automáticos com o Hoard
 
-O [Hoard](/download) faz backup da pasta de saves sempre que deixas de jogar e guarda todas as versões, por isso um save corrompido ou um autosave que já rodou estão a um clique. Também sincroniza a pasta entre os teus PCs e uma Steam Deck.
+O [Hoard](/download) faz backup da pasta de saves sempre que o jogo grava e outra vez quando sais, e guarda todas as versões, por isso um save corrompido ou um autosave que já rodou estão a um clique. Também sincroniza a pasta entre os teus PCs e uma Steam Deck.
 
 1. Instala o Hoard e inicia sessão, ou aponta-o para [o teu próprio servidor](/guides/self-host-hoard).
 2. Abre a **Biblioteca**. O Cyberpunk é detetado a partir da tua biblioteca Steam e da base de dados comunitária de saves.

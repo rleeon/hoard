@@ -2,7 +2,7 @@
 title: "Sincronizar saves entre ROG Ally, Legion Go, MSI Claw e o teu PC"
 description: "As consolas portáteis com Windows como a ROG Ally, a Legion Go e a MSI Claw são PCs. Sincroniza os saves delas com o teu desktop automaticamente, com histórico."
 order: 19
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 A ROG Ally, a Legion Go e a MSI Claw correm Windows, por isso para um jogo são só mais um PC. E esse é precisamente o problema: o teu desktop e a tua portátil guardam cada um os seus próprios saves. O Steam Cloud cobre parte da tua biblioteca e a nuvem da Xbox cobre o Game Pass, mas tudo o resto fica na máquina onde jogaste. O Hoard mantém os saves sincronizados entre a portátil e o desktop automaticamente: deixas de jogar numa e o jogo espera-te na outra, com todas as versões anteriores guardadas.
@@ -28,7 +28,7 @@ O motor de sincronização é um serviço em segundo plano que arranca com o Win
 
 ### Suspender não é sair
 
-Numa portátil é muito fácil carregar no botão de ligar e arrumá-la com o jogo aberto. O Hoard só faz backup depois de o jogo fechar, porque um jogo a correr pode estar a meio de escrever o save, e nunca troca o save de um jogo aberto. Se suspendes a portátil e depois jogas no desktop, o progresso da portátil ainda não foi enviado. **Fecha o jogo antes de mudares de máquina.**
+Numa portátil é muito fácil carregar no botão de ligar e arrumá-la com o jogo aberto. O Hoard envia cada save alguns segundos depois de o jogo o escrever, também enquanto jogas, mas nunca troca o save de um jogo aberto. Se suspendes a portátil com o jogo aberto e depois jogas no desktop, a portátil só recebe o save mais recente do desktop quando fechares o jogo nela. **Fecha o jogo antes de mudares de máquina.**
 
 ### Jogos no cartão microSD
 

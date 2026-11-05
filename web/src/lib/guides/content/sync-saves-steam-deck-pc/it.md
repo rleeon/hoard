@@ -2,7 +2,7 @@
 title: "Come sincronizzare i salvataggi tra Steam Deck e PC"
 description: "Sincronizza in automatico i salvataggi di Steam Deck e PC, anche giochi fuori da Steam, emulatori e senza Steam Cloud. Configurazione, percorsi, trappole."
 order: 10
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Per i giochi Steam con Steam Cloud, il tuo Deck e il tuo PC condividono già i salvataggi. Tutto il resto ha bisogno di una mano: i giochi in cui lo sviluppatore non ha mai attivato Steam Cloud, i giochi Epic e GOG avviati con Heroic, gli emulatori e qualsiasi cosa tu abbia aggiunto come gioco non Steam. Hoard li copre tutti in automatico. Quando chiudi un gioco su una macchina, salva la partita, e l'altra macchina la scarica, con ogni versione precedente conservata nel caso qualcosa vada storto.
@@ -44,7 +44,7 @@ Hoard Setup mette l'app nella tua cartella home e il motore di sincronizzazione 
 
 ## Com'è una giornata normale
 
-La sera giochi sul PC ed esci. Hoard aspetta che il gioco sia chiuso e che il salvataggio smetta di cambiare, poi lo carica. La mattina dopo prendi il Deck. Appena è online, Hoard vede la versione più recente e la scrive nel prefisso di Proton. Avvii il gioco e continui. Quando esci sul Deck, succede la stessa cosa al contrario.
+La sera giochi sul PC. Ogni volta che il gioco salva, Hoard carica il salvataggio pochi secondi dopo, e ancora una volta quando esci. La mattina dopo prendi il Deck. Appena è online, Hoard vede la versione più recente e la scrive nel prefisso di Proton. Avvii il gioco e continui. Quando esci sul Deck, succede la stessa cosa al contrario.
 
 Nessuna delle due macchine deve essere accesa insieme all'altra. Il salvataggio aspetta sul server finché l'altra non lo chiede.
 
@@ -52,7 +52,7 @@ Nessuna delle due macchine deve essere accesa insieme all'altra. Il salvataggio 
 
 ### Sospendere non è chiudere
 
-Il Deck rende facilissimo premere il tasto di accensione e andarsene con il gioco ancora aperto. Hoard salva una partita solo quando il gioco è chiuso, perché un gioco in esecuzione potrebbe essere a metà della scrittura. E non sostituisce mai il salvataggio di un gioco aperto. Quindi se sospendi il Deck e poi giochi sul PC, i progressi del Deck non sono ancora caricati, e il nuovo salvataggio del PC aspetta che tu chiuda il gioco sul Deck.
+Il Deck rende facilissimo premere il tasto di accensione e andarsene con il gioco ancora aperto. Hoard carica ogni salvataggio pochi secondi dopo che il gioco lo ha scritto, anche mentre giochi, quindi quello che hai salvato prima di sospendere di solito è già sul server, purché il Deck fosse online. Quello che non fa mai è sostituire il salvataggio di un gioco aperto. Quindi se sospendi il Deck e poi giochi sul PC, il nuovo salvataggio del PC aspetta che tu chiuda il gioco sul Deck.
 
 L'abitudine che evita tutto: **chiudi il gioco prima di cambiare macchina.** Se Proton lascia indietro un processo morto dopo la chiusura, cosa che succede spesso, Hoard capisce che il gioco non c'è più e va avanti.
 

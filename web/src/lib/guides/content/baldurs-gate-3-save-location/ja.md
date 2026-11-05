@@ -2,7 +2,7 @@
 title: "バルダーズ・ゲート3（Baldur's Gate 3）のセーブデータの場所（PC・Steam Deck）"
 description: "Baldur's Gate 3のセーブデータがWindows、Steam Deck、Macのどこにあるか、セーブとModや設定の違い、オナーモード、バックアップと同期の方法を解説。"
 order: 23
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Windows では、Baldur's Gate 3 のセーブデータは `%LOCALAPPDATA%\Larian Studios\Baldur's Gate 3\PlayerProfiles\Public\Savegames\Story` にあり、セーブ 1 つにつきフォルダーが 1 つです。Larian が自社のサポート FAQ で案内しているパスです。以下では Steam Deck と Mac のパス、セーブの隣にあるもの、オナーモード、そしてすべてをバックアップしながら PC と Steam Deck で同期する方法を説明します。
@@ -42,13 +42,13 @@ Windows では、Baldur's Gate 3 のセーブデータは `%LOCALAPPDATA%\Larian
 
 ## Hoard で自動バックアップと同期
 
-[Hoard](/download) は、プレイをやめるたびにセーブフォルダーをバックアップし、すべてのバージョンを保持します。Mod の更新やパッチで壊れたセーブも、復元 1 回で戻せます。さらにフォルダーを PC と Steam Deck の間で同期します。
+[Hoard](/download) は、ゲームがセーブするたびと終了時にセーブフォルダーをバックアップし、すべてのバージョンを保持します。Mod の更新やパッチで壊れたセーブも、復元 1 回で戻せます。さらにフォルダーを PC と Steam Deck の間で同期します。
 
 1. Hoard をインストールしてサインインするか、[自分のサーバー](/guides/self-host-hoard)を指定します。
 2. **ライブラリ** を開きます。Baldur's Gate 3 は Steam ライブラリとコミュニティのセーブデータベースから検出されます。
 3. プレイします。終了すると、最初のバージョンが履歴に表示されます。
 
-セッションごとに、すべてのセーブを含むバージョンが追加されます。戻りたいときは履歴を開いて[以前のバージョンを復元](/guides/restore-a-game-save)してください。今 PC にあるものは先にバックアップされるので、古いバージョンを試しても片道切符にはなりません。
+バックアップのたびに、すべてのセーブを含むバージョンが追加されます。戻りたいときは履歴を開いて[以前のバージョンを復元](/guides/restore-a-game-save)してください。今 PC にあるものは先にバックアップされるので、古いバージョンを試しても片道切符にはなりません。
 
 <!-- faq -->
 

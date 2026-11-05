@@ -1,8 +1,8 @@
 ---
 title: "Comment sauvegarder vos parties automatiquement"
-description: "Sauvegardez vos parties PC automatiquement après chaque session et synchronisez-les avec vos autres PC et votre Steam Deck, avec historique des versions."
+description: "Sauvegardez vos parties PC automatiquement à chaque sauvegarde du jeu et synchronisez-les avec vos autres PC et votre Steam Deck, avec historique des versions."
 order: 1
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Perdre une sauvegarde, c'est perdre des heures de progression. Hoard sauvegarde vos parties PC automatiquement, conserve un historique complet des versions pour que vous puissiez toujours revenir en arrière, et garde chaque sauvegarde synchronisée entre vos PC et votre Steam Deck, pour reprendre là où vous vous êtes arrêté.

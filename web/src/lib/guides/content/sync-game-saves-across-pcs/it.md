@@ -2,7 +2,7 @@
 title: "Come sincronizzare i salvataggi tra più PC"
 description: "Gioca su fisso, portatile e Steam Deck senza perdere progressi: sincronizza i salvataggi tra PC in automatico, con cronologia. Passo dopo passo."
 order: 2
-updated: 2026-10-18
+updated: 2026-11-05
 ---
 
 Se giochi su più di un computer — un fisso a casa e un portatile in giro — Hoard mantiene i salvataggi sincronizzati così riprendi sempre da dove avevi lasciato.
@@ -16,13 +16,13 @@ Hoard fa il backup di ogni salvataggio sul tuo cloud e scarica l'ultima versione
 1. Installa **Hoard** su ogni PC su cui giochi (Windows, macOS o Linux).
 2. Accedi con lo **stesso account** su ogni macchina, o collegale allo stesso server self-hosted.
 3. Aggiungi gli stessi giochi alla **Libreria** su ogni PC. Hoard li abbina per gioco, così un salvataggio fatto su uno appare sugli altri.
-4. Tieni attiva la **modalità automatica**. Hoard carica dopo che giochi e scarica l'ultima versione prima che inizi.
+4. Tieni attiva la **modalità automatica**. Hoard carica a ogni salvataggio del gioco e scarica l'ultima versione prima che inizi.
 
 ## Arrivi da Ludusavi?
 
 Ludusavi è un ottimo strumento open source per fare backup e ripristinare salvataggi in locale, e può inviare quei backup a un cloud che configuri tu stesso con Rclone. Ma la sincronizzazione tra dispositivi la imposti a mano: programmare il backup, configurare il remoto, poi ripristinare sull'altro PC prima di giocare.
 
-Hoard trasforma tutto questo in sincronizzazione gestita. Usa gli stessi dati comunitari di posizione di Ludusavi per trovare i tuoi salvataggi, poi carica dopo ogni sessione e scarica l'ultima versione prima della successiva — su ogni PC del tuo account, con cronologia versionata nel cloud. Niente remoti Rclone, niente script. E come Ludusavi, Hoard è open source e può essere self-hosted. Vedi il [confronto completo con Ludusavi](/guides/ludusavi-alternative).
+Hoard trasforma tutto questo in sincronizzazione gestita. Usa gli stessi dati comunitari di posizione di Ludusavi per trovare i tuoi salvataggi, poi carica a ogni salvataggio e scarica l'ultima versione prima che inizi, su ogni PC del tuo account, con cronologia versionata nel cloud. Niente remoti Rclone, niente script. E come Ludusavi, Hoard è open source e può essere self-hosted. Vedi il [confronto completo con Ludusavi](/guides/ludusavi-alternative).
 
 ## Evitare i conflitti
 
@@ -61,7 +61,7 @@ I salvataggi sì. Le impostazioni, di default, no, ed è voluto. La Steam Deck m
 
 Per questo Hoard classifica ciò che trova in una cartella di salvataggio:
 
-- **I salvataggi** si sincronizzano tra le macchine, a ogni sessione.
+- **I salvataggi** si sincronizzano tra le macchine, ogni volta che il gioco ne scrive uno.
 - **I file di impostazioni** (`graphics.ini`, `settings.cfg` e simili) restano in ogni backup, quindi non si perdono mai, ma un ripristino non li scrive sopra quelli di un'altra macchina. Se la voce del gioco nel database dei salvataggi dice che un `.ini` *è* il salvataggio, viene trattato come salvataggio.
 - **Il superfluo**, come crash dump, file temporanei, log del motore tipo `Player.log` e la contabilità di Steam, non viene salvato affatto, così aprire un gioco non crea da solo una nuova versione.
 
@@ -90,11 +90,11 @@ Tre nel piano gratuito, illimitati con Pro e illimitati in self-hosting: il tuo 
 
 ### Le due macchine devono essere accese nello stesso momento?
 
-No. Il salvataggio sale al server quando smetti di giocare e scende quando l'altra macchina lo chiede: il secondo PC può restare spento una settimana e ricevere comunque l'ultima versione all'accensione.
+No. Il salvataggio sale al server ogni volta che il gioco lo scrive e scende quando l'altra macchina lo chiede: il secondo PC può restare spento una settimana e ricevere comunque l'ultima versione all'accensione.
 
 ### E se gioco offline?
 
-Nessun problema. Lo snapshot viene preso in locale quando smetti di giocare e parte da solo appena la macchina torna online.
+Nessun problema. Hoard tiene traccia di cosa cambia mentre giochi offline e carica da solo l'ultimo salvataggio appena la macchina torna online.
 
 ### Sincronizza anche mod e impostazioni?
 

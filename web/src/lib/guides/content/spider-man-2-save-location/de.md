@@ -2,7 +2,7 @@
 title: "Marvel's Spider-Man 2: Speicherort der Spielstände (PC & Steam Deck)"
 description: "Wo Marvel's Spider-Man 2 seine PC-Spielstände ablegt, was der Ordner mit der langen Zahl ist, die OneDrive-Falle, der Steam-Deck-Pfad, Backup und Sync."
 order: 22
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 Auf dem PC legt Marvel's Spider-Man 2 seine Spielstände in `Dokumente\Marvel's Spider-Man 2\` ab, in einem Unterordner mit einer langen Zahl. Bei Steam ist diese Zahl deine Steam-ID. Darunter erfährst du, was das praktisch bedeutet, die OneDrive-Falle, den Pfad auf dem Steam Deck und wie du die Spielstände gesichert und zwischen PC und Steam Deck synchron hältst.
@@ -41,7 +41,7 @@ Ja, Steam Cloud, die die neuesten Spielstände zwischen Rechnern mit demselben S
 
 ## Automatisch sichern und synchronisieren mit Hoard
 
-[Hoard](/download) sichert den Spielstand-Ordner jedes Mal, wenn du aufhörst zu spielen, und behält jede Version. Außerdem synchronisiert es ihn zwischen deinen PCs und einem Steam Deck, sodass das Spiel auf beiden dort weitermacht, wo du aufgehört hast.
+[Hoard](/download) sichert den Spielstand-Ordner bei jedem Speichern und noch einmal beim Beenden und behält jede Version. Außerdem synchronisiert es ihn zwischen deinen PCs und einem Steam Deck, sodass das Spiel auf beiden dort weitermacht, wo du aufgehört hast.
 
 1. Installiere Hoard und melde dich an, oder richte es auf [deinen eigenen Server](/guides/self-host-hoard).
 2. Öffne die **Bibliothek** und prüfe, dass der für Spider-Man 2 angezeigte Ordner der unter `Dokumente` (oder `OneDrive\Documents`) ist. Zeigt er woandershin, ändere ihn auf diesen Ordner.
