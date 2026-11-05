@@ -1,0 +1,1 @@
+import{ad as c,bm as o,aX as d,a3 as i,b0 as m}from"./DH8B-riE.js";function u(e,n,a){c(()=>{var r=o(()=>n(e,a==null?void 0:a())||{});if(a&&(r!=null&&r.update)){var s=!1,t={};d(()=>{var f=a();i(f),s&&m(t,f)&&(t=f,r.update(f))}),s=!0}if(r!=null&&r.destroy)return()=>r.destroy()})}export{u as a};
