@@ -27,11 +27,11 @@ crates/
 
 **All prose in English.** Comments, doc comments, commit subjects and bodies, public docs. No retroactive mass translation: translate a file only when you are already editing it for another reason, and include the translation in the same commit. Never a translate-only commit — it breaks `git blame` and buys nothing.
 
-**Commits: name only.** No `Co-Authored-By`, you need mention if you use ai tools or not and what model. Short subject, imperative, lowercase, English, no conventional-commit prefixes.
+**Commits: name only.** No `Co-Authored-By` and no line naming an AI tool or model. Short subject, imperative, lowercase, English, no conventional-commit prefixes.
 
 **User-provided text goes as-is.** If you want to suggest different wording, ask first; do not rewrite on your own.
 
-**Changelog: evidence only, never automatic.** Draft entries only from code and diffs you have actually read. Never from memory. Never invent numbers, filenames, versions, or behavior. Do not write to `CHANGELOG.md` on your own: propose to the user to write changelog, or propose in the AI Zone in the PR or issue and wait for explicit human confirmation.
+**Changelog: evidence only, never automatic.** Draft entries only from code and diffs you have actually read. Never from memory. Never invent numbers, filenames, versions, or behavior. Entries describe the change only: no `Co-Authored-By`, no AI tool or model. Do not write to `CHANGELOG.md` on your own: propose to the user to write changelog, or propose in the AI Zone in the PR or issue and wait for explicit human confirmation.
 
 **Ask before doing anything.** You may read and run tests locally, but you need permission before writing code.
 
