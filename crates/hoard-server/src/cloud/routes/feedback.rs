@@ -56,15 +56,18 @@ fn throttled(retry_after: u64) -> Response {
         .into_response()
 }
 
-/// Leftmost `X-Forwarded-For`, the same trust the cloud rate limiter already
-/// gives it, and the peer when there is none.
-fn origin(headers: &HeaderMap, peer: Option<SocketAddr>) -> String {
-    let forwarded = headers
-        .get("x-forwarded-for")
+/// The address the per-IP limit keys on: `client_ip_header` when the proxy in
+/// front sets it (`fly-client-ip` on Fly), the peer otherwise. Not
+/// `X-Forwarded-For`: Fly passes its left end on as the client wrote it, so a
+/// new value per report walked past both per-address caps.
+fn origin(headers: &HeaderMap, peer: Option<SocketAddr>, client_ip_header: Option<&str>) -> String {
+    let claimed = client_ip_header
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+        .and_then(|h| headers.get(h))
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
         .and_then(|v| v.trim().parse::<std::net::IpAddr>().ok());
-    match forwarded.or(peer.map(|p| p.ip())) {
+    match claimed.or(peer.map(|p| p.ip())) {
         Some(ip) => crate::clientip::throttle_bucket(ip),
         None => "unknown".into(),
     }
@@ -118,7 +121,11 @@ pub async fn create(
         ));
     }
 
-    let ip_hash = feedback::sha256_hex(&origin(&headers, peer.map(|c| c.0)));
+    let ip_hash = feedback::sha256_hex(&origin(
+        &headers,
+        peer.map(|c| c.0),
+        state.config.server.rate_limit.client_ip_header.as_deref(),
+    ));
     let recent = feedback::recent(&state.pool, &ip_hash).await?;
     if recent.ip_hour >= PER_IP_HOUR || recent.all_hour >= ALL_HOUR {
         return Ok(throttled(3600));

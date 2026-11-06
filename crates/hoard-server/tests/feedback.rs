@@ -116,7 +116,9 @@ async fn state_for(pool: PgPool, s3: bool) -> CloudState {
             ),
     )
     .expect("write config");
-    let config = hoard_server::config::Config::load(&path).expect("load config");
+    let mut config = hoard_server::config::Config::load(&path).expect("load config");
+    // As on Fly, where `deploy/fly/fly.toml` sets it.
+    config.server.rate_limit.client_ip_header = Some("fly-client-ip".into());
     let r2 = hoard_server::cloud::r2::R2Store::from_config(
         &config.cloud.as_ref().expect("cloud section").r2,
     )
@@ -128,7 +130,7 @@ async fn state_for(pool: PgPool, s3: bool) -> CloudState {
 /// Every test gets its own made-up address, so their throttles never meet.
 fn from(ip: &str) -> HeaderMap {
     let mut h = HeaderMap::new();
-    h.insert("x-forwarded-for", HeaderValue::from_str(ip).unwrap());
+    h.insert("fly-client-ip", HeaderValue::from_str(ip).unwrap());
     h
 }
 
@@ -299,6 +301,32 @@ async fn one_address_is_throttled_after_five_an_hour() {
     assert_eq!(sixth.headers()["retry-after"], "3600");
     // Somebody else is not affected.
     created(create(&state, &random_ip(), report(vec![])).await).await;
+}
+
+/// The left end of `X-Forwarded-For` is the client's to write, so a new one
+/// per report must not buy a fresh count.
+#[tokio::test]
+async fn a_fresh_forwarded_for_does_not_reset_the_count() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool, false).await;
+    let ip = random_ip();
+    let peer: Option<ConnectInfo<SocketAddr>> = None;
+    for i in 0..6 {
+        let mut h = from(&ip);
+        h.insert(
+            "x-forwarded-for",
+            HeaderValue::from_str(&random_ip()).unwrap(),
+        );
+        let resp = routes::create(State(state.clone()), peer, h, Json(report(vec![])))
+            .await
+            .expect("create runs");
+        let want = if i < 5 {
+            StatusCode::OK
+        } else {
+            StatusCode::TOO_MANY_REQUESTS
+        };
+        assert_eq!(resp.status(), want, "report {}", i + 1);
+    }
 }
 
 #[tokio::test]
