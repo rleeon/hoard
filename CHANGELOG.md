@@ -8,6 +8,19 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [Unreleased]
 
+### Changed
+- **The per-IP rate limit only believes `X-Forwarded-For` from a trusted
+  proxy.** Without `server.rate_limit.client_ip_header` it took the leftmost
+  `X-Forwarded-For` entry from whoever sent it, so a client changing it on
+  every request was never limited, and one writing someone else's address
+  used up that person's limit. It now finds the client the same way as the
+  panel's login throttle: the header counts only from a peer listed in
+  `server.trusted_proxies`, and otherwise the connection's own address does.
+  A reverse proxy that reaches the server from another address (a Docker
+  container, another box on the LAN) and is not listed there now puts all of
+  its clients into one bucket; the server logs a warning the first time it
+  sees that. Hoard One is unchanged: it keys on `fly-client-ip`.
+
 ## [1.3.0] - 2026-10-25
 
 Hoard Cloud becomes Hoard One and Pro can be bought as a single year. The

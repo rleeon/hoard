@@ -39,12 +39,12 @@ trusted_proxies = ["loopback"]
 
 # Per-IP request rate limiting (token bucket). This is an in-process safety
 # net against accidental request loops and cheap brute force; a production
-# deployment should ALSO rate-limit at the reverse proxy. Note this limiter
-# still keys off X-Forwarded-For / X-Real-Ip / Forwarded regardless of
-# `trusted_proxies` above, falling back to the connection peer, it is a guard
-# against runaway clients, not against someone deliberately evading it, unless
-# `client_ip_header` below names a header your proxy overwrites. Omit this
-# table to keep the defaults below.
+# deployment should ALSO rate-limit at the reverse proxy. It finds the client
+# address the same way as the login throttle: X-Forwarded-For / X-Real-Ip only
+# from a peer in `trusted_proxies` above, the connection peer otherwise. A
+# proxy missing from that list puts all its clients into one bucket, and the
+# server logs a warning the first time it sees one. Omit this table to keep
+# the defaults below.
 [server.rate_limit]
 # Master switch. Set to false to disable entirely.
 enabled = true
@@ -57,7 +57,7 @@ burst = 60
 # A header your reverse proxy sets on every request, overwriting what the
 # client sent, and the only way in to the server: with nginx,
 # `proxy_set_header X-Real-IP $remote_addr;` and then "x-real-ip". The limit
-# is keyed on it instead of on X-Forwarded-For.
+# is keyed on it instead of on `trusted_proxies` and X-Forwarded-For.
 # client_ip_header = "x-real-ip"
 
 [storage]

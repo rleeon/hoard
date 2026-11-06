@@ -54,7 +54,8 @@ pub struct ServerConfig {
     ///
     /// It is not a nicety: the panel's login throttle counts wrong passwords
     /// per client address, so believing an unvouched header let a direct caller
-    /// rotate it and never hit the limit at all.
+    /// rotate it and never hit the limit at all. The per-IP rate limit keys the
+    /// same way unless `rate_limit.client_ip_header` is set.
     #[serde(default = "default_trusted_proxies")]
     pub trusted_proxies: Vec<String>,
 }
@@ -100,8 +101,9 @@ pub struct RateLimitConfig {
     pub poll_burst: u32,
     /// A header the proxy in front sets on every request, overwriting
     /// whatever the client sent, to key the per-IP limit on instead of
-    /// `X-Forwarded-For`. `fly-client-ip` on Fly. Unset keeps the old keying,
-    /// which any client can steer; see [`crate::ratelimit::ClientKey`].
+    /// `X-Forwarded-For`. `fly-client-ip` on Fly. Unset, the limit keys on
+    /// `X-Forwarded-For` only from a peer in `trusted_proxies`, and on the
+    /// peer itself otherwise; see [`crate::ratelimit::ClientKey`].
     #[serde(default)]
     pub client_ip_header: Option<String>,
 }

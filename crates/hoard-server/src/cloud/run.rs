@@ -328,9 +328,10 @@ pub async fn run(cfg: Config) -> Result<()> {
         app = app.layer(middleware::from_fn(maintenance::guard));
     }
 
-    // Per-IP rate limiting. SmartIpKeyExtractor keys off X-Forwarded-For
-    // (Fly/CDN set it), falling back to the connection peer, which the
-    // `into_make_service_with_connect_info` below provides.
+    // Per-IP rate limiting. Keys on `server.rate_limit.client_ip_header`
+    // (`fly-client-ip` on Fly) when set, otherwise on the client address
+    // through `server.trusted_proxies`, falling back to the connection peer,
+    // which the `into_make_service_with_connect_info` below provides.
     //
     // Inside CORS, not outside it. Layers apply from the inside out, so with the
     // limiter outermost its 429s went out with no CORS headers: it short-circuits
@@ -340,7 +341,16 @@ pub async fn run(cfg: Config) -> Result<()> {
     // matters most. With CORS outside, the preflight is answered by CORS (and
     // stops counting against the budget, which is also right) and the 429 arrives
     // readable.
-    if let Some(rl) = crate::ratelimit::layer(&cfg.server.rate_limit) {
+    let (trusted_proxies, bad_proxies) =
+        crate::clientip::TrustedProxies::parse(&cfg.server.trusted_proxies);
+    for bad in &bad_proxies {
+        tracing::warn!(
+            entry = %bad.entry,
+            why = bad.why,
+            "server.trusted_proxies: ignoring an entry that isn't an address or CIDR"
+        );
+    }
+    if let Some(rl) = crate::ratelimit::layer(&cfg.server.rate_limit, &trusted_proxies) {
         info!(
             per_second = cfg.server.rate_limit.per_second,
             burst = cfg.server.rate_limit.burst,

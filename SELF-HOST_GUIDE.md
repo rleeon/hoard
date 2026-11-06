@@ -399,7 +399,11 @@ Two things worth knowing:
   you named in `server.trusted_proxies` (default: `loopback`). **If your
   reverse proxy is not on the same machine — a container on a Docker network,
   another box on the LAN — add it there**, or every client behind it shares one
-  counter. The server prints what it trusts at startup.
+  counter. The server prints what it trusts at startup. The per-IP rate limit
+  (`[server.rate_limit]`) counts the same way, so an unlisted proxy also puts
+  all of its clients into one rate-limit bucket, and they can get
+  `429 Too Many Requests` when several sync at once. The server logs a warning
+  the first time a request like that arrives.
 - Sessions last `panel.session_days` (14 by default) and the cookie is marked
   `Secure` only when the request arrives over HTTPS, so a plain-HTTP LAN
   instance still works. Put it behind TLS if you expose it to the internet.

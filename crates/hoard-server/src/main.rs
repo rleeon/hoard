@@ -505,13 +505,20 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
     }
     // Per-IP rate limiting (covers /v1/health and every authed route *except*
     // the CAS blob upload). Opt-out via [server.rate_limit].
-    // SmartIpKeyExtractor needs ConnectInfo, which the
-    // `into_make_service_with_connect_info` below supplies.
+    // It keys on the client address the same way the panel's login throttle
+    // does, through `server.trusted_proxies`, and needs the socket peer from
+    // ConnectInfo, which the `into_make_service_with_connect_info` below
+    // supplies.
     //
     // The order (limit first, *then* merge the exempt route) is the whole
     // fix, and it lives inside `apply`, with a test that catches an inversion.
-    let app =
-        hoard_server::ratelimit::apply(&cfg.server.rate_limit, app, blob_upload.with_state(state));
+    let trusted_proxies = state.trusted_proxies.clone();
+    let app = hoard_server::ratelimit::apply(
+        &cfg.server.rate_limit,
+        &trusted_proxies,
+        app,
+        blob_upload.with_state(state),
+    );
 
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "listening");
