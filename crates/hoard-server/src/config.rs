@@ -254,6 +254,25 @@ pub struct PanelConfig {
     /// slow door buys it time.
     #[serde(default = "default_panel_login_throttle_secs")]
     pub login_throttle_secs: u64,
+    /// A header naming the signed-in user, set by an authenticating reverse
+    /// proxy (Authelia or Authentik in forward-auth mode, oauth2-proxy):
+    /// `Remote-User`, `X-Forwarded-User` and the like. Unset, the default, is
+    /// off. Read through [`PanelConfig::trusted_header`], which treats a blank
+    /// value as unset.
+    ///
+    /// When set, `POST /panel/auth/proxy` trades it for an ordinary browser
+    /// session, so the panel opens without a second password. It is believed
+    /// only from a peer in `server.trusted_proxies`, and only when it names an
+    /// account that already exists: no account is ever created from it. The
+    /// endpoint sits under `/panel` so that the proxy rule guarding the pages
+    /// guards it too, while `/v1/` stays free for device tokens.
+    ///
+    /// Anyone who reaches the server through a trusted proxy *without* passing
+    /// its authentication can write this header, so the proxy has to set it on
+    /// `/panel` and strip it everywhere else. See
+    /// [`crate::routes::session::proxy_login`] for the refusals.
+    #[serde(default)]
+    pub trusted_header: Option<String>,
 }
 
 /// Floor on [`PanelConfig::login_throttle_secs`]. There is no "off": with no
@@ -276,6 +295,16 @@ impl PanelConfig {
     pub fn login_throttle_was_raised(&self) -> bool {
         self.login_throttle_secs < MIN_LOGIN_THROTTLE_SECS
     }
+
+    /// The configured header name, or `None` when header login is off. A blank
+    /// value counts as off: `trusted_header = ""` is how a templated config
+    /// says "not this one", not a request for a header with no name.
+    pub fn trusted_header(&self) -> Option<&str> {
+        self.trusted_header
+            .as_deref()
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+    }
 }
 
 impl Default for PanelConfig {
@@ -284,6 +313,7 @@ impl Default for PanelConfig {
             enabled: default_panel_enabled(),
             session_days: default_panel_session_days(),
             login_throttle_secs: default_panel_login_throttle_secs(),
+            trusted_header: None,
         }
     }
 }

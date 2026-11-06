@@ -235,5 +235,6 @@
   "error.no_such_token": "Dieses Token gibt es schon nicht mehr.",
   "error.bad_quota": "Gib ein Kontingent von null oder mehr an.",
   "error.unauthorized": "Deine Sitzung ist beendet.",
-  "error.session_expired": "Deine Sitzung ist beendet. Melde dich neu an."
+  "error.session_expired": "Deine Sitzung ist beendet. Melde dich neu an.",
+  "error.unknown_user": "Dein Proxy meldet dich als {user} an, aber dieser Server hat kein Konto mit diesem Namen. Bitte einen Admin, es anzulegen."
 }

@@ -439,7 +439,69 @@ enabled = true
 session_days = 14
 # Seconds the login door stays shut after five wrong passwords. Minimum 2.
 login_throttle_secs = 10
+# Sign in through your identity provider (see below). Off when unset.
+# trusted_header = "Remote-User"
 ```
+
+#### Signing in through your identity provider
+
+If the rest of your homelab signs in through Authelia, Authentik or
+oauth2-proxy, the panel can too. In forward-auth mode those proxies check the
+browser's session and pass the user's name on to the app in a header —
+Authelia calls it `Remote-User`, Authentik `X-authentik-username`; check your
+proxy's documentation. Name that header under `[panel]` and the panel opens
+without asking for a password:
+
+```toml
+[panel]
+trusted_header = "Remote-User"
+```
+
+When the panel loads without a session it calls `POST /panel/auth/proxy`, and
+the server trades the header for the same kind of browser session a password
+login gives. The rules:
+
+- **Only accounts that already exist.** The name has to match an account on
+  this server, the same way the password login matches it (case is forgiven
+  when only one account fits). Nothing is created: add people with
+  `hoard-admin user create` or the users tab. Someone your identity provider
+  lets in but who has no account here gets a message saying so.
+- **Only from a trusted proxy.** The header counts only on a connection from
+  `server.trusted_proxies`. With that list set to `any`, or empty, the server
+  refuses to turn header login on and says why at startup.
+- **Your proxy has to own the header.** Anyone who reaches Hoard *through*
+  your proxy without passing its authentication could write the header
+  themselves, and a trusted proxy would carry it in. Run the authentication on
+  `/panel` (the prefix covers the sign-in endpoint) and set the header there;
+  strip it on every other path, and on any other site name that proxies to
+  Hoard. A header that arrives twice is refused rather than guessed at.
+- **Leave `/v1/` outside the proxy's authentication.** The panel's own calls
+  carry its session cookie, and your devices keep using their tokens.
+- **Signing out of your identity provider does not close a panel session
+  that is already open.** `panel.session_days` does; lower it if that matters
+  to you. Signing out of the panel skips header login once, so the button does
+  what it says; the next visit signs you straight back in.
+
+With nginx and `auth_request` it looks like this. The `auth_request` location
+itself comes from your identity provider's nginx guide (Authelia's is shown):
+
+```nginx
+location /panel {
+    auth_request /internal/authelia/authz;
+    auth_request_set $user $upstream_http_remote_user;
+    proxy_set_header Remote-User $user;
+    proxy_pass http://127.0.0.1:12421;
+}
+
+location / {
+    proxy_set_header Remote-User "";   # never pass on a client's own copy
+    proxy_pass http://127.0.0.1:12421;
+}
+```
+
+A `location` with its own `proxy_set_header` lines drops the ones it would
+have inherited from `server`, so repeat your `X-Forwarded-For` and
+`X-Forwarded-Proto` lines in both.
 
 ## External storage (S3-compatible)
 

@@ -235,5 +235,6 @@
   "error.no_such_token": "That token is already gone.",
   "error.bad_quota": "Enter a quota of zero or more.",
   "error.unauthorized": "Your session has ended.",
-  "error.session_expired": "Your session has ended. Sign in again."
+  "error.session_expired": "Your session has ended. Sign in again.",
+  "error.unknown_user": "Your proxy signed you in as {user}, but this server has no account by that name. Ask an admin to create it."
 }

@@ -1,4 +1,5 @@
-//! Password login for the browser panel.
+//! Password login for the browser panel, and the header login that stands in
+//! for it behind an authenticating reverse proxy ([`proxy_login`]).
 //!
 //! Until now `users.password_hash` was written by `hoard-admin user create`
 //! and read by nobody: the only way in was a `hoard_v1_…` token, which is the
@@ -20,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use axum::{
     extract::{ConnectInfo, Extension, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderName, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -207,6 +208,137 @@ pub async fn exchange_token(
         Json(LoginOk {
             username: user.username.clone(),
             is_admin: user.is_admin,
+            expires_in_secs: ttl_secs,
+        }),
+    )
+        .into_response())
+}
+
+/// Can header login run with this header name and this trust list? Checked at
+/// boot, where an `Err` keeps `/panel/auth/proxy` unmounted and is logged, and
+/// again by [`proxy_login`] itself, so the handler is safe wherever it is
+/// mounted.
+pub fn proxy_login_header(
+    raw: &str,
+    trusted: &crate::clientip::TrustedProxies,
+) -> Result<HeaderName, &'static str> {
+    // `from_bytes` lowercases, which is what `HeaderMap` keys on anyway.
+    let name =
+        HeaderName::from_bytes(raw.trim().as_bytes()).map_err(|_| "not a valid header name")?;
+    if trusted.trusts_everyone() {
+        return Err(
+            "server.trusted_proxies trusts every peer, so any client could \
+             write the header and sign in as anyone",
+        );
+    }
+    if trusted.is_empty() {
+        return Err("server.trusted_proxies is empty, so the header would never be believed");
+    }
+    Ok(name)
+}
+
+/// `POST /panel/auth/proxy`: sign in as the account an authenticating reverse
+/// proxy names in `panel.trusted_header`.
+///
+/// It lives under `/panel` rather than `/v1/auth` so that the one proxy rule
+/// guarding the pages guards this too, and `/v1/` can stay outside the
+/// proxy's authentication, where device tokens need it.
+///
+/// Four refusals stand between the header and a session:
+///
+/// * Header login must be configured, with a trust list that names someone
+///   and is not `any` ([`proxy_login_header`]). Otherwise 404.
+/// * The connection must come from `server.trusted_proxies`. Anybody else can
+///   write any header they like. 403.
+/// * The header must arrive exactly once. A proxy that appends instead of
+///   overwriting forwards the client's copy first, and the first one is what
+///   a plain lookup would read. 400.
+/// * It must name an account that already exists, matched like the password
+///   login matches. Nothing is ever created from it: who may use this server
+///   stays a decision made in `hoard-admin` or the users tab, not one made by
+///   whoever the identity provider lets through. 403.
+///
+/// No password is checked, so there is no throttle to spend: the per-IP rate
+/// limit in front of every route is enough. What it mints is the same session
+/// the password login mints, so it lists, expires and revokes the same way.
+/// It does not end when the identity provider's session does;
+/// `panel.session_days` bounds it.
+pub async fn proxy_login(
+    State(state): State<Arc<ServerState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let Some(name) = state
+        .config
+        .panel
+        .trusted_header()
+        .and_then(|raw| proxy_login_header(raw, &state.trusted_proxies).ok())
+    else {
+        return Err(fail(StatusCode::NOT_FOUND, "not_enabled"));
+    };
+
+    let values: Vec<_> = headers.get_all(&name).iter().collect();
+    if !state.trusted_proxies.contains(peer.ip()) {
+        // Only worth a warning when the header is there. Without it this is
+        // just the panel trying header login on a direct visit, which it does
+        // on every page load.
+        if !values.is_empty() {
+            tracing::warn!(
+                %peer,
+                header = %name,
+                "panel: header login from a peer outside server.trusted_proxies, refused"
+            );
+        }
+        return Err(fail(StatusCode::FORBIDDEN, "untrusted_proxy"));
+    }
+
+    let username = match values.as_slice() {
+        [] => None,
+        [one] => one.to_str().ok().map(str::trim).filter(|s| !s.is_empty()),
+        _ => {
+            tracing::warn!(
+                %peer,
+                header = %name,
+                count = values.len(),
+                "panel: header login with the header repeated, refused; \
+                 the proxy must overwrite it, not append to it"
+            );
+            return Err(fail(StatusCode::BAD_REQUEST, "ambiguous_identity"));
+        }
+    };
+    let Some(username) = username else {
+        return Err(fail(StatusCode::UNAUTHORIZED, "no_identity"));
+    };
+
+    let user = lookup_user(&state.pool, username)
+        .await
+        .map_err(|e| internal(e, "panel header login lookup"))?;
+    let Some((user_id, real_username, is_admin, _)) = user else {
+        tracing::warn!(%username, "panel: header login names no account here, refused");
+        // The name goes back so the gate can say whose account is missing:
+        // the proxy vouched for it, and the person reading it is the one the
+        // proxy says it is.
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({ "error": "unknown_user", "username": username })),
+        ));
+    };
+
+    let ttl_secs = (state.config.panel.session_days.max(1) * 86_400) as i64;
+    let token = mint_session(&state.pool, &user_id, ttl_secs)
+        .await
+        .map_err(|e| internal(e, "panel header session mint"))?;
+
+    let origin = crate::clientip::client_ip(&headers, peer, &state.trusted_proxies);
+    tracing::info!(username = %real_username, %origin, header = %name, "panel: login via proxy header");
+
+    let cookie = session_cookie(&token, ttl_secs, is_secure(&headers));
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie)],
+        Json(LoginOk {
+            username: real_username,
+            is_admin,
             expires_in_secs: ttl_secs,
         }),
     )
@@ -623,5 +755,34 @@ mod tests {
         }
         assert!(throttled_for(origin, MAX_FAILURES_PER_ORIGIN, W).is_some());
         clear_failures(origin);
+    }
+
+    fn trusting(entries: &[&str]) -> crate::clientip::TrustedProxies {
+        let list: Vec<String> = entries.iter().map(|s| s.to_string()).collect();
+        crate::clientip::TrustedProxies::parse(&list).0
+    }
+
+    #[test]
+    fn header_login_takes_a_header_name_in_any_case() {
+        let name = proxy_login_header(" Remote-User ", &trusting(&["loopback"])).unwrap();
+        assert_eq!(name.as_str(), "remote-user");
+    }
+
+    /// With `any`, the header is whatever the caller says it is. That is a
+    /// rate-limit bucket picked badly; for a login it is every account open to
+    /// everyone, so header login does not start.
+    #[test]
+    fn header_login_refuses_a_trust_list_that_believes_everyone() {
+        assert!(proxy_login_header("remote-user", &trusting(&["loopback", "any"])).is_err());
+    }
+
+    #[test]
+    fn header_login_refuses_a_trust_list_that_believes_nobody() {
+        assert!(proxy_login_header("remote-user", &trusting(&[])).is_err());
+    }
+
+    #[test]
+    fn header_login_refuses_a_name_that_is_not_a_header() {
+        assert!(proxy_login_header("remote user", &trusting(&["loopback"])).is_err());
     }
 }
