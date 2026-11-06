@@ -879,3 +879,24 @@ impl Config {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// Hoard One's per-IP limit keys on `fly-client-ip`, and `fly.toml` is the
+    /// only place in the repo that sets it. Without it the limit cannot tell
+    /// clients apart behind Fly's proxy, and nothing fails: the server boots
+    /// and serves, with one line in its log.
+    #[test]
+    fn hoard_one_keys_the_rate_limit_on_fly_client_ip() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../deploy/fly/fly.toml");
+        let fly: toml::Table = std::fs::read_to_string(path)
+            .expect("read deploy/fly/fly.toml")
+            .parse()
+            .expect("parse deploy/fly/fly.toml");
+        let header = fly
+            .get("env")
+            .and_then(|env| env.get("HOARD__SERVER__RATE_LIMIT__CLIENT_IP_HEADER"))
+            .and_then(|v| v.as_str());
+        assert_eq!(header, Some("fly-client-ip"));
+    }
+}

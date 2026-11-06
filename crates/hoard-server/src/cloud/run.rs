@@ -33,6 +33,25 @@ pub async fn run(cfg: Config) -> Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("cloud mode requires [cloud] config"))?;
 
+    // On Fly every connection arrives from Fly's proxy, which keeps whatever
+    // the client wrote at the left of X-Forwarded-For, so this header is the
+    // only way the per-IP limit sees who a request is from. Losing it breaks
+    // nothing visible, hence the line. `deploy/fly/fly.toml` sets it, and a
+    // test in `config.rs` keeps it there.
+    let keyed_on_proxy_header = cfg
+        .server
+        .rate_limit
+        .client_ip_header
+        .as_deref()
+        .is_some_and(|h| !h.trim().is_empty());
+    if cfg.server.rate_limit.enabled && !keyed_on_proxy_header {
+        tracing::error!(
+            "server.rate_limit.client_ip_header is unset in cloud mode, so the per-IP \
+             rate limit cannot see the real client behind the proxy; set \
+             HOARD__SERVER__RATE_LIMIT__CLIENT_IP_HEADER=fly-client-ip"
+        );
+    }
+
     // 1. Connect Postgres.
     let pool = db::connect(&cfg.database.url, cfg.database.max_connections).await?;
     db::run_migrations(&pool).await?;
