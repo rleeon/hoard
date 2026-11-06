@@ -8,8 +8,11 @@
 host = "0.0.0.0"
 port = 8082
 public_url = "https://api.hoard.services"
-# Per-IP rate limiting. Client IP is taken from X-Forwarded-For (Fly/CDN set
-# it). Defaults shown; omit the table to use them. Still keep limits at the
+# Per-IP rate limiting. Client IP is taken from `client_ip_header` below when
+# set, otherwise from X-Forwarded-For only when the peer is in
+# `server.trusted_proxies` (default: loopback), and from the peer otherwise.
+# On Fly set `client_ip_header`, or every client counts as Fly's proxy.
+# Defaults shown; omit the table to use them. Still keep limits at the
 # edge (Fly/Cloudflare), this is only an in-process backstop.
 [server.rate_limit]
 enabled = true

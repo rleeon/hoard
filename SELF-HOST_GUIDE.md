@@ -276,6 +276,22 @@ your own config — since 1.1.3 that cap applies per file rather than per save,
 so it only bites if a single save file is over 100 MB; if one is, use a tunnel
 to a hostname that isn't proxied, or connect over your LAN/VPN.
 
+Whatever the proxy, **tell Hoard where it connects from.** The server only
+believes `X-Forwarded-For` from a peer listed in `server.trusted_proxies`, and
+the default is `loopback`. That covers nginx or Caddy on the same machine as a
+plain install. It does not cover a proxy in another container or on another
+box, nor one on the same host when Hoard runs in Docker: the container sees the
+Docker network's gateway, not `127.0.0.1`. Left out, every client behind the
+proxy counts as the proxy itself and they all share one rate-limit bucket and
+one panel login counter, so several devices syncing at once can get
+`429 Too Many Requests`. The server logs a warning naming that address the
+first time it sees it. For Docker's usual networks:
+
+```toml
+[server]
+trusted_proxies = ["loopback", "172.16.0.0/12"]
+```
+
 ### How uploads travel
 
 Hoard has always stored each unique file once (keyed by its SHA-256) and let
@@ -399,7 +415,11 @@ Two things worth knowing:
   you named in `server.trusted_proxies` (default: `loopback`). **If your
   reverse proxy is not on the same machine — a container on a Docker network,
   another box on the LAN — add it there**, or every client behind it shares one
-  counter. The server prints what it trusts at startup.
+  counter. The server prints what it trusts at startup. The per-IP rate limit
+  (`[server.rate_limit]`) counts the same way, so an unlisted proxy also puts
+  all of its clients into one rate-limit bucket, and they can get
+  `429 Too Many Requests` when several sync at once. The server logs a warning
+  the first time a request like that arrives.
 - Sessions last `panel.session_days` (14 by default) and the cookie is marked
   `Secure` only when the request arrives over HTTPS, so a plain-HTTP LAN
   instance still works. Put it behind TLS if you expose it to the internet.

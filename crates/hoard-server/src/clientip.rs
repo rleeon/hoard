@@ -21,14 +21,14 @@
 //! an argon2id verify at 19 MiB a go, which is the CPU lever the throttle
 //! exists to keep shut.
 //!
-//! Not used by the per-IP rate limiter yet: that one keys through
-//! `tower_governor`'s `SmartIpKeyExtractor`, which has the same unconditional
-//! trust. Moving it here would silently collapse every client of a proxied
-//! deployment into one token bucket until its operator sets `trusted_proxies`,
-//! and that trade, a sync-breaking 429 storm against a limiter that was never a
-//! security boundary ("an in-process safety net against accidental request
-//! loops", [`crate::ratelimit`]), is not worth taking in the same release that
-//! introduces the setting.
+//! The per-IP rate limiter keys through here too, unless the operator names a
+//! `client_ip_header` ([`crate::ratelimit::ClientKey`]). It used to read
+//! `X-Forwarded-For` unconditionally through `tower_governor`'s
+//! `SmartIpKeyExtractor`, held back from this module in the release that
+//! introduced `trusted_proxies` so that a proxy nobody had listed yet would
+//! not put all of its clients into one bucket. A proxy that is still not
+//! listed now does exactly that, and the limiter says so in the log, once per
+//! peer.
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 

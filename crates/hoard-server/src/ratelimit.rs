@@ -4,16 +4,18 @@
 //! brute force, not a substitute for a reverse-proxy or WAF limiter, which a
 //! production deployment should still run in front of the server.
 
-use std::net::IpAddr;
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use axum::http::{HeaderName, Request};
+use axum::http::{HeaderMap, HeaderName, Request};
 use governor::middleware::NoOpMiddleware;
 use tower_governor::governor::{GovernorConfig, GovernorConfigBuilder};
-use tower_governor::key_extractor::{KeyExtractor, PeerIpKeyExtractor, SmartIpKeyExtractor};
+use tower_governor::key_extractor::{KeyExtractor, PeerIpKeyExtractor};
 use tower_governor::{GovernorError, GovernorLayer};
 
+use crate::clientip::TrustedProxies;
 use crate::config::RateLimitConfig;
 
 /// Concrete config type for our chosen key extractor + (no-op) middleware.
@@ -21,25 +23,38 @@ type RlConfig = GovernorConfig<ClientKey, NoOpMiddleware>;
 
 /// Whose bucket a request drains.
 ///
-/// Without `client_ip_header`, [`SmartIpKeyExtractor`]: the leftmost
-/// `X-Forwarded-For` entry, then `X-Real-Ip`, then the peer. Any client writes
-/// those, which is enough for a loop guard and nothing more. Fly's proxy keeps
-/// a client's `X-Forwarded-For: 7.7.7.7` as the leftmost entry and passes
-/// `X-Real-Ip` through untouched, so on Hoard Cloud every anonymous route
-/// (`/v1/feedback`, `device/start`) had no limit at all for anyone who changed
-/// the header per request.
+/// With `client_ip_header`, that header alone, which must be one the proxy in
+/// front overwrites on every request: `fly-client-ip` on Fly, which replaced a
+/// client-sent `6.6.6.6` with the real address when checked on 13-10-2026. A
+/// request without it (a health check from inside Fly) counts against its
+/// peer. Fly's proxy keeps a client's `X-Forwarded-For: 7.7.7.7` as the
+/// leftmost entry and passes `X-Real-Ip` through untouched, which is why Hoard
+/// Cloud needs this setting and cannot rely on the fallback below.
 ///
-/// With it, that header alone, which must be one the proxy in front overwrites
-/// on every request: `fly-client-ip` on Fly, which replaced a client-sent
-/// `6.6.6.6` with the real address when checked on 13-10-2026. A request
-/// without it (a health check from inside Fly) counts against its peer.
+/// Without it, the same answer the panel's login throttle gets from
+/// [`crate::clientip::client_ip`]: `X-Forwarded-For` is believed only from a
+/// peer listed in `server.trusted_proxies`, read from the right; from anyone
+/// else the peer is the key. This used to be `tower_governor`'s
+/// `SmartIpKeyExtractor`, which took the leftmost entry from whoever sent it,
+/// so a client that changed the header on every request was never limited,
+/// and one that wrote somebody else's address drained that person's bucket
+/// instead of its own.
 #[derive(Clone)]
 pub struct ClientKey {
     header: Option<HeaderName>,
+    trusted: TrustedProxies,
+    /// Untrusted forwarders already warned about, keyed like the buckets so
+    /// that one IPv6 /64 is one peer here too.
+    reported: Arc<Mutex<HashSet<String>>>,
 }
 
+/// Past this many distinct peers the warning stops. A forgotten proxy is one
+/// or two addresses; beyond that it is someone sending the headers from many
+/// sources, and that should not get to fill the log.
+const REPORTED_FORWARDERS_MAX: usize = 16;
+
 impl ClientKey {
-    fn from_config(cfg: &RateLimitConfig) -> Self {
+    fn from_config(cfg: &RateLimitConfig, trusted: &TrustedProxies) -> Self {
         let header = cfg
             .client_ip_header
             .as_deref()
@@ -51,12 +66,23 @@ impl ClientKey {
                     tracing::error!(
                         header = h,
                         "server.rate_limit.client_ip_header is not a valid header name; \
-                         keying on X-Forwarded-For as if it were unset"
+                         keying on server.trusted_proxies as if it were unset"
                     );
                     None
                 }
             });
-        Self { header }
+        Self {
+            header,
+            trusted: trusted.clone(),
+            reported: Arc::default(),
+        }
+    }
+
+    /// True the first time `peer` forwards without being trusted, for the
+    /// first [`REPORTED_FORWARDERS_MAX`] such peers.
+    fn first_report(&self, peer: IpAddr) -> bool {
+        let mut seen = self.reported.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.len() < REPORTED_FORWARDERS_MAX && seen.insert(crate::clientip::throttle_bucket(peer))
     }
 }
 
@@ -64,17 +90,28 @@ impl KeyExtractor for ClientKey {
     type Key = String;
 
     fn extract<T>(&self, req: &Request<T>) -> Result<Self::Key, GovernorError> {
-        let Some(name) = &self.header else {
-            return SmartIpKeyExtractor.extract(req).map(|ip| ip.to_string());
-        };
-        let claimed = req
-            .headers()
-            .get(name)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.trim().parse::<IpAddr>().ok());
-        let ip = match claimed {
-            Some(ip) => ip,
-            None => PeerIpKeyExtractor.extract(req)?,
+        let ip = match &self.header {
+            Some(name) => {
+                let claimed = req
+                    .headers()
+                    .get(name)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.trim().parse::<IpAddr>().ok());
+                match claimed {
+                    Some(ip) => ip,
+                    None => PeerIpKeyExtractor.extract(req)?,
+                }
+            }
+            None => {
+                let peer = PeerIpKeyExtractor.extract(req)?;
+                if forwards_from_untrusted(req.headers(), peer, &self.trusted)
+                    && self.first_report(peer)
+                {
+                    warn_untrusted_forwarder(peer);
+                }
+                // `client_ip` only looks at the peer's address, never its port.
+                crate::clientip::client_ip(req.headers(), SocketAddr::new(peer, 0), &self.trusted)
+            }
         };
         // Per /64 for IPv6, as the login throttle does: a household owns the
         // whole prefix and would otherwise get a fresh bucket per address.
@@ -82,15 +119,43 @@ impl KeyExtractor for ClientKey {
     }
 }
 
+/// Does this request name another client while coming from a peer we do not
+/// take at its word?
+///
+/// That is either someone trying to pick their own bucket, which now fails,
+/// or a reverse proxy the operator forgot to list in `server.trusted_proxies`,
+/// whose clients now all share its bucket. The second one would otherwise be
+/// invisible until the 429s start, so it is worth a line in the log.
+fn forwards_from_untrusted(headers: &HeaderMap, peer: IpAddr, trusted: &TrustedProxies) -> bool {
+    (headers.contains_key("x-forwarded-for") || headers.contains_key("x-real-ip"))
+        && !trusted.contains(peer)
+}
+
+/// Once per peer: a single warning per process would go to whoever sent the
+/// headers first (a scanner, a stray script), and the proxy that actually
+/// needs listing would never be named.
+fn warn_untrusted_forwarder(peer: IpAddr) {
+    tracing::warn!(
+        %peer,
+        "a request names another client in X-Forwarded-For or X-Real-Ip, but its \
+         peer is not in server.trusted_proxies, so the rate limit counts it as the \
+         peer. If the peer is your reverse proxy, add it to server.trusted_proxies, \
+         or every client behind it shares one bucket. Logged once per peer."
+    );
+}
+
 /// Build a [`GovernorLayer`] from config, or `None` when rate limiting is
 /// disabled. Also spawns a background task that evicts idle per-IP buckets so a
 /// flood of distinct source IPs can't grow the limiter map without bound.
 ///
-/// Keys through [`ClientKey`], which falls back to the socket peer IP. Because
-/// of that fallback the router **must** be served with
+/// Keys through [`ClientKey`], which needs the socket peer IP. Because of that
+/// the router **must** be served with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, otherwise the peer IP
 /// isn't available and extraction fails closed.
-pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<ClientKey, NoOpMiddleware>> {
+pub fn layer(
+    cfg: &RateLimitConfig,
+    trusted: &TrustedProxies,
+) -> Option<GovernorLayer<ClientKey, NoOpMiddleware>> {
     if !cfg.enabled {
         return None;
     }
@@ -111,7 +176,7 @@ pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<ClientKey, NoOpMiddl
         GovernorConfigBuilder::default()
             .period(period)
             .burst_size(burst)
-            .key_extractor(ClientKey::from_config(cfg))
+            .key_extractor(ClientKey::from_config(cfg, trusted))
             .finish()
             .expect("rate-limit config (per_second/burst are clamped > 0)"),
     );
@@ -138,8 +203,13 @@ pub fn layer(cfg: &RateLimitConfig) -> Option<GovernorLayer<ClientKey, NoOpMiddl
 ///
 /// `exempt`'s only tenant is `PUT /v1/cas/blobs/:upload_id/:sha256`; the why is
 /// in `main.rs`, where it is built.
-pub fn apply(cfg: &RateLimitConfig, app: axum::Router, exempt: axum::Router) -> axum::Router {
-    let app = match layer(cfg) {
+pub fn apply(
+    cfg: &RateLimitConfig,
+    trusted: &TrustedProxies,
+    app: axum::Router,
+    exempt: axum::Router,
+) -> axum::Router {
+    let app = match layer(cfg, trusted) {
         Some(rl) => app.layer(rl),
         None => app,
     };
@@ -166,25 +236,39 @@ mod tests {
         }
     }
 
-    fn keyed_on(header: Option<&str>) -> ClientKey {
-        ClientKey::from_config(&RateLimitConfig {
-            client_ip_header: header.map(str::to_string),
-            ..Default::default()
-        })
+    fn trusting(entries: &[&str]) -> TrustedProxies {
+        let owned: Vec<String> = entries.iter().map(|s| s.to_string()).collect();
+        let (trusted, bad) = TrustedProxies::parse(&owned);
+        assert!(bad.is_empty(), "{bad:?}");
+        trusted
     }
 
-    fn request(headers: &[(&str, &str)]) -> Request<Body> {
+    fn keyed_on(header: Option<&str>, trusted: &[&str]) -> ClientKey {
+        ClientKey::from_config(
+            &RateLimitConfig {
+                client_ip_header: header.map(str::to_string),
+                ..Default::default()
+            },
+            &trusting(trusted),
+        )
+    }
+
+    /// A request as it arrives from `peer`, the address on the other end of
+    /// the socket.
+    fn request_from(peer: [u8; 4], headers: &[(&str, &str)]) -> Request<Body> {
         let mut b = Request::builder().uri("/v1/feedback");
         for (k, v) in headers {
             b = b.header(*k, *v);
         }
         let mut req = b.body(Body::empty()).unwrap();
         req.extensions_mut()
-            .insert(axum::extract::ConnectInfo(std::net::SocketAddr::from((
-                [172, 16, 0, 9],
-                40000,
-            ))));
+            .insert(axum::extract::ConnectInfo(SocketAddr::from((peer, 40000))));
         req
+    }
+
+    /// A request from a peer that is not a trusted proxy.
+    fn request(headers: &[(&str, &str)]) -> Request<Body> {
+        request_from([172, 16, 0, 9], headers)
     }
 
     /// What Fly delivered for a client that sent `X-Forwarded-For: 7.7.7.7`
@@ -201,27 +285,116 @@ mod tests {
 
     #[test]
     fn behind_fly_the_spoofed_headers_are_ignored() {
-        let k = keyed_on(Some("fly-client-ip"));
+        let k = keyed_on(Some("fly-client-ip"), &["loopback"]);
         assert_eq!(
             k.extract(&as_fly_delivers_it("203.0.113.7")).unwrap(),
             "203.0.113.7"
         );
     }
 
-    /// The bypass this closes: without the setting, the client's own header
-    /// is the key.
+    /// The bypass this closes: without `client_ip_header`, a caller that is not
+    /// a trusted proxy used to be keyed on its own leftmost `X-Forwarded-For`
+    /// entry. Rotating it bought a fresh bucket on every request, and writing
+    /// someone else's address drained theirs.
     #[test]
-    fn unset_it_keeps_trusting_the_leftmost_entry() {
-        let k = keyed_on(None);
+    fn a_direct_caller_cannot_pick_its_bucket() {
+        let k = keyed_on(None, &["loopback"]);
+        for spoof in ["7.7.7.7", "203.0.113.7", "not-an-ip"] {
+            assert_eq!(
+                k.extract(&request(&[
+                    ("x-forwarded-for", spoof),
+                    ("x-real-ip", spoof)
+                ]))
+                .unwrap(),
+                "172.16.0.9",
+                "the client chose its bucket with {spoof}"
+            );
+        }
+    }
+
+    /// The same request on Fly without `client_ip_header`: Fly's proxy is not
+    /// a trusted peer, so its clients share its bucket rather than choosing one.
+    #[test]
+    fn unset_an_untrusted_proxy_counts_as_itself() {
+        let k = keyed_on(None, &["loopback"]);
         assert_eq!(
             k.extract(&as_fly_delivers_it("203.0.113.7")).unwrap(),
-            "7.7.7.7"
+            "172.16.0.9"
         );
+    }
+
+    /// nginx with `$proxy_add_x_forwarded_for` on the same host: the left end
+    /// is still the client's to write, the right end is what nginx saw.
+    #[test]
+    fn a_trusted_proxy_is_believed_from_the_right() {
+        let k = keyed_on(None, &["loopback"]);
+        let req = request_from(
+            [127, 0, 0, 1],
+            &[("x-forwarded-for", "7.7.7.7, 203.0.113.7")],
+        );
+        assert_eq!(k.extract(&req).unwrap(), "203.0.113.7");
+    }
+
+    #[test]
+    fn the_fallback_buckets_v6_per_64() {
+        let k = keyed_on(None, &["loopback"]);
+        let a = k
+            .extract(&request_from(
+                [127, 0, 0, 1],
+                &[("x-forwarded-for", "2001:db8:f60a:9e00:d0fe:45c5:180e:c0ee")],
+            ))
+            .unwrap();
+        let b = k
+            .extract(&request_from(
+                [127, 0, 0, 1],
+                &[("x-forwarded-for", "2001:db8:f60a:9e00::1")],
+            ))
+            .unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a, "2001:db8:f60a:9e00::/64");
+    }
+
+    #[test]
+    fn only_an_untrusted_peer_that_forwards_is_reported() {
+        let trusted = trusting(&["loopback"]);
+        let mut xff = HeaderMap::new();
+        xff.insert("x-forwarded-for", "203.0.113.7".parse().unwrap());
+        let mut real_ip = HeaderMap::new();
+        real_ip.insert("x-real-ip", "203.0.113.7".parse().unwrap());
+        let docker_proxy: IpAddr = "172.18.0.3".parse().unwrap();
+        let loopback: IpAddr = "127.0.0.1".parse().unwrap();
+
+        assert!(forwards_from_untrusted(&xff, docker_proxy, &trusted));
+        assert!(forwards_from_untrusted(&real_ip, docker_proxy, &trusted));
+        assert!(!forwards_from_untrusted(&xff, loopback, &trusted));
+        assert!(!forwards_from_untrusted(
+            &HeaderMap::new(),
+            docker_proxy,
+            &trusted
+        ));
+    }
+
+    #[test]
+    fn each_untrusted_forwarder_is_reported_once_up_to_a_cap() {
+        let k = keyed_on(None, &["loopback"]);
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+
+        assert!(k.first_report(ip("172.18.0.3")));
+        assert!(!k.first_report(ip("172.18.0.3")));
+        // Clones share what has been reported.
+        assert!(!k.clone().first_report(ip("172.18.0.3")));
+        assert!(k.first_report(ip("2001:db8:1:2::1")));
+        assert!(!k.first_report(ip("2001:db8:1:2::9")), "same /64");
+
+        for i in 2..REPORTED_FORWARDERS_MAX {
+            assert!(k.first_report(IpAddr::from([10, 0, 0, i as u8])));
+        }
+        assert!(!k.first_report(ip("10.9.9.9")), "past the cap");
     }
 
     #[test]
     fn a_v6_client_is_one_bucket_per_64() {
-        let k = keyed_on(Some("fly-client-ip"));
+        let k = keyed_on(Some("fly-client-ip"), &["loopback"]);
         let a = k
             .extract(&as_fly_delivers_it(
                 "2001:db8:f60a:9e00:d0fe:45c5:180e:c0ee",
@@ -235,7 +408,7 @@ mod tests {
 
     #[test]
     fn without_the_header_the_peer_is_the_key() {
-        let k = keyed_on(Some("fly-client-ip"));
+        let k = keyed_on(Some("fly-client-ip"), &["loopback"]);
         assert_eq!(
             k.extract(&request(&[("x-forwarded-for", "7.7.7.7")]))
                 .unwrap(),
@@ -250,27 +423,60 @@ mod tests {
 
     #[test]
     fn a_bad_header_name_degrades_to_the_default() {
-        assert!(keyed_on(Some("not a header")).header.is_none());
-        assert!(keyed_on(Some("  ")).header.is_none());
+        assert!(keyed_on(Some("not a header"), &[]).header.is_none());
+        assert!(keyed_on(Some("  "), &[]).header.is_none());
     }
 
     async fn hit(app: &Router, method: &str, uri: &str) -> StatusCode {
-        let req = Request::builder()
+        let mut req = Request::builder()
             .method(method)
             .uri(uri)
-            // `SmartIpKeyExtractor` falls back to the peer, which `oneshot`
-            // does not have; the header gives it a stable IP so every request
-            // in the test shares one bucket.
-            .header("x-real-ip", "203.0.113.7")
             .body(Body::empty())
             .unwrap();
+        // `oneshot` has no socket, so the peer the key falls back to is put
+        // in by hand: one fixed address, so every request in the test shares
+        // one bucket.
+        req.extensions_mut()
+            .insert(axum::extract::ConnectInfo(SocketAddr::from((
+                [203, 0, 113, 7],
+                40000,
+            ))));
         app.clone().oneshot(req).await.unwrap().status()
     }
 
     fn app_under_test() -> Router {
         let limited = Router::new().route("/v1/saves", get(|| async { "ok" }));
         let exempt = Router::new().route("/v1/cas/blobs/:id/:sha", put(|| async { "ok" }));
-        apply(&one_request_only(), limited, exempt)
+        apply(
+            &one_request_only(),
+            &TrustedProxies::default(),
+            limited,
+            exempt,
+        )
+    }
+
+    /// The bypass end to end, through the real limiter: the same peer with a
+    /// fresh `X-Forwarded-For` on every request still has one bucket.
+    #[tokio::test]
+    async fn a_fresh_forwarded_for_does_not_buy_a_fresh_bucket() {
+        let limited = Router::new().route("/v1/feedback", get(|| async { "ok" }));
+        let app = apply(
+            &one_request_only(),
+            &trusting(&["loopback"]),
+            limited,
+            Router::new(),
+        );
+        let first = request(&[("x-forwarded-for", "198.51.100.1")]);
+        assert_eq!(
+            app.clone().oneshot(first).await.unwrap().status(),
+            StatusCode::OK
+        );
+        let second = request(&[("x-forwarded-for", "198.51.100.2")]);
+        assert_eq!(
+            app.clone().oneshot(second).await.unwrap().status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "a new X-Forwarded-For from the same peer must not reset its limit"
+        );
     }
 
     /// An ordinary route is still limited: that is what the limiter exists to
