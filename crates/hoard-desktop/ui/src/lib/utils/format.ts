@@ -37,6 +37,11 @@ export function formatBytes(bytes: number, decimals = 1): string {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1);
   const value = bytes / Math.pow(k, i);
   const places = i === 0 ? 0 : decimals;
+  // 1048575 bytes is 1023.999 kB, which rounds to "1024.0 kB". When rounding
+  // reaches the next unit, print that unit instead. PB has nowhere to go.
+  if (i < units.length - 1 && Number(value.toFixed(places)) >= k) {
+    return `${(value / k).toFixed(decimals)} ${units[i + 1]}`;
+  }
   return `${value.toFixed(places)} ${units[i]}`;
 }
 
