@@ -58,13 +58,17 @@ export function prettifySlug(slug: string): string {
  * Localised "x ago" for an ISO timestamp, relative to `now` (epoch ms).
  * Reuses the History route's relative strings so the two panels read the
  * same; `dashboard.time_yesterday` covers the 1-day case the mockup shows.
- * Future dates (clock skew) collapse to "just now".
+ * Future dates (clock skew) collapse to "just now". A timestamp `Date` cannot
+ * read comes back as it is: as NaN it fell through every step and printed
+ * "NaN days ago".
  *
  * A store, not a plain function, so the text repaints when the language changes:
  * reading `_` with `get()` froze whatever language was active at first render.
  */
 export const fmtRelativeTime = derived(_, (t) => (iso: string, now: number = Date.now()): string => {
-  const diff = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const diff = Math.max(0, Math.floor((now - then) / 1000));
   if (diff < 60) return t("history.relative_just_now");
   if (diff < 3600) {
     return t("history.relative_minutes", {
