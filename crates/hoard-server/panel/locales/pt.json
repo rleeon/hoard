@@ -235,5 +235,6 @@
   "error.no_such_token": "Esse token já não está cá.",
   "error.bad_quota": "Põe uma quota de zero ou mais.",
   "error.unauthorized": "A tua sessão terminou.",
-  "error.session_expired": "A tua sessão terminou. Entra outra vez."
+  "error.session_expired": "A tua sessão terminou. Entra outra vez.",
+  "error.unknown_user": "O teu proxy identifica-te como {user}, mas este servidor não tem nenhuma conta com esse nome. Pede a um admin que a crie."
 }

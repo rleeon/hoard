@@ -235,5 +235,6 @@
   "error.no_such_token": "这个令牌已经没有了。",
   "error.bad_quota": "请填 0 或更大的配额。",
   "error.unauthorized": "会话已结束。",
-  "error.session_expired": "会话已结束，请重新登录。"
+  "error.session_expired": "会话已结束，请重新登录。",
+  "error.unknown_user": "代理已将你识别为 {user}，但此服务器上没有该名称的账户。请让管理员创建。"
 }

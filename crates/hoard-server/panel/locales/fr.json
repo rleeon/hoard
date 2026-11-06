@@ -235,5 +235,6 @@
   "error.no_such_token": "Ce jeton n'existe déjà plus.",
   "error.bad_quota": "Indiquez un quota de zéro ou plus.",
   "error.unauthorized": "Votre session est terminée.",
-  "error.session_expired": "Votre session est terminée. Reconnectez-vous."
+  "error.session_expired": "Votre session est terminée. Reconnectez-vous.",
+  "error.unknown_user": "Votre proxy vous identifie comme {user}, mais ce serveur n'a aucun compte à ce nom. Demandez à un admin de le créer."
 }

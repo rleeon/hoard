@@ -235,5 +235,6 @@
   "error.no_such_token": "そのトークンはもうありません。",
   "error.bad_quota": "0 以上の上限を入力してください。",
   "error.unauthorized": "セッションが終了しました。",
-  "error.session_expired": "セッションが終了しました。もう一度サインインしてください。"
+  "error.session_expired": "セッションが終了しました。もう一度サインインしてください。",
+  "error.unknown_user": "プロキシは {user} としてサインインさせましたが、このサーバーにはその名前のアカウントがありません。管理者に作成を依頼してください。"
 }

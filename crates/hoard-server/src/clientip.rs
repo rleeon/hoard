@@ -136,6 +136,19 @@ impl TrustedProxies {
         let ip = ip.to_canonical();
         self.nets.iter().any(|n| n.contains(ip))
     }
+
+    /// `trusted_proxies = ["any"]`: every peer may say who the client is. Fine
+    /// for picking a rate-limit bucket, fatal for saying who is signed in, so
+    /// the panel's header login refuses to start on it.
+    pub fn trusts_everyone(&self) -> bool {
+        self.any
+    }
+
+    /// `trusted_proxies = []`: nobody is believed, so no request could ever
+    /// carry a header the server would act on.
+    pub fn is_empty(&self) -> bool {
+        !self.any && self.nets.is_empty()
+    }
 }
 
 impl std::fmt::Display for TrustedProxies {

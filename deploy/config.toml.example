@@ -136,6 +136,17 @@ session_days = 14
 # little enough that fumbling your own password doesn't lock you out. Raise it
 # towards a minute if you expose the panel to the open internet.
 login_throttle_secs = 10
+# Sign in through your identity provider instead of a password: the header
+# your authenticating proxy (Authelia, Authentik, oauth2-proxy) sets to the
+# signed-in user's name. The panel then opens without a password for anyone the
+# proxy names, if an account by that name already exists here. Off when unset.
+#
+# Only believed from a peer in `server.trusted_proxies`, and refused if that
+# list is "any" or empty. Run your proxy's authentication on /panel (that
+# covers the sign-in endpoint, /panel/auth/proxy) and make it set this header
+# there and strip it everywhere else, or anyone who can reach the server
+# through it can name any account. See SELF-HOST_GUIDE.md.
+# trusted_header = "Remote-User"
 
 [retention]
 # Days to keep soft-deleted snapshots in trash before permanent deletion.

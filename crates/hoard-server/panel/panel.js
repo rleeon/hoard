@@ -26,6 +26,8 @@ const LOCALES = [
 ];
 
 const LOCALE_KEY = "hoard.panel.locale";
+// Set by an explicit sign-out, read once by the boot that follows it. See boot().
+const SIGNED_OUT_KEY = "hoard.panel.signed_out";
 
 let S = {};            // active locale strings
 let locale = "en";
@@ -335,8 +337,29 @@ function toggleMode() {
 
 async function logout() {
   try { await api("/v1/auth/logout", { method: "POST" }); } catch { /* leaving anyway */ }
+  // Without storage the worst case is a proxy signing you straight back in.
+  try { sessionStorage.setItem(SIGNED_OUT_KEY, "1"); } catch { /* storage off */ }
   me = null;
   location.reload();
+}
+
+/** Header login, for a server behind an authenticating proxy. Most servers
+ *  don't mount it, and whatever they answer (a 401 from the auth layer, as it
+ *  happens) just means "show the gate". Only a missing account is worth
+ *  saying out loud; anything else (a direct visit that skipped the proxy, a
+ *  proxy that sent no name) is a plain gate, where the password and the token
+ *  still work. True when the gate is handled. */
+async function proxyLogin() {
+  try {
+    await enter(await api("/panel/auth/proxy", { method: "POST" }));
+    return true;
+  } catch (e) {
+    if (e instanceof ApiError && e.code === "unknown_user") {
+      showGate(t("error.unknown_user", { user: e.body.username ?? "" }));
+      return true;
+    }
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1368,7 +1391,15 @@ async function boot() {
     const who = await api("/v1/auth/whoami");
     await enter({ username: who.username, is_admin: who.is_admin });
   } catch {
-    showGate(null);
+    // Behind a proxy that signs you in, signing out would undo itself on the
+    // reload that follows it. Skip header login once after an explicit
+    // sign-out; the next visit tries again.
+    let signedOut = false;
+    try {
+      signedOut = sessionStorage.getItem(SIGNED_OUT_KEY) === "1";
+      sessionStorage.removeItem(SIGNED_OUT_KEY);
+    } catch { /* storage off */ }
+    if (signedOut || !(await proxyLogin())) showGate(null);
   }
 }
 
