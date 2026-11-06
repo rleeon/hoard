@@ -27,7 +27,8 @@
 //! `SmartIpKeyExtractor`, held back from this module in the release that
 //! introduced `trusted_proxies` so that a proxy nobody had listed yet would
 //! not put all of its clients into one bucket. A proxy that is still not
-//! listed now does exactly that, and the limiter says so once in the log.
+//! listed now does exactly that, and the limiter says so in the log, once per
+//! peer.
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 

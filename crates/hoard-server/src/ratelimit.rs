@@ -4,9 +4,9 @@
 //! brute force, not a substitute for a reverse-proxy or WAF limiter, which a
 //! production deployment should still run in front of the server.
 
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use axum::http::{HeaderMap, HeaderName, Request};
@@ -43,7 +43,15 @@ type RlConfig = GovernorConfig<ClientKey, NoOpMiddleware>;
 pub struct ClientKey {
     header: Option<HeaderName>,
     trusted: TrustedProxies,
+    /// Untrusted forwarders already warned about, keyed like the buckets so
+    /// that one IPv6 /64 is one peer here too.
+    reported: Arc<Mutex<HashSet<String>>>,
 }
+
+/// Past this many distinct peers the warning stops. A forgotten proxy is one
+/// or two addresses; beyond that it is someone sending the headers from many
+/// sources, and that should not get to fill the log.
+const REPORTED_FORWARDERS_MAX: usize = 16;
 
 impl ClientKey {
     fn from_config(cfg: &RateLimitConfig, trusted: &TrustedProxies) -> Self {
@@ -66,7 +74,15 @@ impl ClientKey {
         Self {
             header,
             trusted: trusted.clone(),
+            reported: Arc::default(),
         }
+    }
+
+    /// True the first time `peer` forwards without being trusted, for the
+    /// first [`REPORTED_FORWARDERS_MAX`] such peers.
+    fn first_report(&self, peer: IpAddr) -> bool {
+        let mut seen = self.reported.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.len() < REPORTED_FORWARDERS_MAX && seen.insert(crate::clientip::throttle_bucket(peer))
     }
 }
 
@@ -88,8 +104,10 @@ impl KeyExtractor for ClientKey {
             }
             None => {
                 let peer = PeerIpKeyExtractor.extract(req)?;
-                if forwards_from_untrusted(req.headers(), peer, &self.trusted) {
-                    warn_untrusted_forwarder_once(peer);
+                if forwards_from_untrusted(req.headers(), peer, &self.trusted)
+                    && self.first_report(peer)
+                {
+                    warn_untrusted_forwarder(peer);
                 }
                 // `client_ip` only looks at the peer's address, never its port.
                 crate::clientip::client_ip(req.headers(), SocketAddr::new(peer, 0), &self.trusted)
@@ -113,20 +131,16 @@ fn forwards_from_untrusted(headers: &HeaderMap, peer: IpAddr, trusted: &TrustedP
         && !trusted.contains(peer)
 }
 
-/// Set once [`warn_untrusted_forwarder_once`] has logged, so a busy proxy, or
-/// a client spraying headers, costs one line and not one per request.
-static WARNED_UNTRUSTED_FORWARDER: AtomicBool = AtomicBool::new(false);
-
-fn warn_untrusted_forwarder_once(peer: IpAddr) {
-    if WARNED_UNTRUSTED_FORWARDER.swap(true, Ordering::Relaxed) {
-        return;
-    }
+/// Once per peer: a single warning per process would go to whoever sent the
+/// headers first (a scanner, a stray script), and the proxy that actually
+/// needs listing would never be named.
+fn warn_untrusted_forwarder(peer: IpAddr) {
     tracing::warn!(
         %peer,
         "a request names another client in X-Forwarded-For or X-Real-Ip, but its \
          peer is not in server.trusted_proxies, so the rate limit counts it as the \
          peer. If the peer is your reverse proxy, add it to server.trusted_proxies, \
-         or every client behind it shares one bucket. Logged once."
+         or every client behind it shares one bucket. Logged once per peer."
     );
 }
 
@@ -358,6 +372,24 @@ mod tests {
             docker_proxy,
             &trusted
         ));
+    }
+
+    #[test]
+    fn each_untrusted_forwarder_is_reported_once_up_to_a_cap() {
+        let k = keyed_on(None, &["loopback"]);
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+
+        assert!(k.first_report(ip("172.18.0.3")));
+        assert!(!k.first_report(ip("172.18.0.3")));
+        // Clones share what has been reported.
+        assert!(!k.clone().first_report(ip("172.18.0.3")));
+        assert!(k.first_report(ip("2001:db8:1:2::1")));
+        assert!(!k.first_report(ip("2001:db8:1:2::9")), "same /64");
+
+        for i in 2..REPORTED_FORWARDERS_MAX {
+            assert!(k.first_report(IpAddr::from([10, 0, 0, i as u8])));
+        }
+        assert!(!k.first_report(ip("10.9.9.9")), "past the cap");
     }
 
     #[test]
