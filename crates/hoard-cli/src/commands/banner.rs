@@ -402,3 +402,103 @@ pub async fn show(full: bool) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PAINTERS: [fn(&str, bool) -> String; 4] = [emerald, bold_emerald, dim, amber];
+
+    /// Off a terminal, or under `NO_COLOR`, the panel goes to a pipe or to
+    /// somebody who asked for no escapes: not one byte may be added. On one, a
+    /// colour that is not reset bleeds into whatever the terminal prints next.
+    #[test]
+    fn painters_add_nothing_without_color_and_reset_with_it() {
+        for paint in PAINTERS {
+            assert_eq!(paint("cli · v1.3.0", false), "cli · v1.3.0");
+
+            let painted = paint("x", true);
+            assert!(painted.starts_with("\x1b["), "{painted:?}");
+            assert!(painted.ends_with("x\x1b[0m"), "{painted:?}");
+        }
+        assert_eq!(dot(true, false), "●");
+        assert_eq!(dot(false, false), "○");
+    }
+
+    /// Padding is applied to the plain text, so the dot sits in the same column
+    /// with or without escape codes and every row's status lines up.
+    #[test]
+    fn component_rows_line_up_with_or_without_color() {
+        let plain = component("server", "v1.2.0", true, "online", false);
+        assert_eq!(plain, "server   v1.2.0    ● online");
+
+        let colored = component("server", "v1.2.0", true, "online", true);
+        assert!(
+            colored.starts_with("server   v1.2.0    \x1b["),
+            "{colored:?}"
+        );
+        assert!(colored.ends_with(" online"), "{colored:?}");
+
+        let sync = component("sync", "", false, "stopped", false);
+        assert_eq!(sync.find('○'), plain.find('●'));
+    }
+
+    /// With a newer release the `cli` row stops saying "in use" and says where
+    /// the update has got to, behind an amber dot instead of a green one.
+    #[test]
+    fn the_cli_row_reports_the_update_instead_of_in_use() {
+        assert_eq!(
+            cli_component("v1.2.0", None, false),
+            "cli      v1.2.0    ● in use"
+        );
+
+        let update = UpdateLine {
+            text: "v1.3.0 — downloading".into(),
+        };
+        assert_eq!(
+            cli_component("v1.2.0", Some(&update), false),
+            "cli      v1.2.0    ● v1.3.0 — downloading"
+        );
+        let colored = cli_component("v1.2.0", Some(&update), true);
+        assert!(colored.contains(&amber("●", true)), "{colored:?}");
+        assert!(!colored.contains(&emerald("●", true)), "{colored:?}");
+    }
+
+    /// Where a cheat-sheet description starts, counted in characters.
+    fn description_column(cmd: &str) -> usize {
+        cmd_line(cmd, "»", false)
+            .chars()
+            .position(|c| c == '»')
+            .unwrap()
+    }
+
+    /// The cheat sheet reads as two columns only if every description starts at
+    /// the same place, and that place is counted in characters, not bytes.
+    #[test]
+    fn cheat_sheet_descriptions_share_one_column() {
+        assert_eq!(description_column("hoard"), 24);
+        assert_eq!(description_column("hoard sync restart"), 24);
+        assert_eq!(description_column("hoard café"), 24, "é is one column");
+    }
+
+    /// A command wider than the column still gets a space before its
+    /// description rather than running into it.
+    #[test]
+    fn a_command_wider_than_the_column_keeps_a_space() {
+        let cmd = "hoard snapshots max-versions";
+        assert_eq!(
+            cmd_line(cmd, "cap stored versions", false),
+            format!("    {cmd} cap stored versions")
+        );
+    }
+
+    /// The info column starts right after the logo, so one row narrower than the
+    /// rest would pull its line of text out of alignment.
+    #[test]
+    fn every_logo_row_is_the_same_width() {
+        let width = LOGO[0].chars().count();
+        for row in LOGO {
+            assert_eq!(row.chars().count(), width, "{row:?}");
+        }
+    }
+}

@@ -641,3 +641,224 @@ fn fmt_bytes(b: u64) -> String {
         format!("{}B", b as u64)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::error::ErrorKind;
+    use clap::CommandFactory;
+
+    fn parse(argv: &[&str]) -> Cli {
+        let full = std::iter::once("hoard").chain(argv.iter().copied());
+        match Cli::try_parse_from(full) {
+            Ok(cli) => cli,
+            Err(err) => panic!("`hoard {}` should parse: {err}", argv.join(" ")),
+        }
+    }
+
+    fn refusal(argv: &[&str]) -> ErrorKind {
+        let full = std::iter::once("hoard").chain(argv.iter().copied());
+        match Cli::try_parse_from(full) {
+            Ok(_) => panic!("`hoard {}` should be refused", argv.join(" ")),
+            Err(err) => err.kind(),
+        }
+    }
+
+    /// `conflicts_with` and `requires` name their partners by string, so a
+    /// renamed field leaves them pointing at nothing, and clap only notices when
+    /// somebody happens to type that exact combination. This walks the whole tree
+    /// now.
+    #[test]
+    fn the_command_tree_is_well_formed() {
+        Cli::command().debug_assert();
+    }
+
+    /// Bare `hoard` paints the status panel, so it must not be a usage error.
+    #[test]
+    fn bare_hoard_is_a_command_of_its_own() {
+        assert!(parse(&[]).command.is_none());
+    }
+
+    /// Agents tack `--json` on wherever it lands; both places have to mean it.
+    #[test]
+    fn json_is_honoured_before_and_after_the_subcommand() {
+        assert!(parse(&["--json", "saves"]).json);
+        assert!(parse(&["saves", "--json"]).json);
+        assert!(parse(&["save", "list", "--json"]).json);
+        assert!(!parse(&["saves"]).json);
+    }
+
+    #[test]
+    fn install_refuses_contradictory_requests() {
+        assert_eq!(
+            refusal(&["install", "--headless", "--with-desktop"]),
+            ErrorKind::ArgumentConflict
+        );
+        // A folder of binaries has the version it has; pinning another is a lie.
+        assert_eq!(
+            refusal(&["install", "--version", "1.0.4", "--from", "/tmp/hoard"]),
+            ErrorKind::ArgumentConflict
+        );
+    }
+
+    /// `--remember` keeps the destination as the save's folder, so with no
+    /// `--to` there is nothing to keep.
+    #[test]
+    fn restore_remember_needs_a_destination() {
+        assert_eq!(
+            refusal(&["restore", "some-save", "--remember"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        match parse(&["restore", "some-save", "--to", "/tmp/x", "--remember"]).command {
+            Some(Commands::Restore { remember, to, .. }) => {
+                assert!(remember);
+                assert_eq!(to, Some(PathBuf::from("/tmp/x")));
+            }
+            _ => panic!("not a restore"),
+        }
+    }
+
+    /// The flag was renamed, and scripts written against the old spelling must
+    /// keep working.
+    #[test]
+    fn restore_still_accepts_allow_config() {
+        match parse(&["restore", "some-save", "--allow-config"]).command {
+            Some(Commands::Restore { allow_ini, .. }) => assert!(allow_ini),
+            _ => panic!("not a restore"),
+        }
+    }
+
+    /// `hoard desktop` and `hoard server` forward the rest of the line to another
+    /// binary, so flags this CLI has never heard of must reach it untouched.
+    #[test]
+    fn forwarding_commands_pass_unknown_flags_through() {
+        match parse(&["server", "--config", "/etc/hoard.toml", "-v"]).command {
+            Some(Commands::Server { args }) => {
+                assert_eq!(args, ["--config", "/etc/hoard.toml", "-v"]);
+            }
+            _ => panic!("not server"),
+        }
+        match parse(&["desktop", "--minimized"]).command {
+            Some(Commands::Desktop { args }) => assert_eq!(args, ["--minimized"]),
+            _ => panic!("not desktop"),
+        }
+    }
+
+    #[test]
+    fn sync_autostart_takes_only_on_or_off() {
+        assert_eq!(
+            refusal(&["sync", "autostart", "maybe"]),
+            ErrorKind::InvalidValue
+        );
+        for state in ["on", "off"] {
+            match parse(&["sync", "autostart", state]).command {
+                Some(Commands::Sync {
+                    action: Some(commands::service::SyncCommand::Autostart { state: Some(got) }),
+                }) => assert_eq!(got, state),
+                _ => panic!("`sync autostart {state}` parsed as something else"),
+            }
+        }
+    }
+
+    /// `hoard notifications on` with nothing after it would ask the service to
+    /// change nothing and print the switches as if it had.
+    #[test]
+    fn notifications_on_and_off_need_a_switch() {
+        assert_eq!(
+            refusal(&["notifications", "on"]),
+            ErrorKind::MissingRequiredArgument
+        );
+        assert_eq!(
+            refusal(&["notifications", "off", "everything"]),
+            ErrorKind::InvalidValue
+        );
+        parse(&["notifications", "off", "updates", "game-activity"]);
+    }
+
+    /// The `--json` promise per command: the ones listed answer with an
+    /// envelope, every other one refuses up front instead of printing a human
+    /// table that the caller then fails to parse.
+    #[test]
+    fn json_support_is_declared_per_command() {
+        let answers = [
+            vec!["saves"],
+            vec!["status"],
+            vec!["devices"],
+            vec!["doctor"],
+            vec!["whoami"],
+            vec!["scan"],
+            vec!["notifications"],
+            vec!["restore", "some-save"],
+            vec!["save", "list"],
+            vec!["save", "show", "some-save"],
+            vec!["save", "untrack", "some-save"],
+            vec!["snapshots", "list", "some-save"],
+        ];
+        for argv in answers {
+            let cmd = parse(&argv).command.unwrap();
+            assert!(supports_json(&cmd), "`hoard {}`", argv.join(" "));
+        }
+
+        let refuses = [
+            vec!["install"],
+            vec!["upgrade"],
+            vec!["login"],
+            vec!["logout"],
+            vec!["agents"],
+            vec!["sync"],
+            vec!["backup", "some-save"],
+            vec!["save", "delete", "some-save"],
+            vec!["save", "pause", "some-save"],
+            vec!["snapshots", "delete", "some-save", "3"],
+            vec!["snapshots", "max-versions"],
+        ];
+        for argv in refuses {
+            let cmd = parse(&argv).command.unwrap();
+            assert!(!supports_json(&cmd), "`hoard {}`", argv.join(" "));
+        }
+    }
+
+    /// `snapshots list --json` is the contract. The insight fields come and go
+    /// with the server, but a missing device is still a field, so a caller can
+    /// tell "unknown machine" from "an older Hoard that never said".
+    #[test]
+    fn a_snapshot_row_without_insight_keeps_its_device_field() {
+        let row = SnapshotRow {
+            version_num: 4,
+            file_count: 2,
+            total_size_bytes: 2048,
+            created_at: "2026-11-06T10:00:00Z".into(),
+            device_name: None,
+            state: "trash",
+            save_name: None,
+            changed_files: None,
+        };
+        let json = serde_json::to_value(&row).unwrap();
+        let obj = json.as_object().unwrap();
+        assert_eq!(obj["device_name"], serde_json::Value::Null);
+        assert_eq!(obj["state"], "trash");
+        assert!(!obj.contains_key("save_name"));
+        assert!(!obj.contains_key("changed_files"));
+
+        let with_insight = SnapshotRow {
+            save_name: Some("Slot 1".into()),
+            changed_files: Some(3),
+            ..row
+        };
+        let json = serde_json::to_value(&with_insight).unwrap();
+        assert_eq!(json["save_name"], "Slot 1");
+        assert_eq!(json["changed_files"], 3);
+    }
+
+    #[test]
+    fn sizes_switch_unit_at_each_power_of_1024() {
+        assert_eq!(fmt_bytes(0), "0B");
+        assert_eq!(fmt_bytes(1023), "1023B");
+        assert_eq!(fmt_bytes(1024), "1.00K");
+        assert_eq!(fmt_bytes(1536), "1.50K");
+        assert_eq!(fmt_bytes(1024 * 1024), "1.00M");
+        assert_eq!(fmt_bytes(1024 * 1024 * 1024), "1.00G");
+        // There is no unit past G: a terabyte is still counted in G.
+        assert_eq!(fmt_bytes(1024u64.pow(4)), "1024.00G");
+    }
+}

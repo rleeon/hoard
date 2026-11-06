@@ -358,3 +358,50 @@ fn slugify(name: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A game typed in by hand is slugged here, not by
+    /// `hoard_core::ids::slugify`, which is the one the catalogue, detection and
+    /// the server join on. If the two disagree, the same game typed by hand on
+    /// one machine and detected on another becomes two saves.
+    #[test]
+    fn a_hand_typed_name_slugs_like_the_catalogue() {
+        for name in [
+            "Stardew Valley",
+            "The Witcher 3: Wild Hunt",
+            "DOOM (2016)",
+            "  spaced   out  ",
+            "2064: Read Only Memories",
+            "Pokémon Red",
+            "日本語のゲーム",
+            "--already-kebab--",
+            "!!!",
+            "",
+        ] {
+            assert_eq!(slugify(name), hoard_core::ids::slugify(name), "{name:?}");
+        }
+    }
+
+    /// Only a leading `~/` means home. Anything else is a path as typed,
+    /// including another user's `~name`, which this does not try to resolve.
+    #[test]
+    fn only_a_leading_tilde_slash_is_expanded() {
+        for raw in ["/srv/saves", "saves/slot1", "~otheruser/saves", "a/~/b"] {
+            assert_eq!(expand_tilde(raw), PathBuf::from(raw), "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn a_leading_tilde_slash_is_the_home_folder() {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+        let expected = match home {
+            Some(home) => PathBuf::from(home).join("Games/saves"),
+            // With no home to go to, the path is left as typed.
+            None => PathBuf::from("~/Games/saves"),
+        };
+        assert_eq!(expand_tilde("~/Games/saves"), expected);
+    }
+}
