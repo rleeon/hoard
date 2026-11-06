@@ -19,7 +19,9 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   A reverse proxy that reaches the server from another address (a Docker
   container, another box on the LAN) and is not listed there now puts all of
   its clients into one bucket; the server logs a warning the first time it
-  sees that. Hoard One is unchanged: it keys on `fly-client-ip`.
+  sees that. The reverse-proxy section of the self-hosting guide shows what
+  to add, Docker included. Hoard One is unchanged: it keys on
+  `fly-client-ip`.
 
 ## [1.3.0] - 2026-10-25
 

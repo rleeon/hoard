@@ -276,6 +276,22 @@ your own config — since 1.1.3 that cap applies per file rather than per save,
 so it only bites if a single save file is over 100 MB; if one is, use a tunnel
 to a hostname that isn't proxied, or connect over your LAN/VPN.
 
+Whatever the proxy, **tell Hoard where it connects from.** The server only
+believes `X-Forwarded-For` from a peer listed in `server.trusted_proxies`, and
+the default is `loopback`. That covers nginx or Caddy on the same machine as a
+plain install. It does not cover a proxy in another container or on another
+box, nor one on the same host when Hoard runs in Docker: the container sees the
+Docker network's gateway, not `127.0.0.1`. Left out, every client behind the
+proxy counts as the proxy itself and they all share one rate-limit bucket and
+one panel login counter, so several devices syncing at once can get
+`429 Too Many Requests`. The server logs a warning naming that address the
+first time it sees it. For Docker's usual networks:
+
+```toml
+[server]
+trusted_proxies = ["loopback", "172.16.0.0/12"]
+```
+
 ### How uploads travel
 
 Hoard has always stored each unique file once (keyed by its SHA-256) and let
