@@ -273,7 +273,7 @@ async fn interactive_select(state: &CliState) -> Result<(Target, PathBuf)> {
         let path = expand_tilde(&raw);
         Ok((
             Target {
-                slug: slugify(&name),
+                slug: hoard_core::ids::slugify(&name),
                 display_name: name,
                 best_path: Some(path.clone()),
                 steam_app_id: None,
@@ -330,31 +330,4 @@ fn expand_tilde(raw: &str) -> PathBuf {
         }
     }
     PathBuf::from(raw)
-}
-
-/// Local slug for the "Other" case (game outside the catalog). Same style as
-/// `hoard_manifest::ludusavi::slugify` but without pulling that dep into the CLI.
-fn slugify(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut last_dash = true; // avoids a leading dash
-    for ch in name.chars() {
-        let c = ch.to_ascii_lowercase();
-        if c.is_ascii_alphanumeric() {
-            out.push(c);
-            last_dash = false;
-        } else if !last_dash {
-            out.push('-');
-            last_dash = true;
-        }
-    }
-    while out.ends_with('-') {
-        out.pop();
-    }
-    if out.is_empty() {
-        out.push_str("game");
-    }
-    if !out.starts_with(|c: char| c.is_ascii_alphanumeric()) {
-        out.insert(0, 'g');
-    }
-    out
 }
