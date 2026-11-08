@@ -576,6 +576,62 @@ fn playtime_watched_save(slug: &str, install_dir: Option<PathBuf>) -> WatchedSav
     }
 }
 
+/// One row of the "Played, no backup" list. `excluded` is the user's opt-out:
+/// installed, but its hours are not counted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlaytimeGameInfo {
+    pub slug: String,
+    pub display_name: String,
+    pub excluded: bool,
+}
+
+/// The "Played, no backup" list: installed playtime-catalogue games not tracked
+/// as saves, plus the excluded ones no longer installed so they can still be
+/// switched back on.
+///
+/// Knowing what is installed sweeps the disks for Steam libraries, network
+/// shares included, and that takes seconds against a NAS. The service answers
+/// it; a desktop that ran it on its window's thread greyed the window out as
+/// not responding (issue #67).
+pub fn playtime_games() -> Result<Vec<PlaytimeGameInfo>> {
+    let (cli_state, _) = CliState::load_default()?;
+    let installed = installed_catalog_games(Os::current());
+    Ok(playtime_game_rows(
+        installed.iter().map(|(slug, _)| *slug),
+        &cli_state,
+    ))
+}
+
+fn playtime_game_rows<'a>(
+    installed: impl IntoIterator<Item = &'a str>,
+    cli_state: &CliState,
+) -> Vec<PlaytimeGameInfo> {
+    let tracked: HashSet<&str> = cli_state
+        .saves
+        .values()
+        .map(|s| s.game_slug.as_str())
+        .collect();
+    let mut out: Vec<PlaytimeGameInfo> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    let excluded_gone = cli_state.playtime_excluded.iter().map(String::as_str);
+    let listed = installed.into_iter().map(|slug| (slug, true));
+    for (slug, installed) in listed.chain(excluded_gone.map(|slug| (slug, false))) {
+        if tracked.contains(slug) || !seen.insert(slug) {
+            continue;
+        }
+        let Some(game) = playtime_catalog::by_slug(slug) else {
+            continue;
+        };
+        out.push(PlaytimeGameInfo {
+            slug: slug.to_string(),
+            display_name: game.display_name.to_string(),
+            excluded: !installed || cli_state.is_playtime_excluded(slug),
+        });
+    }
+    out.sort_by_key(|g| g.display_name.to_lowercase());
+    out
+}
+
 /// The `track_only` slots to seed: every installed catalogue game that is not
 /// already tracked as a real save and that the user has not excluded.
 pub fn derive_playtime_saves(
@@ -4667,6 +4723,76 @@ mod folder_note_tests {
         assert_eq!(
             advise_folder(prefix.path(), None).kind,
             Some(FolderNote::WinePrefix)
+        );
+    }
+}
+
+#[cfg(test)]
+mod playtime_list_tests {
+    use super::{playtime_game_rows, PlaytimeGameInfo};
+    use crate::state::{CliState, SaveState};
+    use std::path::PathBuf;
+
+    fn row(slug: &str, display_name: &str, excluded: bool) -> PlaytimeGameInfo {
+        PlaytimeGameInfo {
+            slug: slug.into(),
+            display_name: display_name.into(),
+            excluded,
+        }
+    }
+
+    #[test]
+    fn the_list_is_installed_untracked_games_plus_opt_outs_no_longer_installed() {
+        let mut state = CliState::default();
+        // Rust is tracked as a real save: its hours count through that slot.
+        state.saves.insert(
+            "s1".into(),
+            SaveState {
+                local_path: PathBuf::from("/saves/rust"),
+                game_slug: "rust".into(),
+                label: "main".into(),
+                last_backup_at: None,
+                last_version_num: None,
+                paused: false,
+                preset: None,
+                allow_device_local: None,
+                set_hash: None,
+                processes: Vec::new(),
+                shared_processes: false,
+            },
+        );
+        state.exclude_playtime("valorant".into());
+        state.exclude_playtime("league-of-legends".into());
+
+        let rows = playtime_game_rows(
+            [
+                "fortnite",
+                "valorant",
+                "rust",
+                "not-in-the-catalogue",
+                "fortnite",
+            ],
+            &state,
+        );
+
+        assert_eq!(
+            rows,
+            vec![
+                row("fortnite", "Fortnite", false),
+                row("league-of-legends", "League of Legends", true),
+                row("valorant", "VALORANT", true),
+            ]
+        );
+    }
+
+    /// It crosses the service's socket as JSON and lands in the UI's
+    /// `PlaytimeGameInfo` type, field for field.
+    #[test]
+    fn a_row_keeps_the_field_names_the_ui_reads() {
+        let json = serde_json::to_value(row("fortnite", "Fortnite", false)).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "slug": "fortnite", "display_name": "Fortnite", "excluded": false })
         );
     }
 }

@@ -453,6 +453,14 @@ impl Daemon {
                     Err(err) => internal(err.into()),
                 }
             }
+            // Blocking for seconds on a NAS: it sweeps the disks for Steam libraries.
+            Request::PlaytimeGames => {
+                match tokio::task::spawn_blocking(hoard_agent::library::playtime_games).await {
+                    Ok(Ok(games)) => json_payload(&games, |games| Payload::PlaytimeGames { games }),
+                    Ok(Err(err)) => internal(err),
+                    Err(err) => internal(err.into()),
+                }
+            }
             Request::CatalogStatus => {
                 match tokio::task::spawn_blocking(crate::detect::catalog_info).await {
                     Ok(info) => Reply::Ok(Payload::Catalog(info)),

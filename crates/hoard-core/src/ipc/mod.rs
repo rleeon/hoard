@@ -456,6 +456,10 @@ pub enum Request {
     GameFacts {
         slug: String,
     },
+    /// The "Played, no backup" list. Answers [`Payload::PlaytimeGames`].
+    /// Knowing what is installed sweeps the disks, network shares included, so
+    /// the service works it out and no window waits on it.
+    PlaytimeGames,
     /// The catalogue in use: how many games, and when it was refreshed.
     CatalogStatus,
     /// Download the catalogue from upstream now and answer with its new status.
@@ -599,6 +603,10 @@ pub enum Payload {
         trace: serde_json::Value,
     },
     GameFacts(GameFacts),
+    /// `Vec<hoard_agent::library::PlaytimeGameInfo>`, as JSON.
+    PlaytimeGames {
+        games: serde_json::Value,
+    },
     /// The catalogue in use (answer to [`Request::CatalogStatus`] and
     /// [`Request::CatalogRefresh`]).
     Catalog(CatalogInfo),
@@ -1121,6 +1129,9 @@ mod tests {
             },
             Request::CatalogRefresh,
             Request::AutomaticChanged,
+            // 1.3.0's service has detection but not this one: its `Unsupported`
+            // is what sends the desktop to work the list out off its window.
+            Request::PlaytimeGames,
         ] {
             let json = serde_json::to_value(&request).unwrap();
             #[derive(Deserialize)]
