@@ -1274,5 +1274,8 @@
   "pricing.note_mor_title": "Merchant of Record",
   "pricing.note_mor_body": "VATと請求はMerchant of RecordであるPolarが処理します。価格はEUR、税別。税金がかかるかどうかはPolarが表示します（通常0.15ユーロ）。",
   "pricing.note_lockin_title": "ロックインなし",
-  "pricing.note_lockin_body": "各セーブをゲームの元のフォーマットでエクスポート。同じバイナリをいつでもセルフホストできます。"
+  "pricing.note_lockin_body": "各セーブをゲームの元のフォーマットでエクスポート。同じバイナリをいつでもセルフホストできます。",
+  "pin.add": "上部にピン留め",
+  "pin.remove": "ピン留めを解除",
+  "pin.position": "ピン留めしたゲーム内の順番"
 }

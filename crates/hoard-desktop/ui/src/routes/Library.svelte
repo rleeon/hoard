@@ -70,6 +70,8 @@
   } from "../lib/stores/agent";
   import CardResizeHandle from "../lib/components/CardResizeHandle.svelte";
   import Select from "../lib/components/Select.svelte";
+  import PinButton from "../lib/components/PinButton.svelte";
+  import { comparePinned } from "../lib/stores/pins.svelte";
   import { fmtDate, fmtNumber } from "../lib/utils/format";
 
   let report = $state<DetectionReport | null>(null);
@@ -1063,8 +1065,10 @@
       });
     }
 
-    // Lo que ya vigilas, primero; el resto por nombre.
+    // Pinned first, in their order; then what is already watched; the rest by name.
     out.sort((a, b) => {
+      const pin = comparePinned(a.slug, b.slug);
+      if (pin) return pin;
       const at = a.saves.length > 0;
       const bt = b.saves.length > 0;
       if (at !== bt) return at ? -1 : 1;
@@ -1671,6 +1675,7 @@
                 >
                   <FolderOpen size={14} />
                 </button>
+                <PinButton slug={entry.slug} />
                 {#if !isTracked}
                   <button
                     type="button"
@@ -1682,6 +1687,12 @@
                     <Trash size={14} />
                   </button>
                 {/if}
+              </div>
+            {:else}
+              <!-- A game added by hand has no detection row, so none of the
+                   buttons above: the pin gets a row of its own. -->
+              <div class="mt-auto flex items-center gap-2 p-3 pt-1">
+                <PinButton slug={entry.slug} />
               </div>
             {/if}
           </div>

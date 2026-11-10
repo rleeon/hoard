@@ -1274,5 +1274,8 @@
   "pricing.note_mor_title": "Merchant of Record",
   "pricing.note_mor_body": "MwSt. und Rechnungsstellung werden von Polar als Merchant of Record abgewickelt. Preise in EUR, zzgl. Steuern. Polar zeigt dir, ob Steuern anfallen oder nicht (meist 0,15 €).",
   "pricing.note_lockin_title": "Keine Bindung",
-  "pricing.note_lockin_body": "Exportiere jeden Spielstand im Originalformat des Spiels. Hoste dieselbe Binärdatei jederzeit selbst."
+  "pricing.note_lockin_body": "Exportiere jeden Spielstand im Originalformat des Spiels. Hoste dieselbe Binärdatei jederzeit selbst.",
+  "pin.add": "Oben anpinnen",
+  "pin.remove": "Nicht mehr anpinnen",
+  "pin.position": "Platz unter den angepinnten Spielen"
 }

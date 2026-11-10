@@ -1274,5 +1274,8 @@
   "pricing.note_mor_title": "记录商户",
   "pricing.note_mor_body": "增值税和开票由作为记录商户的 Polar 处理。价格以欧元计，不含税费。是否需要缴税由 Polar 告诉你（通常约为 0.15 欧元）。",
   "pricing.note_lockin_title": "无锁定",
-  "pricing.note_lockin_body": "按游戏的原始格式导出每个存档。随时自托管同一个二进制文件。"
+  "pricing.note_lockin_body": "按游戏的原始格式导出每个存档。随时自托管同一个二进制文件。",
+  "pin.add": "固定到顶部",
+  "pin.remove": "取消固定",
+  "pin.position": "在已固定游戏中的位置"
 }

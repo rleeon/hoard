@@ -1274,5 +1274,8 @@
   "pricing.note_mor_title": "Merchant of Record",
   "pricing.note_mor_body": "IVA e faturação tratados pela Polar como Merchant of Record. Preços em EUR, impostos não incluídos. A Polar diz-te se se aplica algum imposto ou não (normalmente 0,15 €).",
   "pricing.note_lockin_title": "Sem aprisionamento",
-  "pricing.note_lockin_body": "Exporta cada save no formato original do jogo. Faz self-host do mesmo binário quando quiseres."
+  "pricing.note_lockin_body": "Exporta cada save no formato original do jogo. Faz self-host do mesmo binário quando quiseres.",
+  "pin.add": "Fixar no topo",
+  "pin.remove": "Desafixar",
+  "pin.position": "Posição entre os jogos fixados"
 }

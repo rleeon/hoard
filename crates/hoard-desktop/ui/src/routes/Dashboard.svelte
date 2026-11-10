@@ -47,6 +47,7 @@
   import { auth, refreshQuota } from "../lib/stores/auth";
   import { signOutEverything } from "../lib/stores/session";
   import { storageGamesCloud } from "../lib/stores/cloud";
+  import { comparePinned } from "../lib/stores/pins.svelte";
   import Select from "../lib/components/Select.svelte";
   import { activity, status } from "../lib/stores/agent";
   import {
@@ -127,6 +128,9 @@
         s.last_backup_at ? new Date(s.last_backup_at).getTime() : 0;
       arr.sort((a, b) => t(b) - t(a));
     }
+    // Pinned games lead whatever the order chosen. The sort is stable, so the
+    // rest keep it.
+    arr.sort((a, b) => comparePinned(a.game_slug, b.game_slug));
     return arr;
   });
 

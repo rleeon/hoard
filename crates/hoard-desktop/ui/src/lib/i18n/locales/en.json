@@ -1274,5 +1274,8 @@
   "pricing.note_mor_title": "Merchant of Record",
   "pricing.note_mor_body": "VAT and invoicing handled by Polar as Merchant of Record. Prices in EUR, taxes not included. Polar will tell you whether any tax applies (usually €0.15).",
   "pricing.note_lockin_title": "No lock-in",
-  "pricing.note_lockin_body": "Export every save in the game's original format. Self-host the same binary anytime."
+  "pricing.note_lockin_body": "Export every save in the game's original format. Self-host the same binary anytime.",
+  "pin.add": "Pin to top",
+  "pin.remove": "Unpin",
+  "pin.position": "Place among the pinned games"
 }
