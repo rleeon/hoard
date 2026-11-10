@@ -29,7 +29,7 @@ Rolls back when things go wrong. That's it. That's Hoard.
 
 | Feature | What it means for you |
 |---------|----------------------|
-| **Versioned** | Every session = new snapshot. Roll back to *any* previous version. Old saves never expire (self-hosted) or until you hit your quota (Hoard One). |
+| **Versioned** | Every save the game writes = new snapshot, mid-session included. Roll back to *any* previous version. Old saves never expire (self-hosted) or until you hit your quota (Hoard One). |
 | **Verified** | Every file SHA256-hashed on upload, re-verified on restore. Corruption caught before it overwrites your good save. |
 | **Compact** | Content-hash deduplication: 10 versions of a 2 GB save cost ~2 GB, not 20 GB. Transfers are zstd-compressed; restores byte-for-byte (SHA-256 verified). The same dedup applies on upload: a second backup of the same game moves only the files that changed, only megabytes, not the whole folder. After the 1.2.2 this gonna be upgraded. |
 | **Auto-detect** | +20,000 games from the Ludusavi manifest, found through 10 signals: Steam libraries, Epic/GOG/Xbox launchers, [running processes](EXPLAINING.md#running-processes), [filesystem scan](EXPLAINING.md#filesystem-scan), Windows registry, Steam Cloud stubs, Proton/Wine prefixes, wrappers and +20 emulators. Zero config. |
