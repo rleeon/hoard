@@ -76,7 +76,7 @@
   "how.s2_title": "检测你的游戏库",
   "how.s2_body": "Hoard 在 Steam、Epic、GOG、Proton/Wine 前缀等处找到你的游戏，并自行跟踪。通过 Ludusavi 清单支持数千款游戏。",
   "how.s3_title": "同步与历史",
-  "how.s3_body": "每次你停止游戏，都会创建一个快照并同步到你的其他机器。可从游戏库回滚到任意版本。",
+  "how.s3_body": "每次游戏存档，都会创建一个快照并同步到你的其他机器。可从游戏库回滚到任意版本。",
   "features.kicker": "4. 你能获得什么",
   "features.title": "像工具一样打造，而非一句承诺",
   "features.subtitle": "下面的一切如今都已在产品中，两个套餐都有。",

@@ -76,7 +76,7 @@
   "how.s2_title": "Bibliothek erkennen",
   "how.s2_body": "Hoard findet deine Spiele über Steam, Epic, GOG, Proton/Wine-Prefixe und mehr und verfolgt sie von selbst. Tausende Titel über das Ludusavi-Manifest.",
   "how.s3_title": "Sync & Verlauf",
-  "how.s3_body": "Jedes Mal, wenn du aufhörst zu spielen, wird ein Snapshot erstellt und auf deine anderen Rechner synchronisiert. Kehre aus der Bibliothek zu jeder Version zurück.",
+  "how.s3_body": "Jedes Mal, wenn das Spiel speichert, wird ein Snapshot erstellt und auf deine anderen Rechner synchronisiert. Kehre aus der Bibliothek zu jeder Version zurück.",
   "features.kicker": "4. Was du bekommst",
   "features.title": "Gebaut wie ein Werkzeug, nicht wie ein Versprechen",
   "features.subtitle": "Alles unten ist heute im Produkt, auf beiden Stufen.",
