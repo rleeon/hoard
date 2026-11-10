@@ -563,6 +563,13 @@ fn cloud_state_stale(obs: &Observation, now: OffsetDateTime) -> bool {
 /// it trusts `has_pending`, since the fs hint said something changed. The
 /// `Some(fp) == synced` case is what makes converged mean zero actions even when
 /// `has_pending` was set by a spurious settle.
+/// Nothing in the folder waits to go up: no write was seen, or the one that was
+/// left the content as synced. The negation of `decide_backup`'s first gate, for
+/// the shell to close a "backup in Ns" it announced and no upload will answer.
+pub fn nothing_to_upload(state: &State, obs: &Observation) -> bool {
+    !(state.has_pending && local_diverged(state, obs))
+}
+
 fn local_diverged(state: &State, obs: &Observation) -> bool {
     match obs.local_fingerprint {
         Some(fp) => state.synced_fingerprint != Some(fp),
@@ -1681,6 +1688,39 @@ mod tests {
             acts(&ds).is_empty(),
             "nothing differs, nothing to do: {ds:?}"
         );
+    }
+
+    /// A write that lands the folder back on the synced content (a restore's own
+    /// files, an mtime touch) marks pending and still leaves nothing to upload: the
+    /// shell closes the countdown on this, because no backup will.
+    #[test]
+    fn a_write_that_changes_nothing_leaves_nothing_to_upload() {
+        let state = State {
+            known_version: Some(9),
+            synced_fingerprint: Some(1),
+            has_pending: true,
+            ..base_state()
+        };
+        let same = Observation {
+            cloud_version: Some(9),
+            local_fingerprint: Some(1),
+            ..quiet_obs()
+        };
+        let (next, ds) = reconcile(&state, &same, world(0));
+        assert!(acts(&ds).is_empty(), "{ds:?}");
+        assert!(nothing_to_upload(&next, &same));
+
+        let changed = Observation {
+            local_fingerprint: Some(2),
+            ..same
+        };
+        assert!(!nothing_to_upload(&state, &changed));
+        // Unsampled is not "the same": the shell waits for the backup to decide.
+        let unsampled = Observation {
+            local_fingerprint: None,
+            ..same
+        };
+        assert!(!nothing_to_upload(&state, &unsampled));
     }
 
     /// The other half: between two advances, with the pull already deferred and

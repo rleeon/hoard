@@ -939,6 +939,11 @@ fn persist(event: &AgentEvent) {
             version_num,
             ..
         } => (save_id, Some(*version_num), None),
+        AgentEvent::SaveSynced {
+            save_id,
+            version_num,
+            ..
+        } => (save_id, Some(*version_num), None),
         _ => return,
     };
 
@@ -954,6 +959,13 @@ fn persist(event: &AgentEvent) {
         return;
     };
     if let Some(v) = version {
+        // A sync with nothing written only ever catches up: an upload may already
+        // have moved the row past the head it names.
+        if matches!(event, AgentEvent::SaveSynced { .. })
+            && entry.last_version_num.is_some_and(|cur| cur >= v)
+        {
+            return;
+        }
         entry.last_version_num = Some(v);
     }
     if let Some(hash) = set_hash {

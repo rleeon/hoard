@@ -480,6 +480,24 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
       });
       break;
     }
+    case "backup_unchanged": {
+      // Only a countdown or an upload is closed here: a failure or a finished
+      // backup that arrived in between already says more.
+      const prev = get(activity)[ev.save_id];
+      if (prev?.state !== "scheduled" && prev?.state !== "uploading") break;
+      patch(ev.save_id, {
+        state: prev.running_since != null ? "running" : "idle",
+        next_backup_at: undefined,
+      });
+      break;
+    }
+    case "save_synced": {
+      const prev = get(activity)[ev.save_id]?.last_version;
+      patch(ev.save_id, {
+        last_version: Math.max(prev ?? ev.version_num, ev.version_num),
+      });
+      break;
+    }
   }
 }
 
@@ -535,6 +553,8 @@ export async function subscribeAgent() {
     "agent://save-auto-restore-stuck",
     "agent://save-auto-restore-recovered",
     "agent://backup-skipped-empty",
+    "agent://backup-unchanged",
+    "agent://save-synced",
   ];
   unlisteners = await Promise.all(
     topics.map((t) =>

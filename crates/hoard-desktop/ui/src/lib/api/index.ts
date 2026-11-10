@@ -787,6 +787,18 @@ export type AgentEvent =
       type: "backup_attention_cleared";
       save_id: string;
       game_slug: string;
+    }
+  | {
+      /** The announced backup found nothing new: the countdown is over. */
+      type: "backup_unchanged";
+      save_id: string;
+    }
+  | {
+      /** This device holds `version_num` with nothing written or uploaded. */
+      type: "save_synced";
+      save_id: string;
+      game_slug: string;
+      version_num: number;
     };
 
 /** Ensure the sync service is up and report its engine status. */

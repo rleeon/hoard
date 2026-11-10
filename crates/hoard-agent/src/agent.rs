@@ -1522,6 +1522,7 @@ fn reconcile_all(
         // next go out, and the shell owes the user that number (see the
         // `Hold` arm below).
         let floor = kernel::reconcile::backup_floor(&next);
+        let nothing_to_upload = kernel::reconcile::nothing_to_upload(&next, &obs);
         // Read while `slot` is still borrowed: `execute_action` takes the whole
         // map, so the head has to be resolved and cloned before that.
         let server_head = cloud.head_for(&slot.save).cloned();
@@ -1612,6 +1613,21 @@ fn reconcile_all(
                     if kernel::reconcile::hold_is_paced_backup(reason) {
                         announce_backup_wait(slots, &id, floor, now, events_tx);
                     }
+                }
+            }
+        }
+
+        // The debounce's time has come and the write it announced left nothing to
+        // upload, so no backup will close the countdown it put on screen.
+        if nothing_to_upload {
+            if let Some(slot) = slots.get_mut(&id) {
+                let due = slot.next_scheduled_backup_at.is_some_and(|t| t <= now);
+                if due && slot.in_flight.is_none() {
+                    slot.next_scheduled_backup_at = None;
+                    slot.first_pending_event_at = None;
+                    let _ = events_tx.try_send(AgentEvent::BackupUnchanged {
+                        save_id: id.clone(),
+                    });
                 }
             }
         }
@@ -2037,6 +2053,21 @@ async fn run_agent(
                                 &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                                 &cloud_heads,
                             );
+                            // The reducer took the head this tick; only an event
+                            // carries it to `state.json` and the screen. A manual
+                            // restore "completed but stayed at v7" without it.
+                            if let Some(head) = adopt_head {
+                                let synced = held_slot_id(&slots, &cloud_heads, &id)
+                                    .and_then(|local| slots.get(&local))
+                                    .filter(|slot| slot.known_version == Some(head));
+                                if let Some(slot) = synced {
+                                    let _ = events_tx.try_send(AgentEvent::SaveSynced {
+                                        save_id: slot.save.save_id.clone(),
+                                        game_slug: slot.save.game_slug.clone(),
+                                        version_num: head,
+                                    });
+                                }
+                            }
                         }
                     }
                     Some(AgentCommand::SetAutoRestore(enabled)) => {
@@ -3060,7 +3091,18 @@ fn spawn_auto_restore(
                         outcome.conflicts_local_wins
                     );
                 }
-                // else: every file present and identical, so a silent no-op.
+                // Nothing written, and still this device is at that version now. Kept
+                // only in memory, the next service start read the old number, saw the
+                // cloud ahead and downloaded the whole snapshot again to write nothing.
+                if touched == 0 {
+                    let _ = events_tx
+                        .send(AgentEvent::SaveSynced {
+                            save_id: save.save_id.clone(),
+                            game_slug: save.game_slug.clone(),
+                            version_num: outcome.version_num,
+                        })
+                        .await;
+                }
             }
             // Nothing to pull, either way. `run_auto_restore` already logged which
             // case it was, so don't second-guess it here; the old unconditional "no
@@ -4303,6 +4345,9 @@ async fn run_backup_with_retry(
                     save_id = %save.save_id,
                     "agent: backup skipped, no content change since last upload"
                 );
+                let _ = events_tx.try_send(AgentEvent::BackupUnchanged {
+                    save_id: save.save_id.clone(),
+                });
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: None,
@@ -4321,6 +4366,9 @@ async fn run_backup_with_retry(
                     save_id = %save.save_id,
                     "agent: backup skipped, bytes unchanged despite mtime drift"
                 );
+                let _ = events_tx.try_send(AgentEvent::BackupUnchanged {
+                    save_id: save.save_id.clone(),
+                });
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
@@ -4581,6 +4629,24 @@ async fn run_backup_with_retry(
                                     version_num = outcome.version_num,
                                     "agent: backup conflict reconciled to head with no local divergence, settled without re-upload"
                                 );
+                                // No `BackupSuccess` follows the `BackupStarted` this
+                                // attempt sent, so the "uploading" pill is closed here,
+                                // and the version is kept when the merge wrote nothing
+                                // (`SaveAutoRestored` above keeps it otherwise).
+                                if touched == 0 {
+                                    let _ = events_tx
+                                        .send(AgentEvent::SaveSynced {
+                                            save_id: save.save_id.clone(),
+                                            game_slug: save.game_slug.clone(),
+                                            version_num: outcome.version_num,
+                                        })
+                                        .await;
+                                }
+                                let _ = events_tx
+                                    .send(AgentEvent::BackupUnchanged {
+                                        save_id: save.save_id.clone(),
+                                    })
+                                    .await;
                                 let _ = done_tx
                                     .send(BackupDone {
                                         save_id: save.save_id.clone(),
@@ -6630,6 +6696,62 @@ mod tests {
             events_rx.try_recv().is_err(),
             "re-announced the same wait, which is what flooded the feed with orphan rows"
         );
+    }
+
+    /// A write that leaves the folder as synced gets no backup, so nothing else
+    /// closes the "backup in Ns" its debounce announced: the pill sat on "0s" for
+    /// good after every restore on a self-hoster's Deck and desktop (Nov 2026).
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_write_that_changes_nothing_closes_its_countdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("game.srm"), b"same bytes").unwrap();
+        let save = WatchedSave {
+            save_id: "settle-1".into(),
+            game_slug: "fake-game".into(),
+            display_name: "Fake Game".into(),
+            label: "main".into(),
+            local_path: tmp.path().to_path_buf(),
+            steam_install_dir: None,
+            processes: vec![],
+            shared_processes: false,
+            policy: Default::default(),
+            allow_device_local: None,
+            known_version: Some(9),
+            set_hash: None,
+            track_only: false,
+        };
+        let now = OffsetDateTime::now_utc();
+        let mut slot = test_slot(save);
+        slot.synced_fingerprint = observe_local_fingerprint(tmp.path(), "fake-game");
+        slot.known_version = Some(9);
+        slot.has_pending = true;
+        slot.needs_l1 = true;
+        slot.next_scheduled_backup_at = Some(now - time::Duration::seconds(1));
+        let mut slots = HashMap::new();
+        slots.insert("settle-1".to_string(), slot);
+
+        let api = ApiClient::new("http://127.0.0.1:1", "fake").unwrap();
+        let (events_tx, mut events_rx) = mpsc::channel::<AgentEvent>(8);
+        let (cmd_tx, _cmd_rx) = mpsc::channel::<AgentCommand>(8);
+        let (done_tx, _done_rx) = mpsc::channel::<BackupDone>(8);
+        let config = AgentConfig::default();
+        let heads = CloudHeads::new(now);
+
+        reconcile_all(
+            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &heads,
+        );
+        match events_rx.try_recv() {
+            Ok(AgentEvent::BackupUnchanged { save_id }) => assert_eq!(save_id, "settle-1"),
+            other => panic!("expected the countdown closed, got {other:?}"),
+        }
+        assert!(slots["settle-1"].next_scheduled_backup_at.is_none());
+        assert!(slots["settle-1"].in_flight.is_none(), "nothing to upload");
+
+        // Closed once: the next tick has nothing announced to close.
+        reconcile_all(
+            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &heads,
+        );
+        assert!(events_rx.try_recv().is_err());
     }
 
     /// A Proton game that dies badly leaves its .exe defunct, keeping the name

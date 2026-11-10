@@ -67,6 +67,11 @@ pub const CAP_DETECTION: &str = "detection";
 /// service hands it one, and hears [`ServerFrame::NotificationSwitches`].
 pub const CAP_NOTICES: &str = "notices";
 
+/// The client understands [`AgentEvent::BackupUnchanged`] and
+/// [`AgentEvent::SaveSynced`]. The service leaves them out of the backlog and the
+/// push for anyone who does not send it (see [`AgentEvent::required_cap`]).
+pub const CAP_SYNC_SETTLED: &str = "sync_settled";
+
 /// Header bytes on every frame (the length `u32`).
 pub const HEADER_BYTES: usize = 4;
 
@@ -1247,6 +1252,42 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(deferred, AgentEvent::RestoreDeferred { .. }));
+    }
+
+    /// An older client cannot decode these two: it would drop the connection on the
+    /// frame and meet the same journal row on every reconnect. Only a client that
+    /// says it reads them gets them.
+    #[test]
+    fn settle_events_only_reach_clients_with_the_cap() {
+        let unchanged = AgentEvent::BackupUnchanged {
+            save_id: "s1".into(),
+        };
+        let synced = AgentEvent::SaveSynced {
+            save_id: "s1".into(),
+            game_slug: "emu-retroarch".into(),
+            version_num: 9,
+        };
+        let json = serde_json::to_value(&synced).unwrap();
+        assert_eq!(json["type"], "save_synced");
+        assert_eq!(json["version_num"], 9);
+        assert_eq!(
+            serde_json::to_value(&unchanged).unwrap()["type"],
+            "backup_unchanged"
+        );
+
+        let old_desktop = vec![CAP_DETECTION.to_string(), CAP_NOTICES.to_string()];
+        let new_desktop = vec![CAP_NOTICES.to_string(), CAP_SYNC_SETTLED.to_string()];
+        for ev in [&unchanged, &synced] {
+            assert!(!ev.reaches(&old_desktop));
+            assert!(!ev.reaches(&[]));
+            assert!(ev.reaches(&new_desktop));
+        }
+        let scheduled = AgentEvent::BackupScheduled {
+            save_id: "s1".into(),
+            delay_ms: 5000,
+            reason: BackupReason::FilesystemSettled,
+        };
+        assert!(scheduled.reaches(&[]));
     }
 
     /// The goodbye carries its reason, so the client can show it ("`hoard sync

@@ -712,7 +712,8 @@ where
                 // two would appear in neither the backlog nor the push, which is the
                 // silent gap this design exists to close.
                 let rx = daemon.log.subscribe();
-                let backlog = daemon.log.since(since.unwrap_or(0));
+                let mut backlog = daemon.log.since(since.unwrap_or(0));
+                backlog.entries.retain(|e| e.event.reaches(&hello.caps));
                 let cursor = backlog.cursor;
                 if backlog.gap {
                     tracing::info!(
@@ -734,6 +735,7 @@ where
                     out.clone(),
                     cursor,
                     daemon.log.clone(),
+                    hello.caps.clone(),
                 ))) {
                     // Re-subscribing replaces the previous subscription; two pushers
                     // per connection would double every event.
@@ -839,6 +841,7 @@ async fn push_loop(
     out: mpsc::Sender<ServerFrame>,
     mut cursor: u64,
     log: Arc<EventLog>,
+    caps: Vec<String>,
 ) {
     let mut notes_open = true;
     loop {
@@ -857,6 +860,9 @@ async fn push_loop(
                         continue;
                     }
                     cursor = entry.seq;
+                    if !entry.event.reaches(&caps) {
+                        continue;
+                    }
                     if out.send(ServerFrame::Event(entry)).await.is_err() {
                         return;
                     }
