@@ -17,6 +17,7 @@
 pub mod correlation;
 pub mod fileclass;
 pub mod insight;
+pub mod mirror;
 pub mod reconcile;
 pub mod restore_merge;
 pub mod session;

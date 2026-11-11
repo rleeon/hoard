@@ -507,6 +507,11 @@ enum AgentCommand {
         /// probe). Only a definite value moves the latch.
         is_cloud: Option<bool>,
     },
+    /// A pass over a save's second folders ended ([`run_mirror_pass`]).
+    MirrorDone {
+        id: String,
+        report: crate::mirror::Report,
+    },
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
@@ -927,7 +932,57 @@ struct SaveSlot {
     /// The head a restore that just let go vouched for, queued for the next
     /// observation. Maps to [`kernel::Observation::adopted_head`].
     adopted_head: Option<i64>,
+    /// The save's second folders on this machine ([`crate::mirror`]).
+    mirror: SlotMirror,
 }
+
+/// What the engine keeps per slot to hold a save's second folders level with
+/// its own. The decisions and the copying are [`crate::mirror`]'s; this is the
+/// watching and the timing.
+#[derive(Default)]
+struct SlotMirror {
+    folders: Vec<PathBuf>,
+    watchers: Vec<(PathBuf, Debouncer<notify::RecommendedWatcher>)>,
+    /// When to try again to watch a folder that is missing or could not be
+    /// watched.
+    rearm_at: Option<TokioInstant>,
+    /// A pass is owed: a folder changed, the store changed, or it is the first
+    /// look since the engine started.
+    due: bool,
+    /// Not before this: writes are still arriving, or the last pass asked to
+    /// be repeated.
+    not_before: Option<TokioInstant>,
+    checked_at: Option<TokioInstant>,
+    /// The pass in flight. While it runs the slot is left alone, exactly as
+    /// while a manual restore holds it: an upload now could publish a folder
+    /// that is half copied.
+    task: Option<JoinHandle<()>>,
+}
+
+impl SlotMirror {
+    fn busy(&self) -> bool {
+        self.task.as_ref().is_some_and(|t| !t.is_finished())
+    }
+
+    /// A write was seen in one of the save's folders.
+    fn touched(&mut self) {
+        if self.folders.is_empty() {
+            return;
+        }
+        self.due = true;
+        self.not_before = Some(TokioInstant::now() + MIRROR_SETTLE);
+    }
+}
+
+/// How long the save's folders have to stay quiet before files are copied
+/// between them. A game writes a save in several steps, and copying in the
+/// middle carries half of one across.
+const MIRROR_SETTLE: Duration = Duration::from_secs(10);
+/// How long before a pass that found a folder in use is repeated.
+const MIRROR_RETRY: Duration = Duration::from_secs(30);
+/// A look with no event behind it, for the write a watcher missed.
+const MIRROR_RECHECK: Duration = Duration::from_secs(10 * 60);
+const MIRROR_REARM: Duration = Duration::from_secs(60);
 
 /// The kernel's deterministic RNG seed for this save (ADR 0021 C.2): the throttle
 /// backoff's jitter has to be reproducible, so it derives from the `save_id` rather
@@ -1503,6 +1558,9 @@ fn reconcile_all(
             slot.held_until = None;
             tracing::info!(save_id = %id, "agent: the restore's hold lapsed without being released");
         }
+        if mirror_gate(slot, config, cmd_tx) {
+            continue;
+        }
         // A pre-reducer snapshot to derive the observability events (stuck and
         // recovered) from `restore_failures`' delta.
         let was_stuck = slot.restore_failures.stuck_notified;
@@ -1959,6 +2017,9 @@ async fn run_agent(
     // first `refresh_if_stale`.
     let mut steam_index = crate::playtime_index::SteamPlaytimeIndex::new();
 
+    // The date of the second-folders store as last read ([`refresh_mirrors`]).
+    let mut mirror_store_seen: Option<std::time::SystemTime> = None;
+
     tracing::info!(
         debounce_secs = config.debounce_secs,
         poll_secs = config.poll_secs,
@@ -1979,11 +2040,28 @@ async fn run_agent(
                         // the session) is taken by the reducer in the reconcile
                         // below; the recency veto covers the "folder touched
                         // recently" case that used to be deferred by hand.
+                        let added = save.save_id.clone();
                         handle_add(&mut slots, *save, &fs_tx);
+                        refresh_mirrors(&mut slots, &fs_tx, Some(&added));
                         reconcile_all(
                             &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                             &cloud_heads,
                         );
+                    }
+                    Some(AgentCommand::MirrorDone { id, report }) => {
+                        if let Some(slot) = slots.get_mut(&id) {
+                            slot.mirror.task = None;
+                            if report.retry {
+                                slot.mirror.due = true;
+                                slot.mirror.not_before = Some(TokioInstant::now() + MIRROR_RETRY);
+                            }
+                            // Its own watcher says the same a moment later. This
+                            // covers a folder whose watcher never armed.
+                            if report.wrote_primary {
+                                slot.has_pending = true;
+                                slot.needs_l1 = true;
+                            }
+                        }
                     }
                     Some(AgentCommand::RearmWatcher(id)) => {
                         // Auto-restore created files where there were none, so
@@ -2380,6 +2458,20 @@ async fn run_agent(
 
             // ----- Filesystem debounce hits -----
             Some(path) = fs_rx.recv() => {
+                // A write in a save's second folder is not a change to upload.
+                // It only owes the pair a pass; if that pass brings the write
+                // into the save's own folder, its watcher reports it as usual.
+                if let Some(save_id) = mirror_owner_of(&slots, &path) {
+                    if let Some(slot) = slots.get_mut(&save_id) {
+                        slot.mirror.touched();
+                    }
+                    tracing::debug!(
+                        save_id = %save_id,
+                        path = %path.display(),
+                        "agent: fs event in a second folder"
+                    );
+                    continue;
+                }
                 if let Some(save_id) = match_save_for_path(&slots, &path) {
                     let now = OffsetDateTime::now_utc();
                     // Per-save preset overrides win over the global config.
@@ -2405,6 +2497,7 @@ async fn run_agent(
                         slot.has_pending = true;
                         slot.last_fs_event_at = Some(now);
                         slot.needs_l1 = true;
+                        slot.mirror.touched();
                         // The anti-starvation cap. Every fs event restarts the
                         // debounce, so a game writing every second would never settle
                         // ("it all stayed queued"). This anchors the oldest change
@@ -2546,6 +2639,15 @@ async fn run_agent(
                         arm_watcher(slot, &fs_tx);
                     }
                 }
+                // Second folders: pick up what the app or the command line
+                // changed, and watch the ones that have appeared since.
+                let stamp = crate::mirror::store_stamp();
+                if stamp != mirror_store_seen {
+                    mirror_store_seen = stamp;
+                    refresh_mirrors(&mut slots, &fs_tx, None);
+                } else {
+                    arm_mirror_watchers(&mut slots, &fs_tx);
+                }
                 // The reconciliation (ADR 0021 C.1): the tick is the source of truth.
                 // `process_poll` already sampled the world (processes into
                 // `is_running`, events, playtime); now each slot is reconciled against
@@ -2680,6 +2782,12 @@ fn handle_add(
     // A reload rebuilds the slot; a restore's hold on it survives that. The
     // restore that ends with `--remember` reloads before it lets go.
     let held_until = slots.get(&save_id).and_then(|s| s.held_until);
+    // So do the second folders: a pass that is copying keeps the new slot
+    // waiting like it kept the old one.
+    let mirror = slots
+        .get_mut(&save_id)
+        .map(|s| std::mem::take(&mut s.mirror))
+        .unwrap_or_default();
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -2718,6 +2826,7 @@ fn handle_add(
         deferred_notified: false,
         held_until,
         adopted_head: None,
+        mirror,
     };
     // Playtime-only entries exist purely to be matched by the process poll
     // so their hours accrue for the recap. They own no save folder, so we
@@ -2773,6 +2882,10 @@ fn apply_hold(
         tracing::info!(save_id = %id, secs, "agent: holding the save while a restore writes into it");
     }
     slot.held_until = Some(now + Duration::from_secs(u64::from(secs)));
+    if slot.mirror.busy() {
+        tracing::info!(save_id = %id, "agent: the restore waits for the copy between the save's folders");
+        return HoldState::Busy;
+    }
     if slot.in_flight.is_some() && slot.pending_op_result.is_none() {
         tracing::info!(save_id = %id, op = ?slot.in_flight, "agent: the restore waits for the save's running op");
         HoldState::Busy
@@ -3958,6 +4071,188 @@ async fn files_have_equal_bytes(a: &Path, b: &Path) -> Result<bool> {
     let bytes_a = tokio::fs::read(a).await?;
     let bytes_b = tokio::fs::read(b).await?;
     Ok(bytes_a == bytes_b)
+}
+
+/// Whether this tick belongs to the save's second folders: a pass is running,
+/// or one is owed and the slot is quiet enough to start it. `true` skips the
+/// reconcile for the slot, for the reason a restore's hold does.
+///
+/// A pass waits for the upload or restore in flight, for the game to be closed
+/// and for the folders to settle. It reads and writes the same files those do.
+fn mirror_gate(
+    slot: &mut SaveSlot,
+    config: &AgentConfig,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
+) -> bool {
+    if slot.mirror.busy() {
+        return true;
+    }
+    slot.mirror.task = None;
+    if slot.mirror.folders.is_empty() {
+        return false;
+    }
+    let now = TokioInstant::now();
+    if slot
+        .mirror
+        .checked_at
+        .is_none_or(|at| now.duration_since(at) >= MIRROR_RECHECK)
+    {
+        slot.mirror.due = true;
+    }
+    if !slot.mirror.due || slot.mirror.not_before.is_some_and(|at| now < at) {
+        return false;
+    }
+    if slot.in_flight.is_some() || slot.pending_op_result.is_some() || slot.is_running {
+        return false;
+    }
+    slot.mirror.due = false;
+    slot.mirror.not_before = None;
+    slot.mirror.checked_at = Some(now);
+    slot.mirror.task = Some(tokio::spawn(run_mirror_pass(
+        slot.save.save_id.clone(),
+        slot.save.game_slug.clone(),
+        slot.save.local_path.clone(),
+        config.conflict_root.clone(),
+        config.conflict_retention_days,
+        cmd_tx.clone(),
+    )));
+    true
+}
+
+/// One pass of [`crate::mirror::run_pass`] off the loop, reported back as
+/// [`AgentCommand::MirrorDone`].
+async fn run_mirror_pass(
+    id: String,
+    game_slug: String,
+    primary: PathBuf,
+    conflict_root: Option<PathBuf>,
+    conflict_retention_days: u32,
+    cmd_tx: mpsc::Sender<AgentCommand>,
+) {
+    let (save_id, root) = (id.clone(), conflict_root.clone());
+    let pass = tokio::task::spawn_blocking(move || {
+        let Ok(store) = crate::mirror::store_path() else {
+            return crate::mirror::Report::default();
+        };
+        let filter = crate::backup::SourceFilter::for_slug(&game_slug);
+        crate::mirror::run_pass(&crate::mirror::Pass {
+            store: &store,
+            save_id: &save_id,
+            primary: &primary,
+            filter: &filter,
+            conflict_root: root.as_deref(),
+            now: std::time::SystemTime::now(),
+        })
+    })
+    .await;
+    let report = pass.unwrap_or_else(|e| {
+        tracing::warn!(save_id = %id, error = %e, "agent: the pass over the save's second folders died");
+        crate::mirror::Report {
+            retry: true,
+            ..Default::default()
+        }
+    });
+    if report.backed_up > 0 {
+        if let Some(root) = &conflict_root {
+            let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
+            if let Err(e) = cleanup_old_conflicts(root, retention).await {
+                tracing::debug!(error = %e, "cleanup_old_conflicts failed");
+            }
+        }
+    }
+    let _ = cmd_tx
+        .send(AgentCommand::MirrorDone { id, report })
+        .await;
+}
+
+/// Re-reads which saves have second folders, and owes a pass to the ones the
+/// store says are waiting for it.
+///
+/// The store is written by the app and the command line, and the engine learns
+/// of it by the file's date: a `Reload` only tells it about saves that came or
+/// went, and a second folder is neither. A pass writes the store too, and that
+/// lands here like any other change; it owes nothing, because what a pass
+/// leaves behind is never a folder that asks. `only` narrows it to one slot,
+/// for a save that has just been attached and gets its first look.
+fn refresh_mirrors(
+    slots: &mut HashMap<String, SaveSlot>,
+    fs_tx: &mpsc::Sender<PathBuf>,
+    only: Option<&str>,
+) {
+    let by_save = crate::mirror::folders_by_save();
+    for (id, slot) in slots.iter_mut() {
+        if slot.save.track_only || only.is_some_and(|one| one != id) {
+            continue;
+        }
+        let (want, asks) = by_save
+            .get(id)
+            .map(|w| (w.folders.clone(), w.asks))
+            .unwrap_or_default();
+        let changed = slot.mirror.folders != want;
+        if changed {
+            slot.mirror.watchers.clear();
+            slot.mirror.rearm_at = None;
+            slot.mirror.folders = want;
+        }
+        if slot.mirror.folders.is_empty() {
+            slot.mirror.due = false;
+        } else if changed || asks || only.is_some() {
+            slot.mirror.due = true;
+        }
+    }
+    arm_mirror_watchers(slots, fs_tx);
+}
+
+/// Watches every second folder that is there and not watched yet. One that is
+/// missing (a drive not plugged in) is looked for again a minute later.
+fn arm_mirror_watchers(slots: &mut HashMap<String, SaveSlot>, fs_tx: &mpsc::Sender<PathBuf>) {
+    let now = TokioInstant::now();
+    for slot in slots.values_mut() {
+        let mirror = &mut slot.mirror;
+        // A folder that went away took its watch with it. Dropping the dead
+        // watcher is what lets the folder be watched again when it is back.
+        mirror.watchers.retain(|(watched, _)| watched.is_dir());
+        if mirror.watchers.len() == mirror.folders.len()
+            || mirror.rearm_at.is_some_and(|at| now < at)
+        {
+            continue;
+        }
+        for folder in &mirror.folders {
+            if mirror.watchers.iter().any(|(watched, _)| watched == folder) || !folder.is_dir() {
+                continue;
+            }
+            match build_watcher(folder, fs_tx.clone()) {
+                Ok((watcher, _)) => {
+                    tracing::info!(
+                        save_id = %slot.save.save_id,
+                        path = %folder.display(),
+                        "agent: fs watcher armed on a second folder"
+                    );
+                    mirror.watchers.push((folder.clone(), watcher));
+                    // Whatever was written there while nobody watched.
+                    mirror.due = true;
+                }
+                Err(e) => tracing::debug!(
+                    save_id = %slot.save.save_id,
+                    path = %folder.display(),
+                    error = %e,
+                    "agent: couldn't watch a second folder"
+                ),
+            }
+        }
+        mirror.rearm_at =
+            (mirror.watchers.len() < mirror.folders.len()).then(|| now + MIRROR_REARM);
+    }
+}
+
+/// The save a write in `path` belongs to when `path` is one of its second
+/// folders. The watcher reports the folder it was armed on, so this is an
+/// exact match.
+fn mirror_owner_of(slots: &HashMap<String, SaveSlot>, path: &Path) -> Option<String> {
+    slots
+        .values()
+        .find(|slot| slot.mirror.folders.iter().any(|folder| folder == path))
+        .map(|slot| slot.save.save_id.clone())
 }
 
 /// Try to attach an fs debouncer to `slot`. Tolerant: a missing folder or
@@ -6394,6 +6689,7 @@ mod tests {
             deferred_notified: false,
             held_until: None,
             adopted_head: None,
+            mirror: SlotMirror::default(),
         }
     }
 

@@ -104,6 +104,33 @@ pub enum SaveCommand {
         /// New save folder on this machine
         path: String,
     },
+    /// The save's second folders on this machine: the same save written by
+    /// another program, like one game played in two emulators. They are kept
+    /// equal to the save's own folder by copying locally. With no flag it lists
+    /// them. Local-only.
+    Folders {
+        /// Save id (UUID), see `hoard saves`
+        id: String,
+        /// Keep this folder equal to the save
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["remove", "resolve"])]
+        add: Option<String>,
+        /// Stop keeping this folder equal. Its files stay where they are
+        #[arg(long, value_name = "PATH", conflicts_with = "resolve")]
+        remove: Option<String>,
+        /// Settle a conflict on this second folder; say which side with --keep
+        #[arg(long, value_name = "PATH", requires = "keep")]
+        resolve: Option<String>,
+        /// Whose content wins: the save's own folder (`main`) or the second
+        /// one (`second`). What it replaces is saved with the conflicts
+        #[arg(long, value_enum, requires = "resolve")]
+        keep: Option<KeepSide>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum KeepSide {
+    Main,
+    Second,
 }
 
 pub async fn run(cmd: SaveCommand) -> Result<()> {
@@ -147,6 +174,13 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
             println!("path for {id} set to {path} ({applied})");
             return Ok(());
         }
+        SaveCommand::Folders {
+            id,
+            add,
+            remove,
+            resolve,
+            keep,
+        } => return folders(id, add.as_deref(), remove.as_deref(), resolve.as_deref(), *keep),
         SaveCommand::Untrack { id } => {
             // `library::untrack` drops the row whether or not it was there. For
             // a person that is harmless; for a caller that got the id wrong, a
@@ -343,9 +377,52 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
         | SaveCommand::Resume { .. }
         | SaveCommand::Preset { .. }
         | SaveCommand::Untrack { .. }
+        | SaveCommand::Folders { .. }
         | SaveCommand::Path { .. } => unreachable!("handled before the client is built"),
     }
     Ok(())
+}
+
+/// `hoard save folders`. Nothing is told to the service: it reads the store's
+/// date on every tick and picks the change up by itself.
+fn folders(
+    id: &str,
+    add: Option<&str>,
+    remove: Option<&str>,
+    resolve: Option<&str>,
+    keep: Option<KeepSide>,
+) -> Result<()> {
+    use hoard_agent::mirror::{self, Keep, Status};
+    use std::path::Path;
+
+    let list = if let Some(path) = add {
+        mirror::add(id, Path::new(path.trim()))?
+    } else if let Some(path) = remove {
+        mirror::remove(id, Path::new(path.trim()))?
+    } else if let (Some(path), Some(side)) = (resolve, keep) {
+        let side = match side {
+            KeepSide::Main => Keep::Primary,
+            KeepSide::Second => Keep::Mirror,
+        };
+        mirror::keep(id, Path::new(path.trim()), side)?
+    } else {
+        mirror::list()?.remove(id).unwrap_or_default()
+    };
+    output::emit(&list, |list| {
+        if list.is_empty() {
+            println!("This save has no second folder.");
+        }
+        for folder in list {
+            let status = match (folder.status, folder.keep) {
+                (_, Some(_)) => "copying",
+                (Status::Pending, _) => "waiting for the sync service",
+                (Status::InSync, _) => "in sync",
+                (Status::Conflict, _) => "CONFLICT: both changed, pick one with --resolve --keep",
+                (Status::Missing, _) => "folder not found",
+            };
+            println!("{}  ({status})", folder.path.display());
+        }
+    })
 }
 
 fn cloud_row(s: CloudManifestEntry) -> SaveInfo {

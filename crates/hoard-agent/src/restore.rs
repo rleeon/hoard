@@ -2303,7 +2303,7 @@ fn discard_kept(kept: &[PathBuf]) {
 /// `fsync` through `file`. A filesystem that cannot (some FUSE and network
 /// mounts answer "not supported") is let through: it never could, and
 /// refusing would make restoring there impossible.
-fn sync_handle(file: &std::fs::File) -> std::io::Result<()> {
+pub(crate) fn sync_handle(file: &std::fs::File) -> std::io::Result<()> {
     match file.sync_all() {
         Err(e)
             if matches!(
@@ -2400,7 +2400,7 @@ fn replace_with(from: &Path, target: &Path, perms: Option<std::fs::Permissions>)
 /// every restore of one failed with "access denied". The mark is lifted for the
 /// swap and, if the swap still fails, put back. The new file's mode is the
 /// caller's to set, as for any other.
-fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
+pub(crate) fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
     let first = std::fs::rename(from, target);
     #[cfg(windows)]
     if let Err(e) = &first {
@@ -2427,7 +2427,7 @@ fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
 
 /// `.<name>.<pid>-<seq>.hoard.tmp` next to `target`. The `.tmp` extension is
 /// junk to the backup walk, so one left behind by a crash is never uploaded.
-fn temp_beside(target: &Path) -> PathBuf {
+pub(crate) fn temp_beside(target: &Path) -> PathBuf {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let name = target
         .file_name()

@@ -878,6 +878,20 @@ fn validate_folder(local_path: &Path, except_save_ids: &[&str]) -> Result<()> {
         if let Some(other) = conflicting_save(&state, local_path, except_save_ids) {
             return Err(folder_taken(other, local_path));
         }
+        // A save's second folder is taken too. Tracked as a game of its own it
+        // would upload the same bytes twice, which is what the link is there
+        // to stop.
+        if let Some((owner, taken)) = crate::mirror::owner_of(&state, local_path) {
+            let slug = state
+                .saves
+                .get(&owner)
+                .map(|s| s.game_slug.as_str())
+                .unwrap_or("another save");
+            anyhow::bail!(
+                "{} is kept as a second folder of '{slug}'. Remove it there first.",
+                taken.display()
+            );
+        }
     }
     Ok(())
 }
@@ -2274,7 +2288,16 @@ pub async fn run_auto_track(
 ) -> Result<AutoTrackRun> {
     let (tracked, pruned) = list_tracked(client).await?;
     let (state, _) = CliState::load_default()?;
-    let plan = plan_auto_track(games, tracked, &state);
+    let mut plan = plan_auto_track(games, tracked, &state);
+    // A second folder of a save is detected like any other folder with saves in
+    // it, and it is already spoken for.
+    let taken = crate::mirror::claimed_folders();
+    if !taken.is_empty() {
+        let free = |p: &Path| !taken.iter().any(|t| crate::detection::paths_overlap(p, t));
+        plan.track.retain(|g| free(&g.found_paths[0]));
+        plan.adopt.retain(|(_, p)| free(p));
+        plan.probe.retain(|p| free(p));
+    }
     let total = plan.adopt.len() + plan.track.len();
     let mut run = AutoTrackRun {
         tracked: 0,
@@ -3233,6 +3256,7 @@ pub fn set_local_path(save_id: &str, new_path: &str) -> Result<LiveReseat> {
     // really changed.
     if previous != snapshot.local_path {
         crate::telemetry::repointed(&snapshot.game_slug, &previous, &snapshot.local_path);
+        crate::mirror::forget_signatures(save_id);
     }
 
     // Always detach; only re-attach when it is not paused.

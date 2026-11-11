@@ -34,6 +34,7 @@ pub mod library;
 pub mod locks;
 pub mod logship;
 pub mod manifest;
+pub mod mirror;
 pub mod pathexpand;
 pub mod playtime;
 pub mod playtime_catalog;
