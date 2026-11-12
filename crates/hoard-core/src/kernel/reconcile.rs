@@ -367,6 +367,13 @@ fn decide_backup(
     if next.backup_conflict.needs_attention {
         return Some(hold(HOLD_BACKUP_NEEDS_ATTENTION));
     }
+    // The user's choice, and not a brake on progress: the pull is vetoed for the
+    // whole session anyway, so nothing can land on top of what is held here, and
+    // the first quiet tick after the game closes uploads it. Not even an urgent
+    // flush skips it, since the pull it would unblock waits for the close too.
+    if next.backup_on_close && next.is_running && !obs.backup_requested {
+        return Some(hold(HOLD_BACKUP_UNTIL_CLOSE));
+    }
     // The game is writing the save right now, so uploading would capture a
     // half-written file. This is a pacing brake, not an error: as soon as it lets
     // go of the file, the next tick uploads. Ahead of the backoffs because it is
@@ -407,6 +414,9 @@ fn decide_backup(
 /// attempt had to be reverted.
 pub const HOLD_BACKUP_MIN_INTERVAL: &str = "backup min-interval";
 pub const HOLD_BACKUP_BURST: &str = "backup autosave burst";
+/// The save backs up when the game closes and the game is open. Not a wait with
+/// a time on it: the shell drops the countdown instead of showing it.
+pub const HOLD_BACKUP_UNTIL_CLOSE: &str = "backup waits for the game to close";
 
 /// Is this reason a wait with a time on it that the UI should be able to show?
 pub fn hold_is_paced_backup(reason: &str) -> bool {
@@ -1620,6 +1630,83 @@ mod tests {
         assert!(s4.pull_pending, "the intent to pull is still alive");
     }
 
+    /// Issue #68 asked for it: with "back up when the game closes" the session's
+    /// saves wait for the close, and the close uploads them.
+    #[test]
+    fn backup_on_close_waits_for_the_game_and_goes_when_it_closes() {
+        let playing = State {
+            backup_on_close: true,
+            is_running: true,
+            last_running_seen: Some(at(0)),
+            has_pending: true,
+            synced_fingerprint: Some(1),
+            known_version: Some(4),
+            ..base_state()
+        };
+        let obs = Observation {
+            process_alive: true,
+            local_fingerprint: Some(2),
+            cloud_version: Some(4),
+            ..quiet_obs()
+        };
+        let (held, ds) = reconcile(&playing, &obs, world(1));
+        assert!(!acts(&ds).contains(&&Action::Backup), "{ds:?}");
+        assert!(
+            ds.contains(&Decision::Hold {
+                reason: HOLD_BACKUP_UNTIL_CLOSE
+            }),
+            "{ds:?}"
+        );
+        assert!(held.has_pending, "the session's changes are still owed");
+
+        // The game closes; past the sticky grace the upload goes.
+        let closed = Observation {
+            process_alive: false,
+            ..obs.clone()
+        };
+        let (_n, ds) = reconcile(&held, &closed, world(RUNNING_STICKY_GRACE_SECS + 1));
+        assert!(acts(&ds).contains(&&Action::Backup), "{ds:?}");
+    }
+
+    #[test]
+    fn back_up_now_overrules_backup_on_close() {
+        let playing = State {
+            backup_on_close: true,
+            is_running: true,
+            last_running_seen: Some(at(0)),
+            has_pending: true,
+            synced_fingerprint: Some(1),
+            ..base_state()
+        };
+        let obs = Observation {
+            process_alive: true,
+            local_fingerprint: Some(2),
+            backup_requested: true,
+            ..quiet_obs()
+        };
+        let (_n, ds) = reconcile(&playing, &obs, world(1));
+        assert!(acts(&ds).contains(&&Action::Backup), "{ds:?}");
+    }
+
+    /// The default is unchanged: a save written mid-game goes up mid-game.
+    #[test]
+    fn without_the_setting_a_save_goes_up_while_playing() {
+        let playing = State {
+            is_running: true,
+            last_running_seen: Some(at(0)),
+            has_pending: true,
+            synced_fingerprint: Some(1),
+            ..base_state()
+        };
+        let obs = Observation {
+            process_alive: true,
+            local_fingerprint: Some(2),
+            ..quiet_obs()
+        };
+        let (_n, ds) = reconcile(&playing, &obs, world(1));
+        assert!(acts(&ds).contains(&&Action::Backup), "{ds:?}");
+    }
+
     /// A manual restore lets go. The History dialog's safety copy moved the
     /// head to v6 behind the daemon's back, an upload the daemon had running
     /// finished during the hold at v5,
@@ -2750,6 +2837,7 @@ mod tests {
             failures in arb_failures(),
             conflicts in arb_conflicts(),
             failure_lane in any::<bool>(),
+            backup_on_close in any::<bool>(),
         ) -> State {
             State {
                 track_only,
@@ -2770,6 +2858,7 @@ mod tests {
                 pull_pending,
                 deferred_notified,
                 min_backup_interval_secs: min_interval,
+                backup_on_close,
                 burst_since: burst_since.map(at),
                 burst_backups,
                 restore_failures: failures,
@@ -2803,6 +2892,7 @@ mod tests {
             ok_ver in prop::option::of(0i64..20),
             ok_fp in prop::option::of(0u64..8),
             ok_wrote in any::<bool>(),
+            backup_requested in any::<bool>(),
         ) -> Observation {
             let op_result = if quiescent || !has_op {
                 None
@@ -2835,6 +2925,7 @@ mod tests {
                 upload_landed: None,
                 // A restore letting go is a one-off with its own tests above.
                 adopted_head: None,
+                backup_requested: !quiescent && backup_requested,
             }
         }
     }

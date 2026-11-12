@@ -11,6 +11,16 @@ use hoard_agent::state::CliState;
 use crate::commands::link;
 use crate::output;
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum BackupWhen {
+    /// Each time the game saves
+    Saving,
+    /// Once the game closes
+    Closing,
+    /// As the global setting says
+    Default,
+}
+
 /// The result of a local mutation, so an agent can confirm what it changed
 /// instead of parsing a sentence.
 #[derive(Serialize)]
@@ -89,6 +99,15 @@ pub enum SaveCommand {
         #[arg(long)]
         preset: Option<String>,
     },
+    /// When a save backs up: each time the game saves, once the game closes,
+    /// or as the global setting says (`hoard config set backup.when`).
+    /// Local-only.
+    BackupWhen {
+        /// Save id (UUID), see `hoard saves`
+        id: String,
+        #[arg(value_enum)]
+        when: BackupWhen,
+    },
     /// Stop watching a save on THIS machine. The cloud copy and its whole
     /// version history stay untouched; this is not `delete`. Re-add it later from
     /// the Library or with `hoard track`. Local-only.
@@ -166,6 +185,22 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                 Some(p) => println!("preset for {id} set to '{p}' ({applied})"),
                 None => println!("preset for {id} cleared (standard) ({applied})"),
             }
+            return Ok(());
+        }
+        SaveCommand::BackupWhen { id, when } => {
+            let on_close = match when {
+                BackupWhen::Saving => Some(false),
+                BackupWhen::Closing => Some(true),
+                BackupWhen::Default => None,
+            };
+            library::set_backup_on_close(id, on_close)?;
+            let applied = link::notify_reload().await;
+            let said = match when {
+                BackupWhen::Saving => "backs up each time the game saves",
+                BackupWhen::Closing => "backs up once the game closes",
+                BackupWhen::Default => "backs up as the global setting says",
+            };
+            println!("{id} {said} ({applied})");
             return Ok(());
         }
         SaveCommand::Path { id, path } => {
@@ -376,6 +411,7 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
         SaveCommand::Pause { .. }
         | SaveCommand::Resume { .. }
         | SaveCommand::Preset { .. }
+        | SaveCommand::BackupWhen { .. }
         | SaveCommand::Untrack { .. }
         | SaveCommand::Folders { .. }
         | SaveCommand::Path { .. } => unreachable!("handled before the client is built"),

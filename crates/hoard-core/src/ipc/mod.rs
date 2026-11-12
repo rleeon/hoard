@@ -294,6 +294,12 @@ pub enum Request {
     SetGlobalSync {
         enabled: bool,
     },
+    /// The global "back up when the game closes" setting moved. An older daemon
+    /// answers [`IpcError::Unsupported`]; it picks the setting up from the prefs
+    /// file the next time its engine starts.
+    SetBackupOnClose {
+        enabled: bool,
+    },
     /// The user just moved their per-save cap on the website or in the app, so
     /// the engine's cached one is a plan behind.
     ///

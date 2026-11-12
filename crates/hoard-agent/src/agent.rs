@@ -120,6 +120,10 @@ pub struct AgentConfig {
     /// exception left: the pre-launch barrier died with the inversion of
     /// `run_agent` (ADR 0021 Slice 2b): the tick is the only authority.
     pub global_sync: bool,
+    /// Mirror of `Prefs::backup_on_close`: back every save up once its game
+    /// closes rather than each time it saves. A save's own answer
+    /// (`SavePolicy::backup_on_close`) wins over it.
+    pub backup_on_close: bool,
 }
 
 impl Default for AgentConfig {
@@ -133,6 +137,7 @@ impl Default for AgentConfig {
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
             global_sync: false,
+            backup_on_close: false,
         }
     }
 }
@@ -383,6 +388,8 @@ enum AgentCommand {
     /// immediate sweep so every outdated-but-idle save catches up right away.
     /// See [`AgentConfig::global_sync`].
     SetGlobalSync(bool),
+    /// The global "back up when the game closes" setting moved.
+    SetBackupOnClose(bool),
     /// Overwrite the client's cached per-save cap after the user changed it.
     /// See [`hoard_core::ipc::Request::SetPlanCap`].
     SetPlanCap {
@@ -608,6 +615,13 @@ impl AgentHandle {
     /// [`AgentConfig::global_sync`].
     pub async fn set_global_sync(&self, enabled: bool) -> Result<()> {
         self.tx.send(AgentCommand::SetGlobalSync(enabled)).await?;
+        Ok(())
+    }
+
+    /// Push the global "back up when the game closes" setting into the running
+    /// agent. See [`AgentConfig::backup_on_close`].
+    pub async fn set_backup_on_close(&self, enabled: bool) -> Result<()> {
+        self.tx.send(AgentCommand::SetBackupOnClose(enabled)).await?;
         Ok(())
     }
 
@@ -1047,6 +1061,7 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
             .policy
             .min_snapshot_interval_secs
             .unwrap_or(config.min_snapshot_interval_secs),
+        backup_on_close: backs_up_on_close(slot, config),
         is_running: slot.is_running,
         // Passthrough: `process_alive` equals `is_running` in the observation, so
         // the kernel's grace never extends beyond the shell's sticky.
@@ -1522,7 +1537,17 @@ fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation 
         // was not checked (nobody uploaded anything this tick).
         upload_landed: slot.pending_upload_landed.take(),
         adopted_head: slot.adopted_head.take(),
+        backup_requested: slot.manual_requested,
     }
+}
+
+/// Whether this save waits for its game to close before backing up: its own
+/// answer, or failing that the global one.
+fn backs_up_on_close(slot: &SaveSlot, config: &AgentConfig) -> bool {
+    slot.save
+        .policy
+        .backup_on_close
+        .unwrap_or(config.backup_on_close)
 }
 
 /// The reconciliation step (ADR 0021 C.1, Slice 2b): the inverted authority. For
@@ -1670,6 +1695,12 @@ fn reconcile_all(
                     tracing::debug!(save_id = %id, reason, "agent: reconcile hold");
                     if kernel::reconcile::hold_is_paced_backup(reason) {
                         announce_backup_wait(slots, &id, floor, now, events_tx);
+                    } else if reason == kernel::reconcile::HOLD_BACKUP_UNTIL_CLOSE {
+                        // No time to count down to: the close is the deadline.
+                        // Nothing was announced for it (see the `fs_rx` branch).
+                        if let Some(slot) = slots.get_mut(&id) {
+                            slot.next_scheduled_backup_at = None;
+                        }
                     }
                 }
             }
@@ -2184,6 +2215,18 @@ async fn run_agent(
                             );
                         }
                     }
+                    Some(AgentCommand::SetBackupOnClose(enabled)) => {
+                        config.backup_on_close = enabled;
+                        tracing::info!(
+                            backup_on_close = enabled,
+                            "agent: backup-on-close preference updated"
+                        );
+                        // Turned off mid-game, whatever was held goes up now.
+                        reconcile_all(
+                            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
+                            &cloud_heads,
+                        );
+                    }
                     Some(AgentCommand::ForceRestore {
                         save_id,
                         version_num,
@@ -2487,6 +2530,11 @@ async fn run_agent(
                     let already_scheduled = slots
                         .get(&save_id)
                         .is_some_and(|s| s.next_scheduled_backup_at.is_some());
+                    // A save that backs up on close says nothing while its game is
+                    // open: a countdown would end in a hold and stay on screen.
+                    let waits_for_close = slots
+                        .get(&save_id)
+                        .is_some_and(|s| s.is_running && backs_up_on_close(s, &config));
                     if let Some(slot) = slots.get_mut(&save_id) {
                         // Watcher hints (ADR 0021 C.1): they mark pending and focus the
                         // save for L1 sampling, since an in-place rewrite in a
@@ -2537,7 +2585,7 @@ async fn run_agent(
                     // nothing when the window was already open. (The reducer may still
                     // defer the upload on min-interval; the announcement belongs to
                     // the debounce, as it always did.)
-                    if delay > Duration::ZERO && !already_scheduled {
+                    if delay > Duration::ZERO && !already_scheduled && !waits_for_close {
                         let _ = events_tx.try_send(AgentEvent::BackupScheduled {
                             save_id: save_id.clone(),
                             delay_ms: delay.as_millis() as u64,
@@ -4221,7 +4269,8 @@ fn arm_mirror_watchers(slots: &mut HashMap<String, SaveSlot>, fs_tx: &mpsc::Send
             if mirror.watchers.iter().any(|(watched, _)| watched == folder) || !folder.is_dir() {
                 continue;
             }
-            match build_watcher(folder, fs_tx.clone()) {
+            let shields = crate::savefilter::shields_for_slug(&slot.save.game_slug);
+            match build_watcher(folder, shields, fs_tx.clone()) {
                 Ok((watcher, _)) => {
                     tracing::info!(
                         save_id = %slot.save.save_id,
@@ -4271,7 +4320,8 @@ fn arm_watcher(slot: &mut SaveSlot, fs_tx: &mpsc::Sender<PathBuf>) {
         slot.watcher_rearm_at = None;
         return;
     }
-    match build_watcher(&path, fs_tx.clone()) {
+    let shields = crate::savefilter::shields_for_slug(&slot.save.game_slug);
+    match build_watcher(&path, shields, fs_tx.clone()) {
         Ok((w, per_dir)) => {
             // A per-directory watch is rebuilt every few minutes, so it is only
             // announced the first time.
@@ -4402,6 +4452,7 @@ impl FairWalk {
 /// [`dirs_without_links`]) rather than the tree in one go.
 fn build_watcher(
     path: &Path,
+    shields: Vec<String>,
     fs_tx: mpsc::Sender<PathBuf>,
 ) -> Result<(Debouncer<notify::RecommendedWatcher>, bool)> {
     // A single-file save: the PARENT DIRECTORY is watched and filtered by name.
@@ -4433,7 +4484,9 @@ fn build_watcher(
                 // would wake this one.
                 let relevant = match &want_name {
                     Some(name) => events.iter().any(|e| e.path.file_name() == Some(name)),
-                    None => !events.is_empty(),
+                    None => events
+                        .iter()
+                        .any(|e| wakes_engine(&watch_root, &e.path, &shields)),
                 };
                 if relevant {
                     let _ = fs_tx.try_send(watch_root.clone());
@@ -4465,6 +4518,28 @@ fn build_watcher(
         .watcher()
         .watch(&watch_target, notify::RecursiveMode::Recursive)?;
     Ok((debouncer, false))
+}
+
+/// Does a write at `path` touch anything a backup of `root` carries? A game
+/// writing its log every two seconds used to wake the engine every two seconds
+/// (issue #68: ~10k "fs event observed" lines in one session), put a countdown on
+/// screen and hold off pulls, all for a file the walk then leaves out.
+///
+/// It answers as the walk does (`walk_source`): dropping something the walk
+/// keeps would leave that change waiting for the hourly sweep. Anything it
+/// cannot place wakes the engine.
+fn wakes_engine(root: &Path, path: &Path, shields: &[String]) -> bool {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return true;
+    };
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    if rel.is_empty() {
+        return true;
+    }
+    if path.is_dir() {
+        return !kernel::fileclass::is_log_dir(&rel);
+    }
+    kernel::fileclass::classify(&rel, shields).is_backed_up()
 }
 
 /// Find which save a path event belongs to. The fs watcher emits the root
@@ -7147,6 +7222,7 @@ mod tests {
             conflict_root: None,
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
+            backup_on_close: false,
         };
 
         let (handle, task) = spawn(api, config, vec![save], events_tx);
@@ -7763,7 +7839,7 @@ mod tests {
             .iter()
             .any(|d| d.starts_with(prefix.join("dosdevices/z:")) || d.starts_with(&outside)));
         let (tx, _rx) = mpsc::channel(4);
-        let (_watcher, per_dir) = build_watcher(&prefix, tx).unwrap();
+        let (_watcher, per_dir) = build_watcher(&prefix, Vec::new(), tx).unwrap();
         assert!(per_dir);
     }
 
@@ -7795,7 +7871,29 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("saves/slot1")).unwrap();
         assert_eq!(dirs_without_links(tmp.path()), None);
         let (tx, _rx) = mpsc::channel(4);
-        let (_watcher, per_dir) = build_watcher(tmp.path(), tx).unwrap();
+        let (_watcher, per_dir) = build_watcher(tmp.path(), Vec::new(), tx).unwrap();
         assert!(!per_dir);
+    }
+
+    /// Issue #68's folder: the game's log and its folder say nothing a backup
+    /// carries, the save and the config do.
+    #[test]
+    fn a_log_write_does_not_wake_the_engine() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("Saved/Logs")).unwrap();
+        std::fs::create_dir_all(root.join("Saved/SaveGames")).unwrap();
+        let no_shields: Vec<String> = Vec::new();
+
+        assert!(!wakes_engine(root, &root.join("Saved/Logs/SMG029UE5.log"), &no_shields));
+        assert!(!wakes_engine(root, &root.join("Saved/Logs"), &no_shields));
+        assert!(wakes_engine(root, &root.join("Saved/SaveGames/DP01.sav"), &no_shields));
+        assert!(wakes_engine(root, &root.join("Saved/SaveGames"), &no_shields));
+        assert!(wakes_engine(root, &root.join("Saved/Config/Windows/Engine.ini"), &no_shields));
+        assert!(wakes_engine(root, root, &no_shields));
+        assert!(wakes_engine(root, Path::new("/elsewhere/x.log"), &no_shields));
+
+        let shields = vec!["*.log".to_string()];
+        assert!(wakes_engine(root, &root.join("journal.log"), &shields));
     }
 }

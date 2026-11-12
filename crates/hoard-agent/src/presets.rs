@@ -34,6 +34,12 @@ pub struct SavePolicy {
     /// backs up. `None` inherits `AgentConfig::debounce_secs`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debounce_secs: Option<u64>,
+    /// Back up once the game closes instead of each time it saves. Not part of
+    /// any preset: it is the user's own per-game answer
+    /// ([`crate::state::SaveState::backup_on_close`]) laid over whichever preset
+    /// applies, and `None` follows the global setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_on_close: Option<bool>,
 }
 
 impl SavePolicy {
@@ -70,6 +76,7 @@ pub fn policy_for_preset(name: &str) -> SavePolicy {
             auto_restore: Some(true),
             min_snapshot_interval_secs: Some(30),
             debounce_secs: Some(5),
+            ..Default::default()
         },
         // Never overwrite local with the cloud copy. Pure one-way upload.
         PRESET_BACKUP_ONLY => SavePolicy {

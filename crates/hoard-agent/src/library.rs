@@ -82,6 +82,9 @@ pub struct TrackedSave {
     /// [`crate::state::SaveState::allow_device_local`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_device_local: Option<bool>,
+    /// See [`crate::state::SaveState::backup_on_close`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_on_close: Option<bool>,
 }
 
 /// Args para [`add_to_tracking`].
@@ -778,7 +781,10 @@ pub fn watched_saves_from_state(
             steam_install_dir,
             processes,
             shared_processes: s.shared_processes,
-            policy: resolve_policy(&s.game_slug, s.preset.as_deref()),
+            policy: SavePolicy {
+                backup_on_close: s.backup_on_close,
+                ..resolve_policy(&s.game_slug, s.preset.as_deref())
+            },
             allow_device_local: s.allow_device_local,
             known_version: s.last_version_num,
             set_hash: s.set_hash.clone(),
@@ -807,10 +813,14 @@ pub fn watched_save_from(
     processes_override: Vec<String>,
     shared_processes: bool,
     allow_device_local: Option<bool>,
+    backup_on_close: Option<bool>,
 ) -> WatchedSave {
     let steam_install_dir = None;
     let processes = processes_override;
-    let policy = resolve_policy(&game_slug, preset);
+    let policy = SavePolicy {
+        backup_on_close,
+        ..resolve_policy(&game_slug, preset)
+    };
     WatchedSave {
         allow_device_local,
         save_id,
@@ -1541,6 +1551,7 @@ pub async fn add_to_tracking_detected(
                 processes: pinned_processes.clone(),
                 shared_processes: args.shared_processes,
                 allow_device_local: None,
+                backup_on_close: None,
             },
         );
         cli_state.forget_auto_declined(&local_path);
@@ -1555,6 +1566,7 @@ pub async fn add_to_tracking_detected(
             preset_name.as_deref(),
             pinned_processes.clone(),
             args.shared_processes,
+            None,
             None,
         );
         return Ok(TrackOutcome {
@@ -1574,6 +1586,7 @@ pub async fn add_to_tracking_detected(
                 local_size_bytes: None,
                 preset: preset_name,
                 allow_device_local: None,
+                backup_on_close: None,
             },
             watched,
         });
@@ -1641,6 +1654,7 @@ pub async fn add_to_tracking_detected(
             processes: pinned_processes.clone(),
             shared_processes: args.shared_processes,
             allow_device_local: None,
+            backup_on_close: None,
         },
     );
     cli_state.forget_auto_declined(&local_path);
@@ -1655,6 +1669,7 @@ pub async fn add_to_tracking_detected(
         preset_name.as_deref(),
         pinned_processes.clone(),
         args.shared_processes,
+        None,
         None,
     );
 
@@ -1678,6 +1693,7 @@ pub async fn add_to_tracking_detected(
             local_size_bytes: None,
             preset: preset_name,
             allow_device_local: None,
+            backup_on_close: None,
         },
         watched,
     })
@@ -1747,6 +1763,7 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
             processes: Vec::new(),
             shared_processes: false,
             allow_device_local: None,
+            backup_on_close: None,
         },
     );
     cli_state.forget_auto_declined(&local_path);
@@ -1761,6 +1778,7 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
         preset.as_deref(),
         Vec::new(),
         false,
+        None,
         None,
     );
 
@@ -1781,6 +1799,7 @@ pub async fn adopt(client: &ApiClient, args: AdoptArgs) -> Result<TrackOutcome> 
             local_size_bytes: None,
             preset,
             allow_device_local: None,
+            backup_on_close: None,
         },
         watched,
     })
@@ -2706,6 +2725,7 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
                 local_size_bytes: None,
                 preset: st.preset.clone(),
                 allow_device_local: st.allow_device_local,
+                backup_on_close: st.backup_on_close,
             });
         }
 
@@ -2732,6 +2752,7 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
                 local_size_bytes: None,
                 preset: None,
                 allow_device_local: None,
+                backup_on_close: None,
             });
         }
         fill_local_sizes(&mut out);
@@ -2784,6 +2805,7 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
                 local_size_bytes: None,
                 preset: st.preset.clone(),
                 allow_device_local: st.allow_device_local,
+                backup_on_close: st.backup_on_close,
             }),
             None => out.push(TrackedSave {
                 save_id: s.id.into_inner(),
@@ -2801,6 +2823,7 @@ pub async fn list_tracked(client: &ApiClient) -> Result<(Vec<TrackedSave>, Vec<S
                 local_size_bytes: None,
                 preset: None,
                 allow_device_local: None,
+                backup_on_close: None,
             }),
         }
     }
@@ -2892,20 +2915,28 @@ pub async fn rename_label(
     let updated = client.rename_save_label(save_id, trimmed).await?;
 
     let (mut cli_state, path) = CliState::load_default()?;
-    let (local_path_string, preset, processes, shared_processes, local_cursor, allow_device_local) =
-        if let Some(entry) = cli_state.saves.get_mut(save_id) {
-            entry.label = updated.label.clone();
-            (
-                entry.local_path.to_string_lossy().into_owned(),
-                entry.preset.clone(),
-                entry.processes.clone(),
-                entry.shared_processes,
-                entry.last_version_num,
-                entry.allow_device_local,
-            )
-        } else {
-            (String::new(), None, Vec::new(), false, None, None)
-        };
+    let (
+        local_path_string,
+        preset,
+        processes,
+        shared_processes,
+        local_cursor,
+        allow_device_local,
+        backup_on_close,
+    ) = if let Some(entry) = cli_state.saves.get_mut(save_id) {
+        entry.label = updated.label.clone();
+        (
+            entry.local_path.to_string_lossy().into_owned(),
+            entry.preset.clone(),
+            entry.processes.clone(),
+            entry.shared_processes,
+            entry.last_version_num,
+            entry.allow_device_local,
+            entry.backup_on_close,
+        )
+    } else {
+        (String::new(), None, Vec::new(), false, None, None, None)
+    };
     cli_state.save(&path)?;
 
     let watched = (!local_path_string.is_empty()).then(|| {
@@ -2919,6 +2950,7 @@ pub async fn rename_label(
             processes,
             shared_processes,
             allow_device_local,
+            backup_on_close,
         )
     });
 
@@ -2939,6 +2971,7 @@ pub async fn rename_label(
             local_size_bytes: None,
             preset,
             allow_device_local,
+            backup_on_close,
         },
         watched,
     ))
@@ -3091,6 +3124,7 @@ fn watched_from_snapshot(save_id: String, s: &SaveState) -> WatchedSave {
         s.processes.clone(),
         s.shared_processes,
         s.allow_device_local,
+        s.backup_on_close,
     )
 }
 
@@ -3124,6 +3158,27 @@ pub fn set_paused(save_id: &str, paused: bool) -> Result<LiveReseat> {
 /// Pins, or clears, a save's sync preset. `None` or `"standard"` clears the override
 /// back to the global defaults. It reseats the agent so the new policy (interval,
 /// debounce, restore) applies at once, unless it is paused.
+/// When this save backs up: once its game closes (`Some(true)`), each time the
+/// game saves (`Some(false)`), or as the global setting says (`None`).
+pub fn set_backup_on_close(save_id: &str, on_close: Option<bool>) -> Result<LiveReseat> {
+    let (mut cli_state, path) = CliState::load_default()?;
+    let entry = cli_state.saves.get_mut(save_id).context(
+        "This save isn't tracked on this machine; link a local folder before choosing when it backs up.",
+    )?;
+    entry.backup_on_close = on_close;
+    let snapshot = entry.clone();
+    cli_state.save(&path)?;
+
+    Ok(if snapshot.paused {
+        LiveReseat::Noop
+    } else {
+        LiveReseat::Reseat(
+            save_id.to_string(),
+            Box::new(watched_from_snapshot(save_id.to_string(), &snapshot)),
+        )
+    })
+}
+
 pub fn set_preset(save_id: &str, preset: Option<String>) -> Result<LiveReseat> {
     // Normalise: empty or "standard" means no override.
     let preset = preset.filter(|p| !p.is_empty() && p != presets::PRESET_STANDARD);
@@ -3296,6 +3351,7 @@ mod tests {
             paused: false,
             preset: None,
             allow_device_local: None,
+            backup_on_close: None,
             set_hash: None,
             processes: Vec::new(),
             shared_processes: false,
@@ -4540,6 +4596,7 @@ mod twin_tests {
             local_size_bytes: None,
             preset: None,
             allow_device_local: None,
+            backup_on_close: None,
         }
     }
 
@@ -4618,6 +4675,7 @@ mod auto_declined_tests {
             local_size_bytes: None,
             preset: None,
             allow_device_local: None,
+            backup_on_close: None,
         }
     }
 
@@ -4780,6 +4838,7 @@ mod playtime_list_tests {
                 paused: false,
                 preset: None,
                 allow_device_local: None,
+                backup_on_close: None,
                 set_hash: None,
                 processes: Vec::new(),
                 shared_processes: false,

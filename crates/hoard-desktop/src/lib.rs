@@ -341,6 +341,7 @@ pub fn run() {
             commands::history::set_save_local_path,
             commands::history::list_save_presets,
             commands::history::set_save_preset,
+            commands::history::set_save_backup_on_close,
             commands::history::set_save_allow_config,
             commands::history::tail_logs,
             commands::history::logs_path,

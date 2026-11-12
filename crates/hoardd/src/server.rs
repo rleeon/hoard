@@ -394,6 +394,10 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_global_sync(enabled).await })
                     .await
             }
+            Request::SetBackupOnClose { enabled } => {
+                self.with_engine(|h| async move { h.set_backup_on_close(enabled).await })
+                    .await
+            }
             Request::SetPlanCap { limit_bytes, plan } => {
                 self.with_engine(|h| async move { h.set_plan_cap(limit_bytes, plan).await })
                     .await

@@ -195,6 +195,10 @@ pub struct State {
     /// Measured from [`Self::last_backup_at`], which only advances on a real
     /// commit, so a no-op pass cannot push the floor out.
     pub min_backup_interval_secs: u64,
+    /// The user wants this save backed up once the game closes, not each time
+    /// it saves. Only as good as [`Self::is_running`]: a game Hoard cannot see
+    /// running is backed up as it saves.
+    pub backup_on_close: bool,
 
     // ---- live session status, durable across ticks
     /// The game process is running. Sticky: stays `true` through the grace
@@ -376,6 +380,10 @@ pub struct Observation {
     /// restore that finished during the hold must not pull `known_version`
     /// back under it.
     pub adopted_head: Option<i64>,
+    /// The user pressed "back up now" and that upload has not gone out yet. It
+    /// outranks [`State::backup_on_close`]: asking by hand mid-game is the user
+    /// overruling their own setting for once.
+    pub backup_requested: bool,
 }
 
 /// Something the kernel asks the IO shell to do.

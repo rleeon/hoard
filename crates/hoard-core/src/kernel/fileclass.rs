@@ -47,12 +47,12 @@
 pub enum FileClass {
     /// The player's data. Uploaded and restored, as always.
     SaveData,
-    /// This machine's data rather than the player's: config, settings, generic
-    /// logs. Uploaded so it is never lost, but a restore will not write it
-    /// without an explicit request.
+    /// This machine's data rather than the player's: config and settings.
+    /// Uploaded so it is never lost, but a restore will not write it without an
+    /// explicit request.
     DeviceLocal,
     /// Neither the player's data nor config anyone wants back: OS litter,
-    /// temporaries, crash dumps, engine telemetry. Never uploaded, never
+    /// temporaries, crash dumps, logs, engine telemetry. Never uploaded, never
     /// restored.
     Junk,
 }
@@ -85,11 +85,8 @@ const JUNK_NAMES: &[&str] = &[
     // when. Restoring it on another machine lies to the Steam client.
     "steam_autocloud.vdf",
     "remotecache.vdf",
-    // Engine logs by exact name. Generic `*.log` does not land here but in
-    // `DeviceLocal`, because `.log` is the save pattern of 64 catalogue
-    // templates and not all of them are shielded.
-    "player.log",
-    "player-prev.log",
+    // Unity's log under a `.txt` name. Anything ending in `.log` is handled by
+    // `classify` itself.
     "output_log.txt",
     "output_log_prev.txt",
     // A lock the game holds open exclusively while it runs. It carries no data,
@@ -147,9 +144,11 @@ const CONFIG_EXTS: &[&str] = &[
     "yml",
     "vdf",
     "properties",
-    // Generic log: kept just in case, never restored.
-    "log",
 ];
+
+/// A folder of these names holds what the game writes about itself while it
+/// runs. Compared lowercased, against folders only, never the file's own name.
+const LOG_DIR_NAMES: &[&str] = &["logs", "log"];
 
 /// A stem ending in one of these is config whatever its extension. Catches
 /// `GraphicsSettings.json`, `Fallout4Prefs.ini`, `UserOptions.dat`.
@@ -259,7 +258,26 @@ pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
         return FileClass::Junk;
     }
 
-    // 3. Config and the rest of this machine's data. Uploaded, never restored
+    // 3. Logs. The one broad rule in the junk rung, because a log is rewritten
+    //    while the game runs and every rewrite was a version: issue #68, an
+    //    Unreal game idling in its menu cut 11 versions in 10 minutes off
+    //    `Saved/Logs/SMG029UE5.log` (written every ~2 s), ~200 in a 4 h session,
+    //    and carried a 170 MB rotated log along with them. The 64 templates that
+    //    save into `.log` come in shielded above, and the "File types" panel can
+    //    tick the type back. A database's write-ahead log is the exception: it
+    //    is the save's most recent writes, not a diary.
+    if extension_of(name) == Some("log") {
+        return if is_database_log(name) {
+            FileClass::SaveData
+        } else {
+            FileClass::Junk
+        };
+    }
+    if in_log_dir(&lower) {
+        return FileClass::Junk;
+    }
+
+    // 4. Config and the rest of this machine's data. Uploaded, never restored
     //    on its own.
     if let Some(ext) = extension_of(name) {
         if CONFIG_EXTS.contains(&ext) {
@@ -272,6 +290,34 @@ pub fn classify(rel_path: &str, shields: &[String]) -> FileClass {
     }
 
     FileClass::SaveData
+}
+
+/// LevelDB and RocksDB name their write-ahead log `000003.log`: Electron and
+/// NW.js games keep the save in one (`Local Storage/leveldb`), and so does a
+/// Bedrock world (`db/`). Restoring the tables without it, or next to another
+/// machine's, loses or mixes the latest writes.
+fn is_database_log(name: &str) -> bool {
+    let stem = stem_of(name);
+    stem.len() >= 6 && stem.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Under a `Logs` folder, whatever the file is called (`logs/latest.log.gz`).
+fn in_log_dir(lower: &str) -> bool {
+    let segments: Vec<&str> = lower.split('/').collect();
+    segments
+        .iter()
+        .take(segments.len().saturating_sub(1))
+        .any(|s| LOG_DIR_NAMES.contains(s))
+}
+
+/// Is this folder, relative to the save root, one of logs or inside one? For the
+/// watcher, whose events name folders too: a log folder changing says nothing a
+/// backup would carry.
+pub fn is_log_dir(rel_dir: &str) -> bool {
+    rel_dir
+        .to_ascii_lowercase()
+        .split('/')
+        .any(|s| LOG_DIR_NAMES.contains(&s))
 }
 
 /// `Unity/<something>/Analytics/...` at any depth. The `unity` ancestor is
@@ -461,10 +507,60 @@ mod tests {
             "UserOptions.dat",
             "keybinds.cfg",
             "video.yaml",
-            "debug.log",
         ] {
             assert_eq!(c(p), FileClass::DeviceLocal, "{p}");
         }
+    }
+
+    /// Issue #68: the tracked folder was the Unreal project's, and its live log
+    /// cut a version a minute while the game sat in its menu.
+    #[test]
+    fn logs_stay_out_of_the_backup() {
+        for p in [
+            "Saved/Logs/SMG029UE5.log",
+            "Saved/Logs/SMG029UE5-backup-2026.11.07-22.53.50.log",
+            "debug.log",
+            "Player.log",
+            "logs/latest.log.gz",
+            "Logs/2026-11-07.txt",
+        ] {
+            assert_eq!(c(p), FileClass::Junk, "{p}");
+        }
+        assert_eq!(c("Saved/SaveGames/OptionPCOnly.sav"), FileClass::SaveData);
+        assert_eq!(
+            c("Saved/Config/Windows/GameUserSettings.ini"),
+            FileClass::DeviceLocal
+        );
+        // A file merely called `log` is not in a log folder.
+        assert_eq!(c("captain/log"), FileClass::SaveData);
+    }
+
+    #[test]
+    fn a_database_write_ahead_log_is_the_save() {
+        for p in [
+            "Default/Local Storage/leveldb/000003.log",
+            "Default/IndexedDB/file__0.indexeddb.leveldb/000005.log",
+            "minecraftWorlds/abc=/db/000012.log",
+        ] {
+            assert_eq!(c(p), FileClass::SaveData, "{p}");
+        }
+        assert_eq!(c("123.log"), FileClass::Junk, "too short for a database log");
+    }
+
+    #[test]
+    fn a_log_the_catalogue_names_comes_back() {
+        let shield = vec!["*.log".to_string()];
+        assert_eq!(classify("journal.log", &shield), FileClass::SaveData);
+        assert_eq!(classify("Logs/journal.log", &shield), FileClass::SaveData);
+    }
+
+    #[test]
+    fn the_watcher_knows_a_log_folder() {
+        assert!(is_log_dir("Saved/Logs"));
+        assert!(is_log_dir("logs"));
+        assert!(is_log_dir("Saved/Logs/old"));
+        assert!(!is_log_dir("Saved/SaveGames"));
+        assert!(!is_log_dir("Saved/Catalogs"));
     }
 
     /// The ladder's rule: anything doubtful still uploads. Only unambiguous

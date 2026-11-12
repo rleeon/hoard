@@ -58,13 +58,15 @@
   const runningGames = $derived.by<PlayingGame[]>(() => {
     const bySlug = new Map<string, number>();
     for (const [saveId, a] of Object.entries($activity)) {
-      if (a.state !== "running") continue;
+      // The session, not the state: an upload taken mid-game owns the state
+      // until it settles, and the game is still open meanwhile.
+      if (a.running_since == null) continue;
       // The activity map is keyed by save id (a UUID). The slug rides along on
       // the `game_started` event; falling back to the key is only for an entry
       // that predates it, and it's the reason this panel used to name a game
       // "2fabb61b Fa7a 4e3f...".
       const slug = a.game_slug ?? saveId;
-      const since = a.running_since ?? now;
+      const since = a.running_since;
       const prev = bySlug.get(slug);
       if (prev === undefined || since < prev) bySlug.set(slug, since);
     }
