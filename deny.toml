@@ -83,14 +83,21 @@ ignore = [
     "RUSTSEC-2026-0370", # zvariant
     "RUSTSEC-2026-0371", # zbus_names
     "RUSTSEC-2026-0372", # zvariant_derive
-    # zip 2.x: extracting keeps SUID bits, follows planted symlinks and applies
-    # the archive's permissions. All three live in `ZipArchive::extract` and
+    # zip 2.x: extracting keeps SUID bits, follows planted symlinks, applies
+    # the archive's permissions, and aborts on a symlink entry that declares a
+    # huge size. All four live in `ZipArchive::extract` and
     # `ZipStreamReader::extract`, which Hoard never calls: the agent only lists
     # the entries of a save that is a zip, the server only writes exports. The
     # fix is zip 9, a major apart.
     "RUSTSEC-2026-0367",
     "RUSTSEC-2026-0368",
     "RUSTSEC-2026-0369",
+    "RUSTSEC-2026-0429",
+    # pin-utils: unmaintained (its repository was archived), no known hole and
+    # no successor to move to. It is a handful of pinning macros, pulled by the
+    # AWS SDK's smithy crates (the server's S3 store) and by Slint's `spin_on`
+    # (the graphical installer). It goes when they drop it.
+    "RUSTSEC-2026-0441",
 ]
 
 [licenses]
