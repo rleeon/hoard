@@ -67,7 +67,9 @@ fn watch(app: AppHandle) {
                 }
                 // Most nodes are not ours to open (keyboards, the mouse): that
                 // failure is the normal case, not an error.
-                let Ok(device) = Device::open(&path) else { continue };
+                let Ok(device) = Device::open(&path) else {
+                    continue;
+                };
                 if !is_controller(&device) {
                     continue;
                 }
@@ -206,7 +208,11 @@ impl Directions {
     fn stick(&mut self, first: usize, v: f32, send: &impl Fn(&'static str, bool)) {
         for (i, lean) in [(first, -v), (first + 1, v)] {
             let held = self.0[i] & STICK != 0;
-            let on = if held { lean > STICK_OFF } else { lean > STICK_ON };
+            let on = if held {
+                lean > STICK_OFF
+            } else {
+                lean > STICK_ON
+            };
             if on != held {
                 self.set(STICK, i, on, send);
             }

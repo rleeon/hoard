@@ -144,6 +144,7 @@
   import { prefs, hydratePrefs } from "./lib/stores/prefs";
   import { initGameOverlay } from "./lib/stores/gameOverlay";
   import { hydrateCardSizes } from "./lib/stores/cardSizes.svelte";
+  import { hydratePins } from "./lib/stores/pins.svelte";
   import {
     hydrateLiveActivityLayout,
     liveActivityLayout,
@@ -550,6 +551,7 @@
     // own errors and falls back to pessimistic defaults.
     await hydratePrefs();
     await hydrateCardSizes();
+    await hydratePins();
     await hydrateLiveActivityLayout();
     // `automaticMode` / `globalSync` are $derived from `$prefs` above, so they
     // populate on their own once hydratePrefs resolves, no manual seed here.

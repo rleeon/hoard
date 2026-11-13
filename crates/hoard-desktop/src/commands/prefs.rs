@@ -93,6 +93,20 @@ pub async fn save_prefs(state: State<'_, AppState>, mut prefs: Prefs) -> Result<
         )
         .await;
     }
+
+    let backup_on_close_changed = match &prev {
+        Some(p) => p.backup_on_close != prefs.backup_on_close,
+        None => true,
+    };
+    if backup_on_close_changed {
+        push_pref(
+            &state,
+            Request::SetBackupOnClose {
+                enabled: prefs.backup_on_close,
+            },
+        )
+        .await;
+    }
     Ok(prefs)
 }
 

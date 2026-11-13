@@ -8,6 +8,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
@@ -395,6 +396,18 @@ const SCAN_MAX_DEPTH: usize = 3;
 /// that base stops early; the well-known roots still cover the common case.
 const SCAN_DIR_BUDGET: usize = 6000;
 
+/// How long the sweep keeps looking inside one base before it moves on with
+/// what it found there. The folder budget alone does not bound time: a local
+/// disk walks 6000 folders in a blink, but a Synology share mapped as `Z:` held
+/// the first scan for longer than the user waited (issue #67), two round trips
+/// over SMB per folder. Network drives stay in the sweep on purpose; people
+/// asked for libraries kept on a NAS to be found.
+const SCAN_BASE_DEADLINE: Duration = Duration::from_secs(20);
+
+/// What the sweep waits past [`SCAN_BASE_DEADLINE`] for a walk that stopped on
+/// time to hand its findings over.
+const SCAN_HANDOVER_GRACE: Duration = Duration::from_secs(1);
+
 /// Directory names never worth descending into when hunting for Steam
 /// libraries: OS/system trees and known-huge noise. Matched case-insensitively.
 const SCAN_SKIP_DIRS: &[&str] = &[
@@ -402,12 +415,22 @@ const SCAN_SKIP_DIRS: &[&str] = &[
     "windows",
     "windows.old",
     "$recycle.bin",
+    "recycler",
     "system volume information",
     "programdata",
     "appdata",
     "msocache",
     "recovery",
     "$winreagent",
+    // NAS shares (Synology, QNAP). A library deleted into the recycle bin is
+    // not a library: `Z:\#recycle\SteamLibrary` was taken as a live one in
+    // issue #67. `@eaDir` is Synology's thumbnail cache, one next to nearly
+    // every folder, so walking it doubles the trip for nothing.
+    "#recycle",
+    "@recycle",
+    "@eadir",
+    "#snapshot",
+    "@recently-snapshot",
     // Unix / macOS system + noise.
     "proc",
     "sys",
@@ -447,6 +470,11 @@ fn is_skippable_scan_dir(name: &str) -> bool {
 ///
 /// Only meaningful for the host OS, so it returns empty when `os` isn't the
 /// one we're running on (keeps cross-OS unit tests from touching real disks).
+///
+/// Every letter goes in unchecked. Asking whether a mapped drive whose server
+/// is gone exists can block for as long as SMB takes to give up, so that
+/// question is asked inside each base's own walk, under its deadline; a letter
+/// with no drive behind it fails its first `read_dir` at once.
 fn scan_bases(os: Os) -> Vec<PathBuf> {
     if os != Os::current() {
         return Vec::new();
@@ -455,7 +483,6 @@ fn scan_bases(os: Os) -> Vec<PathBuf> {
     {
         return (b'C'..=b'Z')
             .map(|l| PathBuf::from(format!("{}:\\", l as char)))
-            .filter(|p| p.is_dir())
             .collect();
     }
     #[cfg(target_os = "macos")]
@@ -493,32 +520,106 @@ fn scan_bases(os: Os) -> Vec<PathBuf> {
 /// prune once found (a library never nests inside another). Memoised: the
 /// sweep (and its discovery logs) runs once per process, so a disk mounted after
 /// launch is picked up on the next run, the same contract the catalog uses.
+///
+/// Whoever asks first waits for the sweep, and so does anyone asking meanwhile.
+/// That is bounded by [`SCAN_BASE_DEADLINE`], but it is still seconds against a
+/// NAS: nothing on a window's thread may reach this.
 fn scan_steam_roots(os: Os) -> Vec<PathBuf> {
     use std::sync::OnceLock;
     static SCAN: OnceLock<Vec<PathBuf>> = OnceLock::new();
     SCAN.get_or_init(|| {
-        let mut out: Vec<PathBuf> = Vec::new();
-        for base in scan_bases(os) {
-            find_steam_libraries_under(&base, &mut out);
-        }
-        out
+        sweep_bases(
+            scan_bases(os),
+            SCAN_BASE_DEADLINE,
+            SCAN_HANDOVER_GRACE,
+            find_steam_libraries_under,
+        )
     })
     .clone()
 }
 
-/// Breadth-first walk `base` up to [`SCAN_MAX_DEPTH`], pushing every directory
-/// that holds a `steamapps` subfolder into `out`. Prunes once a library is
-/// found (they don't nest), skips system/hidden dirs, doesn't follow symlinks
-/// (no cycles), and stops a runaway tree at [`SCAN_DIR_BUDGET`]. Pure w.r.t.
-/// the filesystem it's handed, so it's unit-testable against a temp tree.
-fn find_steam_libraries_under(base: &Path, out: &mut Vec<PathBuf>) {
+/// Walks every base at once, one thread each, and hands back what they found in
+/// the order of `bases`.
+///
+/// Each walk stops itself at the deadline, but only between two filesystem
+/// calls. A single call can hang far longer: a share whose server went away
+/// mid-walk. So the wait here has its own end, and a walk still stuck at it is
+/// left behind to finish on its own while the scan carries on without it.
+/// Running the bases side by side also makes the worst case one deadline, not
+/// one per drive.
+fn sweep_bases(
+    bases: Vec<PathBuf>,
+    deadline: Duration,
+    grace: Duration,
+    walk: fn(&Path, Instant) -> Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    use std::sync::mpsc;
+    let stop = Instant::now() + deadline;
+    let (tx, rx) = mpsc::channel::<(usize, Vec<PathBuf>)>();
+    let mut found: Vec<Option<Vec<PathBuf>>> = vec![None; bases.len()];
+    let mut pending = 0usize;
+    for (i, base) in bases.iter().enumerate() {
+        let tx = tx.clone();
+        let base_owned = base.clone();
+        let spawned = std::thread::Builder::new()
+            .name("steam-disk-scan".into())
+            .spawn(move || {
+                let _ = tx.send((i, walk(&base_owned, stop)));
+            });
+        match spawned {
+            Ok(_) => pending += 1,
+            Err(err) => {
+                tracing::warn!(base = %base.display(), error = %err, "couldn't start the Steam disk scan of this place");
+                found[i] = Some(Vec::new());
+            }
+        }
+    }
+    drop(tx);
+    let give_up = stop + grace;
+    while pending > 0 {
+        match rx.recv_timeout(give_up.saturating_duration_since(Instant::now())) {
+            Ok((i, libraries)) => {
+                found[i] = Some(libraries);
+                pending -= 1;
+            }
+            Err(_) => break,
+        }
+    }
+    for (base, libraries) in bases.iter().zip(&found) {
+        if libraries.is_none() {
+            tracing::info!(
+                base = %base.display(),
+                secs = deadline.as_secs(),
+                "Steam disk scan: this place stopped answering; carrying on without it"
+            );
+        }
+    }
+    found.into_iter().flatten().flatten().collect()
+}
+
+/// Breadth-first walk `base` up to [`SCAN_MAX_DEPTH`], returning every directory
+/// that holds a `steamapps` subfolder. Prunes once a library is found (they
+/// don't nest), skips system/hidden dirs, doesn't follow symlinks (no cycles),
+/// and stops a runaway tree at [`SCAN_DIR_BUDGET`] folders or at `stop`,
+/// whichever comes first; what it found by then still counts. Pure w.r.t. the
+/// filesystem it's handed, so it's unit-testable against a temp tree.
+fn find_steam_libraries_under(base: &Path, stop: Instant) -> Vec<PathBuf> {
     use std::collections::VecDeque;
+    let mut out = Vec::new();
     let mut budget = SCAN_DIR_BUDGET;
     let mut queue: VecDeque<(PathBuf, usize)> = VecDeque::new();
     queue.push_back((base.to_path_buf(), 0));
-    while let Some((dir, depth)) = queue.pop_front() {
+    'walk: while let Some((dir, depth)) = queue.pop_front() {
         if budget == 0 {
             tracing::debug!("Steam disk scan hit its budget; stopping this base early");
+            break;
+        }
+        if Instant::now() >= stop {
+            tracing::info!(
+                base = %base.display(),
+                inspected = SCAN_DIR_BUDGET - budget,
+                "Steam disk scan ran out of time here; libraries further in are not found"
+            );
             break;
         }
         budget -= 1;
@@ -536,6 +637,11 @@ fn find_steam_libraries_under(base: &Path, out: &mut Vec<PathBuf>) {
             Err(_) => continue,
         };
         for entry in entries.flatten() {
+            // A folder with tens of thousands of entries is a long listing
+            // over SMB, fetched a batch at a time.
+            if Instant::now() >= stop {
+                continue 'walk;
+            }
             // Only recurse into real directories; `file_type` doesn't follow
             // symlinks, so we never chase a link into a cycle.
             match entry.file_type() {
@@ -549,6 +655,7 @@ fn find_steam_libraries_under(base: &Path, out: &mut Vec<PathBuf>) {
             queue.push_back((entry.path(), depth + 1));
         }
     }
+    out
 }
 
 /// Steam's install directory as recorded in the registry.
@@ -1003,8 +1110,7 @@ mod tests {
         std::fs::create_dir_all(base.join(".hidden/steamapps")).unwrap();
         std::fs::create_dir_all(base.join("Windows/steamapps")).unwrap();
 
-        let mut out = Vec::new();
-        find_steam_libraries_under(base, &mut out);
+        let out = find_steam_libraries_under(base, unhurried());
 
         assert!(out.contains(&lua), "custom-named library at depth 2 found");
         assert!(out.contains(&lib3), "library at depth 3 found");
@@ -1020,6 +1126,116 @@ mod tests {
         assert!(
             !out.iter().any(|p| p.starts_with(base.join("Windows"))),
             "system-named dir skipped"
+        );
+    }
+
+    fn unhurried() -> Instant {
+        Instant::now() + Duration::from_secs(3600)
+    }
+
+    /// Issue #67: a Synology share mapped as `Z:` with a library and the same
+    /// library deleted into the share's recycle bin. Only the live one counts,
+    /// and the NAS's own bookkeeping folders are not walked at all.
+    #[test]
+    fn a_library_in_a_nas_recycle_bin_is_not_a_library() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        let live = base.join("SteamLibrary");
+        std::fs::create_dir_all(live.join("steamapps")).unwrap();
+        for bin in [
+            "#recycle",
+            "@Recycle",
+            "@eaDir",
+            "#snapshot",
+            "@Recently-Snapshot",
+            "$RECYCLE.BIN",
+            "RECYCLER",
+        ] {
+            std::fs::create_dir_all(base.join(bin).join("SteamLibrary/steamapps")).unwrap();
+        }
+
+        let out = find_steam_libraries_under(base, unhurried());
+
+        assert_eq!(out, vec![live]);
+    }
+
+    #[test]
+    fn a_walk_out_of_time_looks_no_further() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        let lib = base.join("Games/SteamLibrary");
+        std::fs::create_dir_all(lib.join("steamapps")).unwrap();
+
+        assert!(find_steam_libraries_under(base, Instant::now()).is_empty());
+        assert_eq!(find_steam_libraries_under(base, unhurried()), vec![lib]);
+    }
+
+    /// A share whose server went away can hang one filesystem call for as long
+    /// as SMB takes to give up. The sweep has to return at its deadline with
+    /// the other places' libraries, not wait for it.
+    #[test]
+    fn a_place_that_stops_answering_does_not_hold_the_sweep() {
+        fn walk(base: &Path, _stop: Instant) -> Vec<PathBuf> {
+            if base.ends_with("dead-share") {
+                std::thread::sleep(Duration::from_secs(30));
+            }
+            vec![base.join("SteamLibrary")]
+        }
+        let bases = vec![
+            PathBuf::from("/fast-disk"),
+            PathBuf::from("/dead-share"),
+            PathBuf::from("/other-disk"),
+        ];
+
+        let started = Instant::now();
+        let out = sweep_bases(
+            bases,
+            Duration::from_millis(200),
+            Duration::from_millis(200),
+            walk,
+        );
+
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "waited {:?} for a place that never answered",
+            started.elapsed()
+        );
+        assert_eq!(
+            out,
+            vec![
+                PathBuf::from("/fast-disk/SteamLibrary"),
+                PathBuf::from("/other-disk/SteamLibrary"),
+            ],
+            "the places that answered, in the order they were given"
+        );
+    }
+
+    #[test]
+    fn places_that_answer_are_all_kept_in_order() {
+        fn walk(base: &Path, _stop: Instant) -> Vec<PathBuf> {
+            // The first place answers last.
+            if base.ends_with("c") {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            vec![base.join("lib")]
+        }
+        let out = sweep_bases(
+            vec![
+                PathBuf::from("/c"),
+                PathBuf::from("/d"),
+                PathBuf::from("/e"),
+            ],
+            Duration::from_secs(10),
+            Duration::from_secs(1),
+            walk,
+        );
+        assert_eq!(
+            out,
+            vec![
+                PathBuf::from("/c/lib"),
+                PathBuf::from("/d/lib"),
+                PathBuf::from("/e/lib"),
+            ]
         );
     }
 

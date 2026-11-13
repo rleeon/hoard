@@ -49,6 +49,7 @@
   import Input from "../lib/components/Input.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import Select from "../lib/components/Select.svelte";
+  import { prefs } from "../lib/stores/prefs";
   import * as api from "../lib/api";
   import { NEEDS_DESTINATION } from "../lib/api";
   import type {
@@ -226,6 +227,16 @@
   // the selector while a change is in flight.
   let presets = $state<string[]>([]);
   let savingPreset = $state(false);
+  let savingBackupWhen = $state(false);
+
+  // When this save backs up, as the selector shows it: its own answer, or the
+  // global one under "default".
+  const backupWhen = $derived(
+    save?.backup_on_close == null ? "default" : save.backup_on_close ? "closing" : "saving",
+  );
+  const backsUpOnClose = $derived(
+    save?.backup_on_close ?? $prefs?.backup_on_close ?? false,
+  );
 
   let unlisten: UnlistenFn | null = null;
   let unlistenExport: UnlistenFn | null = null;
@@ -665,6 +676,21 @@
     }
   }
 
+  async function changeBackupWhen(value: string) {
+    if (!save) return;
+    const next = value === "closing" ? true : value === "saving" ? false : null;
+    savingBackupWhen = true;
+    try {
+      await api.setSaveBackupOnClose(saveId, next);
+      toastSuccess($_("backup_when.updated"));
+      await hydrate();
+    } catch (e) {
+      toastError(typeof e === "string" ? e : (e as Error).message);
+    } finally {
+      savingBackupWhen = false;
+    }
+  }
+
   async function commitPath() {
     if (!newPath.trim()) {
       toastError($_("history.path_empty"));
@@ -903,6 +929,29 @@
             />
           </div>
         {/if}
+        <div class="flex items-center gap-2 text-xs text-zinc-400">
+          <span class="text-zinc-500">{$_("backup_when.label")}</span>
+          <Select
+            size="sm"
+            aria-label={$_("backup_when.label")}
+            disabled={savingBackupWhen || save.orphan || !save.local_path}
+            title={save.orphan || !save.local_path
+              ? $_("common.cloud_only_no_local")
+              : undefined}
+            value={backupWhen}
+            onchange={(v) => changeBackupWhen(v)}
+            options={[
+              {
+                value: "default",
+                label: $prefs?.backup_on_close
+                  ? $_("backup_when.default_closing")
+                  : $_("backup_when.default_saving"),
+              },
+              { value: "saving", label: $_("backup_when.saving") },
+              { value: "closing", label: $_("backup_when.closing") },
+            ]}
+          />
+        </div>
       </div>
       <p class="mt-2 text-xs text-zinc-500">
         {#if save.orphan || !save.local_path}
@@ -917,6 +966,9 @@
         <p class="mt-2 text-xs text-zinc-500">
           {$_(`presets.${save.preset}.desc`)}
         </p>
+      {/if}
+      {#if backsUpOnClose && !save.orphan && save.local_path}
+        <p class="mt-2 text-xs text-zinc-500">{$_("backup_when.closing_desc")}</p>
       {/if}
 
       {#if purgeDate}
