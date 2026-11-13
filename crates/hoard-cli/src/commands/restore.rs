@@ -531,3 +531,71 @@ impl Drop for PlacementGuard {
         self.listener.abort();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn restore_out(dry_run: bool, restored: Option<RestoredOut>) -> RestoreOut {
+        RestoreOut {
+            save_id: "0b6c1f9e".into(),
+            version: 3,
+            destination: "/home/u/saves".into(),
+            dry_run,
+            preview: Some(PreviewOut {
+                modified: vec!["slot1.sav".into()],
+                added: vec![],
+                local_only: vec![],
+                modified_count: 1,
+                added_count: 0,
+                local_only_count: 0,
+                unchanged: 4,
+                bytes_to_write: 2048,
+                comparable: true,
+            }),
+            preview_error: None,
+            restored,
+            remembered: None,
+        }
+    }
+
+    fn restored(kept_in: Option<&str>) -> RestoredOut {
+        RestoredOut {
+            files_extracted: 5,
+            bytes_extracted: 10_240,
+            files_reused: 4,
+            bytes_reused: 8_192,
+            destination: "/home/u/saves".into(),
+            kept_in: kept_in.map(str::to_string),
+        }
+    }
+
+    /// A dry run wrote nothing, and the envelope says so by leaving `restored`
+    /// out, not by reporting zeros that read as a restore of an empty version.
+    #[test]
+    fn a_dry_run_envelope_has_a_preview_and_no_restored_section() {
+        let json = serde_json::to_value(restore_out(true, None)).unwrap();
+        let obj = json.as_object().unwrap();
+        assert_eq!(obj["dry_run"], true);
+        assert_eq!(obj["preview"]["modified"][0], "slot1.sav");
+        for absent in ["restored", "preview_error", "remembered"] {
+            assert!(!obj.contains_key(absent), "{absent} present on a dry run");
+        }
+    }
+
+    /// `kept_in` is the one place a caller learns where the replaced files went,
+    /// so it is there exactly when something was replaced.
+    #[test]
+    fn the_restored_section_names_a_backup_folder_only_when_there_is_one() {
+        let json = serde_json::to_value(restore_out(false, Some(restored(None)))).unwrap();
+        assert_eq!(json["restored"]["files_reused"], 4);
+        assert!(!json["restored"]
+            .as_object()
+            .unwrap()
+            .contains_key("kept_in"));
+
+        let kept = "/home/u/.hoard/kept/0b6c1f9e";
+        let json = serde_json::to_value(restore_out(false, Some(restored(Some(kept))))).unwrap();
+        assert_eq!(json["restored"]["kept_in"], kept);
+    }
+}

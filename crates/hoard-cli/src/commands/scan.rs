@@ -320,4 +320,17 @@ mod tests {
             "plain scan stays a summary"
         );
     }
+
+    /// Later paths start in the column the PATHS header and the first path
+    /// start in; `PATH_COLUMN` is computed by hand from the widths above it, so
+    /// widening one of those columns without it would shift them off.
+    #[test]
+    fn later_paths_line_up_under_the_paths_header() {
+        let table = render_table(&[game("splice", &["/a/first", "/b/second"])]);
+        let lines: Vec<&str> = table.lines().collect();
+        assert_eq!(lines[0].find("PATHS"), Some(PATH_COLUMN), "{table}");
+        assert_eq!(lines[1].find("/a/first"), Some(PATH_COLUMN), "{table}");
+        assert_eq!(lines[2].find("/b/second"), Some(PATH_COLUMN), "{table}");
+        assert!(lines[2][..PATH_COLUMN].chars().all(|c| c == ' '));
+    }
 }

@@ -129,6 +129,11 @@ pub struct SaveState {
     /// setting worth having; `Some(false)` is an explicit no.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub allow_device_local: Option<bool>,
+    /// Back this save up once its game closes (`Some(true)`), each time it
+    /// saves (`Some(false)`), or as the global setting says (`None`). Per save
+    /// and not per preset, so it goes with any of them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_on_close: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -665,6 +670,7 @@ mod tests {
             paused: false,
             preset: None,
             allow_device_local: None,
+            backup_on_close: None,
             set_hash: None,
             processes: vec![],
             shared_processes: false,

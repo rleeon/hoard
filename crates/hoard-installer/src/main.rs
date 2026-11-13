@@ -457,6 +457,12 @@ fn system_language() -> usize {
     let Some(locale) = sys_locale::get_locale() else {
         return 0;
     };
+    language_index(&locale)
+}
+
+/// The matching half of [`system_language`], on a locale tag such as `pt-BR` or
+/// `zh_CN`. Split out so it can be checked without the machine's own locale.
+fn language_index(locale: &str) -> usize {
     let tag = locale
         .split(['-', '_'])
         .next()
@@ -506,4 +512,118 @@ fn open_url(url: &str) {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tag_of(index: usize) -> &'static str {
+        LANGUAGES[index].0
+    }
+
+    /// Index 0 is what every failed lookup returns, and the doc on
+    /// [`system_language`] promises that fallback is English.
+    #[test]
+    fn english_is_first_because_it_is_the_fallback() {
+        assert_eq!(tag_of(0), "en");
+    }
+
+    /// Two entries with one tag would leave the second unreachable, and two with
+    /// one badge would draw two buttons nobody can tell apart.
+    #[test]
+    fn each_language_is_listed_once() {
+        for (i, (tag, badge, _)) in LANGUAGES.iter().enumerate() {
+            for (other_tag, other_badge, _) in &LANGUAGES[i + 1..] {
+                assert_ne!(tag, other_tag, "tag {tag} listed twice");
+                assert_ne!(badge, other_badge, "badge {badge} listed twice");
+            }
+        }
+    }
+
+    /// The picker offers what [`LANGUAGES`] lists, and choosing one selects the
+    /// `.po` that `build.rs` bundled from `lang/<tag>/LC_MESSAGES/<crate>.po`. A
+    /// tag with no file there is a button that silently does nothing. English
+    /// is exempt: it is the source text, and Slint accepts `en` with no bundle.
+    #[test]
+    fn every_language_in_the_picker_has_a_bundled_translation() {
+        let lang = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("lang");
+        for (tag, _, _) in LANGUAGES.iter().filter(|(tag, _, _)| *tag != "en") {
+            let po = lang
+                .join(tag)
+                .join("LC_MESSAGES")
+                .join(concat!(env!("CARGO_PKG_NAME"), ".po"));
+            assert!(po.is_file(), "no translation for {tag} at {}", po.display());
+        }
+    }
+
+    #[test]
+    fn a_regional_locale_gets_its_language() {
+        assert_eq!(tag_of(language_index("pt-BR")), "pt");
+        assert_eq!(tag_of(language_index("pt-PT")), "pt");
+        assert_eq!(tag_of(language_index("fr-CA")), "fr");
+        assert_eq!(tag_of(language_index("zh-Hans-CN")), "zh");
+    }
+
+    /// POSIX spells it `de_DE`, and some systems shout it.
+    #[test]
+    fn underscores_and_case_do_not_hide_the_language() {
+        assert_eq!(tag_of(language_index("de_DE")), "de");
+        assert_eq!(tag_of(language_index("JA-jp")), "ja");
+        assert_eq!(tag_of(language_index("it")), "it");
+    }
+
+    #[test]
+    fn an_unknown_or_empty_locale_falls_back_to_english() {
+        for locale in ["", "C", "xx-YY", "-", "_", "español"] {
+            assert_eq!(tag_of(language_index(locale)), "en", "{locale:?}");
+        }
+    }
+
+    /// The installer has no other window than this one, so the screen index is
+    /// the whole navigation, and Slint only sees plain integers: a constant that
+    /// drifts from the `if root.screen == N` it stands for shows the wrong
+    /// screen without any error.
+    #[test]
+    fn screen_indices_match_the_slint_component() {
+        let ui = include_str!("../ui/installer.slint");
+        for (index, component) in [
+            (WELCOME, "Welcome"),
+            (ASK, "Ask"),
+            (DOING, "Doing"),
+            (DONE, "Done"),
+            (FAILED, "Failed"),
+            (EXISTING, "Existing"),
+        ] {
+            let branch = format!("if root.screen == {index}: {component} {{");
+            assert!(ui.contains(&branch), "installer.slint has no `{branch}`");
+        }
+    }
+
+    /// The failed screen offers to ask again only when the password prompt was
+    /// dismissed, and by then the steps have wrapped that error in context.
+    #[test]
+    fn a_dismissed_prompt_is_found_under_context() {
+        use anyhow::Context;
+        use hoard_agent::install::fetch::PromptDismissed;
+
+        let bare = anyhow::Error::new(PromptDismissed);
+        assert!(prompt_dismissed(&bare));
+
+        let wrapped = Err::<(), _>(PromptDismissed)
+            .context("removing the old package")
+            .context("installing the desktop app")
+            .unwrap_err();
+        assert!(prompt_dismissed(&wrapped));
+    }
+
+    /// It is decided by the type, so an error that only reads like it does not
+    /// get the "try again" treatment.
+    #[test]
+    fn an_error_that_only_reads_like_a_dismissed_prompt_is_not_one() {
+        let lookalike =
+            anyhow::anyhow!("the password prompt closed before it was answered; try again");
+        assert!(!prompt_dismissed(&lookalike));
+        assert!(!prompt_dismissed(&anyhow::anyhow!("dpkg exited with 1")));
+    }
 }
