@@ -530,3 +530,40 @@ fn fmt_size(b: i64) -> String {
         format!("{}B", b as i64)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest_entry(updated_at: &str) -> CloudManifestEntry {
+        CloudManifestEntry {
+            save_id: "0b6c1f9e".into(),
+            game_slug: "hollow-knight".into(),
+            label: "main".into(),
+            latest_version_num: 12,
+            latest_parent_version: Some(11),
+            latest_size_bytes: 4096,
+            latest_file_count: 3,
+            latest_sha256: String::new(),
+            updated_at: updated_at.into(),
+        }
+    }
+
+    /// Cloud's manifest knows the newest version's size, not the total over all
+    /// versions that `total_size_bytes` means on a self-hosted server, so the row
+    /// must put it in the field that says so rather than pass it off as a total.
+    #[test]
+    fn a_cloud_row_is_synced_and_carries_the_latest_size_not_a_total() {
+        let row = cloud_row(manifest_entry("2026-11-01T12:00:00Z"));
+        assert_eq!(row.state, Some("synced"));
+        assert_eq!(row.latest_version_num, Some(12));
+        assert_eq!(row.latest_size_bytes, Some(4096));
+        assert_eq!(row.total_size_bytes, None);
+        assert_eq!(row.snapshot_count, None);
+        assert_eq!(row.updated_at.as_deref(), Some("2026-11-01T12:00:00Z"));
+
+        // An older server leaves `updated_at` out and it deserialises as empty:
+        // `--json` says null rather than handing out an empty string as a date.
+        assert_eq!(cloud_row(manifest_entry("")).updated_at, None);
+    }
+}

@@ -331,3 +331,27 @@ fn expand_tilde(raw: &str) -> PathBuf {
     }
     PathBuf::from(raw)
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Only a leading `~/` means home. Anything else is a path as typed,
+    /// including another user's `~name`, which this does not try to resolve.
+    #[test]
+    fn only_a_leading_tilde_slash_is_expanded() {
+        for raw in ["/srv/saves", "saves/slot1", "~otheruser/saves", "a/~/b"] {
+            assert_eq!(expand_tilde(raw), PathBuf::from(raw), "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn a_leading_tilde_slash_is_the_home_folder() {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+        let expected = match home {
+            Some(home) => PathBuf::from(home).join("Games/saves"),
+            // With no home to go to, the path is left as typed.
+            None => PathBuf::from("~/Games/saves"),
+        };
+        assert_eq!(expand_tilde("~/Games/saves"), expected);
+    }
+}

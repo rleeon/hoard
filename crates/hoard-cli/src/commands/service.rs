@@ -405,3 +405,29 @@ async fn status() -> Result<()> {
 async fn logs() -> Result<()> {
     anyhow::bail!("no service backend for this OS")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::fmt_uptime;
+
+    /// Each unit takes over exactly where the one below it runs out, and the
+    /// second unit is zero-padded to two digits, the way a clock shows it.
+    #[test]
+    fn uptime_switches_unit_at_each_boundary() {
+        let cases = [
+            (0, "0s"),
+            (59, "59s"),
+            (60, "1m"),
+            (3_599, "59m"),
+            (3_600, "1h00m"),
+            (3_900, "1h05m"),
+            (86_399, "23h59m"),
+            (86_400, "1d00h"),
+            (90_000, "1d01h"),
+            (40 * 86_400, "40d00h"),
+        ];
+        for (secs, shown) in cases {
+            assert_eq!(fmt_uptime(secs), shown, "{secs}s");
+        }
+    }
+}

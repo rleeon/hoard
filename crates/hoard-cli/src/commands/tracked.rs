@@ -109,3 +109,32 @@ fn truncate(s: &str, max: usize) -> String {
         format!("{cut}…")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::truncate;
+
+    #[test]
+    fn text_that_fits_is_left_alone() {
+        assert_eq!(truncate("celeste", 24), "celeste");
+        assert_eq!(truncate("speedrun", 8), "speedrun", "exactly the width");
+        assert_eq!(truncate("", 10), "");
+    }
+
+    /// A clipped cell is exactly as wide as its column, the ellipsis included,
+    /// so the columns after it stay where the header put them.
+    #[test]
+    fn clipped_text_fills_the_column_and_says_so() {
+        let cut = truncate("the-legend-of-heroes-trails-of-cold-steel", 24);
+        assert_eq!(cut, "the-legend-of-heroes-tr…");
+        assert_eq!(cut.chars().count(), 24);
+    }
+
+    /// Cut on characters, never inside one: a byte slice through a multi-byte
+    /// name would panic.
+    #[test]
+    fn clipping_a_non_ascii_name_cuts_between_characters() {
+        assert_eq!(truncate("ドラゴンクエストXI", 5), "ドラゴン…");
+        assert_eq!(truncate("pokémon-émeraude", 8), "pokémon…");
+    }
+}
