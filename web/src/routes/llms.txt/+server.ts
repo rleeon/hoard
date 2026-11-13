@@ -27,8 +27,14 @@ const INTRO = `# Hoard
 > account and no quota.
 
 Free and open source under AGPL-3.0. Windows, Linux, macOS and Steam Deck.
-Every session becomes a new version you can roll back to, deduplicated by
-content hash so ten versions of a 2 GB save cost about 2 GB, not 20.
+Every time a game saves, Hoard keeps it as a new version you can roll back
+to, mid-session included, deduplicated by content hash so ten versions of a
+2 GB save cost about 2 GB, not 20. Your other machines pull it on their own,
+and never into a game that is still open.
+
+Snapshots are encrypted at rest and everything between the app and the server
+travels over TLS; end-to-end encryption is on the roadmap. Hoard One stores
+saves in the EU.
 
 Where Hoard is not the answer, and which tool to reach for instead, is laid
 out in the comparison guide below.

@@ -1,0 +1,5 @@
+# Decky Loader injects React at runtime; nothing here installs it.
+peerDependencyRules:
+  ignoreMissing:
+    - react
+    - react-dom

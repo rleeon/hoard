@@ -2805,6 +2805,7 @@ pub async fn remember_save(
         // a user setting. This one decides whether their config gets written on
         // restore, so losing it here would be losing it silently.
         let prev_allow_device_local = state.saves.get(save_id).and_then(|s| s.allow_device_local);
+        let prev_backup_on_close = state.saves.get(save_id).and_then(|s| s.backup_on_close);
         state.saves.insert(
             save_id.to_string(),
             SaveState {
@@ -2819,6 +2820,7 @@ pub async fn remember_save(
                 processes: prev_processes,
                 shared_processes: prev_shared,
                 allow_device_local: prev_allow_device_local,
+                backup_on_close: prev_backup_on_close,
             },
         );
     } else if let Some(existing) = state.saves.get(save_id).cloned() {
@@ -2907,7 +2909,7 @@ mod tests {
                 "x",
             ),
             ("SaveData.dat", "progress"),
-            ("launcher.log", "x"),
+            ("launcher.cfg", "x"),
             ("profile.bank", "x"),
         ] {
             let p = root.join(rel);
@@ -2921,7 +2923,7 @@ mod tests {
         };
         assert_eq!(
             rels(&walk_source(root, &without).unwrap()),
-            ["SaveData.dat", "launcher.log"]
+            ["SaveData.dat", "launcher.cfg"]
         );
         // What the catalogue names goes up even when it looks like the game.
         let with_pattern = SourceFilter {
@@ -2931,7 +2933,7 @@ mod tests {
         };
         assert_eq!(
             rels(&walk_source(root, &with_pattern).unwrap()),
-            ["SaveData.dat", "launcher.log", "profile.bank"]
+            ["SaveData.dat", "launcher.cfg", "profile.bank"]
         );
         // Indexing walks leave the folder whole.
         assert_eq!(

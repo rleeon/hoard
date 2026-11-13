@@ -862,6 +862,20 @@ pub async fn set_save_preset(
     Ok(())
 }
 
+/// When this save backs up: once its game closes, each time the game saves, or
+/// (`null`) as the global setting says.
+#[tauri::command]
+pub async fn set_save_backup_on_close(
+    save_id: String,
+    on_close: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let reseat = hoard_agent::library::set_backup_on_close(&save_id, on_close)
+        .map_err(|e| e.to_string())?;
+    apply_reseat(&state, reseat).await;
+    Ok(())
+}
+
 /// Decide, for this game, whether a restore writes its config (`.ini`, `.cfg`,
 /// settings: whatever `fileclass` calls `DeviceLocal`) or skips it. `null` goes
 /// back to undecided: not written, and the restore dialog keeps asking.

@@ -273,7 +273,7 @@ async fn interactive_select(state: &CliState) -> Result<(Target, PathBuf)> {
         let path = expand_tilde(&raw);
         Ok((
             Target {
-                slug: slugify(&name),
+                slug: hoard_core::ids::slugify(&name),
                 display_name: name,
                 best_path: Some(path.clone()),
                 steam_app_id: None,
@@ -331,59 +331,9 @@ fn expand_tilde(raw: &str) -> PathBuf {
     }
     PathBuf::from(raw)
 }
-
-/// Local slug for the "Other" case (game outside the catalog). Same style as
-/// `hoard_manifest::ludusavi::slugify` but without pulling that dep into the CLI.
-fn slugify(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut last_dash = true; // avoids a leading dash
-    for ch in name.chars() {
-        let c = ch.to_ascii_lowercase();
-        if c.is_ascii_alphanumeric() {
-            out.push(c);
-            last_dash = false;
-        } else if !last_dash {
-            out.push('-');
-            last_dash = true;
-        }
-    }
-    while out.ends_with('-') {
-        out.pop();
-    }
-    if out.is_empty() {
-        out.push_str("game");
-    }
-    if !out.starts_with(|c: char| c.is_ascii_alphanumeric()) {
-        out.insert(0, 'g');
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A game typed in by hand is slugged here, not by
-    /// `hoard_core::ids::slugify`, which is the one the catalogue, detection and
-    /// the server join on. If the two disagree, the same game typed by hand on
-    /// one machine and detected on another becomes two saves.
-    #[test]
-    fn a_hand_typed_name_slugs_like_the_catalogue() {
-        for name in [
-            "Stardew Valley",
-            "The Witcher 3: Wild Hunt",
-            "DOOM (2016)",
-            "  spaced   out  ",
-            "2064: Read Only Memories",
-            "Pokémon Red",
-            "日本語のゲーム",
-            "--already-kebab--",
-            "!!!",
-            "",
-        ] {
-            assert_eq!(slugify(name), hoard_core::ids::slugify(name), "{name:?}");
-        }
-    }
 
     /// Only a leading `~/` means home. Anything else is a path as typed,
     /// including another user's `~name`, which this does not try to resolve.
