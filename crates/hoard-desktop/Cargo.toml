@@ -33,7 +33,7 @@ windows-core = "0.61"
 # The GLib log writer that catches GDK's Wayland protocol error (`graphics.rs`).
 # The version GTK already pulls in through Tauri.
 [target.'cfg(target_os = "linux")'.dependencies]
-glib = "0.18"
+glib = "0.22"
 # Game controllers (`gamepad.rs`), for a controller Steam is not turning into
 # keys: Ubuntu's WebKitGTK has no Gamepad API. Pure Rust, no libudev to build.
 evdev = "0.13"
