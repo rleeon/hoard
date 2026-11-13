@@ -580,6 +580,58 @@ pub async fn detection_diagnostics(
     Ok(detection::diagnose(&slug, Os::current(), &cli_state).await)
 }
 
+/// Second folders of the tracked saves, by save id. The four below are thin
+/// wrappers over `hoard_agent::mirror`; the service notices the change on its
+/// own, by the store's date.
+#[tauri::command]
+pub async fn list_save_mirrors(
+) -> Result<std::collections::HashMap<String, Vec<hoard_agent::mirror::Folder>>, String> {
+    tokio::task::spawn_blocking(hoard_agent::mirror::list)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+pub async fn add_save_mirror(
+    save_id: String,
+    path: String,
+) -> Result<Vec<hoard_agent::mirror::Folder>, String> {
+    tokio::task::spawn_blocking(move || {
+        hoard_agent::mirror::add(&save_id, std::path::Path::new(path.trim()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+pub async fn remove_save_mirror(
+    save_id: String,
+    path: String,
+) -> Result<Vec<hoard_agent::mirror::Folder>, String> {
+    tokio::task::spawn_blocking(move || {
+        hoard_agent::mirror::remove(&save_id, std::path::Path::new(&path))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))
+}
+
+#[tauri::command]
+pub async fn keep_save_mirror(
+    save_id: String,
+    path: String,
+    keep: hoard_agent::mirror::Keep,
+) -> Result<Vec<hoard_agent::mirror::Folder>, String> {
+    tokio::task::spawn_blocking(move || {
+        hoard_agent::mirror::keep(&save_id, std::path::Path::new(&path), keep)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))
+}
+
 /// Stop tracking a save. Removes the local-state row but leaves server data
 /// intact (delete from the History view if you want that gone too).
 #[tauri::command]

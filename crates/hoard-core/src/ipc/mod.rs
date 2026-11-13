@@ -67,6 +67,11 @@ pub const CAP_DETECTION: &str = "detection";
 /// service hands it one, and hears [`ServerFrame::NotificationSwitches`].
 pub const CAP_NOTICES: &str = "notices";
 
+/// The client understands [`AgentEvent::BackupUnchanged`] and
+/// [`AgentEvent::SaveSynced`]. The service leaves them out of the backlog and the
+/// push for anyone who does not send it (see [`AgentEvent::required_cap`]).
+pub const CAP_SYNC_SETTLED: &str = "sync_settled";
+
 /// Header bytes on every frame (the length `u32`).
 pub const HEADER_BYTES: usize = 4;
 
@@ -289,6 +294,12 @@ pub enum Request {
     SetGlobalSync {
         enabled: bool,
     },
+    /// The global "back up when the game closes" setting moved. An older daemon
+    /// answers [`IpcError::Unsupported`]; it picks the setting up from the prefs
+    /// file the next time its engine starts.
+    SetBackupOnClose {
+        enabled: bool,
+    },
     /// The user just moved their per-save cap on the website or in the app, so
     /// the engine's cached one is a plan behind.
     ///
@@ -456,6 +467,10 @@ pub enum Request {
     GameFacts {
         slug: String,
     },
+    /// The "Played, no backup" list. Answers [`Payload::PlaytimeGames`].
+    /// Knowing what is installed sweeps the disks, network shares included, so
+    /// the service works it out and no window waits on it.
+    PlaytimeGames,
     /// The catalogue in use: how many games, and when it was refreshed.
     CatalogStatus,
     /// Download the catalogue from upstream now and answer with its new status.
@@ -599,6 +614,10 @@ pub enum Payload {
         trace: serde_json::Value,
     },
     GameFacts(GameFacts),
+    /// `Vec<hoard_agent::library::PlaytimeGameInfo>`, as JSON.
+    PlaytimeGames {
+        games: serde_json::Value,
+    },
     /// The catalogue in use (answer to [`Request::CatalogStatus`] and
     /// [`Request::CatalogRefresh`]).
     Catalog(CatalogInfo),
@@ -1121,6 +1140,9 @@ mod tests {
             },
             Request::CatalogRefresh,
             Request::AutomaticChanged,
+            // 1.3.0's service has detection but not this one: its `Unsupported`
+            // is what sends the desktop to work the list out off its window.
+            Request::PlaytimeGames,
         ] {
             let json = serde_json::to_value(&request).unwrap();
             #[derive(Deserialize)]
@@ -1236,6 +1258,42 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(deferred, AgentEvent::RestoreDeferred { .. }));
+    }
+
+    /// An older client cannot decode these two: it would drop the connection on the
+    /// frame and meet the same journal row on every reconnect. Only a client that
+    /// says it reads them gets them.
+    #[test]
+    fn settle_events_only_reach_clients_with_the_cap() {
+        let unchanged = AgentEvent::BackupUnchanged {
+            save_id: "s1".into(),
+        };
+        let synced = AgentEvent::SaveSynced {
+            save_id: "s1".into(),
+            game_slug: "emu-retroarch".into(),
+            version_num: 9,
+        };
+        let json = serde_json::to_value(&synced).unwrap();
+        assert_eq!(json["type"], "save_synced");
+        assert_eq!(json["version_num"], 9);
+        assert_eq!(
+            serde_json::to_value(&unchanged).unwrap()["type"],
+            "backup_unchanged"
+        );
+
+        let old_desktop = vec![CAP_DETECTION.to_string(), CAP_NOTICES.to_string()];
+        let new_desktop = vec![CAP_NOTICES.to_string(), CAP_SYNC_SETTLED.to_string()];
+        for ev in [&unchanged, &synced] {
+            assert!(!ev.reaches(&old_desktop));
+            assert!(!ev.reaches(&[]));
+            assert!(ev.reaches(&new_desktop));
+        }
+        let scheduled = AgentEvent::BackupScheduled {
+            save_id: "s1".into(),
+            delay_ms: 5000,
+            reason: BackupReason::FilesystemSettled,
+        };
+        assert!(scheduled.reaches(&[]));
     }
 
     /// The goodbye carries its reason, so the client can show it ("`hoard sync

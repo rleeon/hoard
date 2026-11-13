@@ -304,6 +304,9 @@ export type TrackedSave = {
    *  `.cfg`, settings) instead of skipping them. `null` = undecided: they are
    *  not written and the restore dialog keeps asking each time. */
   allow_device_local: boolean | null;
+  /** When this save backs up: once its game closes (`true`), each time the
+   *  game saves (`false`), or as Settings says (absent / `null`). */
+  backup_on_close?: boolean | null;
 };
 
 /** Run a full auto-detection sweep. Subscribe to `library://scan-progress`
@@ -787,6 +790,18 @@ export type AgentEvent =
       type: "backup_attention_cleared";
       save_id: string;
       game_slug: string;
+    }
+  | {
+      /** The announced backup found nothing new: the countdown is over. */
+      type: "backup_unchanged";
+      save_id: string;
+    }
+  | {
+      /** This device holds `version_num` with nothing written or uploaded. */
+      type: "save_synced";
+      save_id: string;
+      game_slug: string;
+      version_num: number;
     };
 
 /** Ensure the sync service is up and report its engine status. */
@@ -951,6 +966,9 @@ export type Prefs = {
    *  both the client's min-snapshot-interval and the server's retention policy.
    *  Default 0.3. */
   data_saving: number;
+  /** Back saves up once their game closes instead of each time it saves.
+   *  Each save can override it from History. */
+  backup_on_close: boolean;
 };
 
 /** The single user-facing operating mode. Mirrors `hoard_agent::prefs::SyncMode`.
@@ -1459,6 +1477,15 @@ export function setSavePreset(
   preset: string | null,
 ): Promise<void> {
   return invoke<void>("set_save_preset", { saveId, preset });
+}
+
+/** When this save backs up: `true` once its game closes, `false` each time the
+ *  game saves, `null` as the global setting says. */
+export function setSaveBackupOnClose(
+  saveId: string,
+  onClose: boolean | null,
+): Promise<void> {
+  return invoke<void>("set_save_backup_on_close", { saveId, onClose });
 }
 
 /** Decide whether restoring this game writes its device-local files (`.ini`,

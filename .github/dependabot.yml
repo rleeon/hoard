@@ -12,3 +12,42 @@ updates:
     # waiting, so the cap stayed saturated and hid every other outdated one
     # behind it. Dependabot never opens the eleventh, it just goes quiet.
     open-pull-requests-limit: 10
+
+  # Everything else stays on the latest stable too. Minor and patch bumps land
+  # as one PR per directory and week, because every Dependabot PR pays for a
+  # full CI run on four runners; majors still arrive one by one, since those are
+  # the ones that break things. The three-day cooldown keeps us off a release
+  # that gets yanked the morning after; security updates skip it.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/crates/hoard-desktop/ui"
+      - "/web"
+      - "/decky"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "docker"
+    directories:
+      - "/deploy/docker"
+      - "/deploy/fly"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 3
