@@ -131,7 +131,7 @@ strsim = "0.11"
 # Process & filesystem watching (Phase 4)
 sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 notify = "6"
-notify-debouncer-mini = "0.4"
+notify-debouncer-mini = "0.7"
 
 # Native OS notifications from `hoardd` (ADR 0021 D.14.1). Mind the names:
 # `notify` above watches the filesystem and `notify-rust` tells the user, and they
