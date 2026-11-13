@@ -11,6 +11,16 @@ use hoard_agent::state::CliState;
 use crate::commands::link;
 use crate::output;
 
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub enum BackupWhen {
+    /// Each time the game saves
+    Saving,
+    /// Once the game closes
+    Closing,
+    /// As the global setting says
+    Default,
+}
+
 /// The result of a local mutation, so an agent can confirm what it changed
 /// instead of parsing a sentence.
 #[derive(Serialize)]
@@ -89,6 +99,15 @@ pub enum SaveCommand {
         #[arg(long)]
         preset: Option<String>,
     },
+    /// When a save backs up: each time the game saves, once the game closes,
+    /// or as the global setting says (`hoard config set backup.when`).
+    /// Local-only.
+    BackupWhen {
+        /// Save id (UUID), see `hoard saves`
+        id: String,
+        #[arg(value_enum)]
+        when: BackupWhen,
+    },
     /// Stop watching a save on THIS machine. The cloud copy and its whole
     /// version history stay untouched; this is not `delete`. Re-add it later from
     /// the Library or with `hoard track`. Local-only.
@@ -104,6 +123,33 @@ pub enum SaveCommand {
         /// New save folder on this machine
         path: String,
     },
+    /// The save's second folders on this machine: the same save written by
+    /// another program, like one game played in two emulators. They are kept
+    /// equal to the save's own folder by copying locally. With no flag it lists
+    /// them. Local-only.
+    Folders {
+        /// Save id (UUID), see `hoard saves`
+        id: String,
+        /// Keep this folder equal to the save
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["remove", "resolve"])]
+        add: Option<String>,
+        /// Stop keeping this folder equal. Its files stay where they are
+        #[arg(long, value_name = "PATH", conflicts_with = "resolve")]
+        remove: Option<String>,
+        /// Settle a conflict on this second folder; say which side with --keep
+        #[arg(long, value_name = "PATH", requires = "keep")]
+        resolve: Option<String>,
+        /// Whose content wins: the save's own folder (`main`) or the second
+        /// one (`second`). What it replaces is saved with the conflicts
+        #[arg(long, value_enum, requires = "resolve")]
+        keep: Option<KeepSide>,
+    },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum KeepSide {
+    Main,
+    Second,
 }
 
 pub async fn run(cmd: SaveCommand) -> Result<()> {
@@ -141,12 +187,35 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
             }
             return Ok(());
         }
+        SaveCommand::BackupWhen { id, when } => {
+            let on_close = match when {
+                BackupWhen::Saving => Some(false),
+                BackupWhen::Closing => Some(true),
+                BackupWhen::Default => None,
+            };
+            library::set_backup_on_close(id, on_close)?;
+            let applied = link::notify_reload().await;
+            let said = match when {
+                BackupWhen::Saving => "backs up each time the game saves",
+                BackupWhen::Closing => "backs up once the game closes",
+                BackupWhen::Default => "backs up as the global setting says",
+            };
+            println!("{id} {said} ({applied})");
+            return Ok(());
+        }
         SaveCommand::Path { id, path } => {
             library::set_local_path(id, path)?;
             let applied = link::notify_reload().await;
             println!("path for {id} set to {path} ({applied})");
             return Ok(());
         }
+        SaveCommand::Folders {
+            id,
+            add,
+            remove,
+            resolve,
+            keep,
+        } => return folders(id, add.as_deref(), remove.as_deref(), resolve.as_deref(), *keep),
         SaveCommand::Untrack { id } => {
             // `library::untrack` drops the row whether or not it was there. For
             // a person that is harmless; for a caller that got the id wrong, a
@@ -342,10 +411,54 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
         SaveCommand::Pause { .. }
         | SaveCommand::Resume { .. }
         | SaveCommand::Preset { .. }
+        | SaveCommand::BackupWhen { .. }
         | SaveCommand::Untrack { .. }
+        | SaveCommand::Folders { .. }
         | SaveCommand::Path { .. } => unreachable!("handled before the client is built"),
     }
     Ok(())
+}
+
+/// `hoard save folders`. Nothing is told to the service: it reads the store's
+/// date on every tick and picks the change up by itself.
+fn folders(
+    id: &str,
+    add: Option<&str>,
+    remove: Option<&str>,
+    resolve: Option<&str>,
+    keep: Option<KeepSide>,
+) -> Result<()> {
+    use hoard_agent::mirror::{self, Keep, Status};
+    use std::path::Path;
+
+    let list = if let Some(path) = add {
+        mirror::add(id, Path::new(path.trim()))?
+    } else if let Some(path) = remove {
+        mirror::remove(id, Path::new(path.trim()))?
+    } else if let (Some(path), Some(side)) = (resolve, keep) {
+        let side = match side {
+            KeepSide::Main => Keep::Primary,
+            KeepSide::Second => Keep::Mirror,
+        };
+        mirror::keep(id, Path::new(path.trim()), side)?
+    } else {
+        mirror::list()?.remove(id).unwrap_or_default()
+    };
+    output::emit(&list, |list| {
+        if list.is_empty() {
+            println!("This save has no second folder.");
+        }
+        for folder in list {
+            let status = match (folder.status, folder.keep) {
+                (_, Some(_)) => "copying",
+                (Status::Pending, _) => "waiting for the sync service",
+                (Status::InSync, _) => "in sync",
+                (Status::Conflict, _) => "CONFLICT: both changed, pick one with --resolve --keep",
+                (Status::Missing, _) => "folder not found",
+            };
+            println!("{}  ({status})", folder.path.display());
+        }
+    })
 }
 
 fn cloud_row(s: CloudManifestEntry) -> SaveInfo {
@@ -415,5 +528,42 @@ fn fmt_size(b: i64) -> String {
         format!("{:.2}K", b / KB)
     } else {
         format!("{}B", b as i64)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest_entry(updated_at: &str) -> CloudManifestEntry {
+        CloudManifestEntry {
+            save_id: "0b6c1f9e".into(),
+            game_slug: "hollow-knight".into(),
+            label: "main".into(),
+            latest_version_num: 12,
+            latest_parent_version: Some(11),
+            latest_size_bytes: 4096,
+            latest_file_count: 3,
+            latest_sha256: String::new(),
+            updated_at: updated_at.into(),
+        }
+    }
+
+    /// Cloud's manifest knows the newest version's size, not the total over all
+    /// versions that `total_size_bytes` means on a self-hosted server, so the row
+    /// must put it in the field that says so rather than pass it off as a total.
+    #[test]
+    fn a_cloud_row_is_synced_and_carries_the_latest_size_not_a_total() {
+        let row = cloud_row(manifest_entry("2026-11-01T12:00:00Z"));
+        assert_eq!(row.state, Some("synced"));
+        assert_eq!(row.latest_version_num, Some(12));
+        assert_eq!(row.latest_size_bytes, Some(4096));
+        assert_eq!(row.total_size_bytes, None);
+        assert_eq!(row.snapshot_count, None);
+        assert_eq!(row.updated_at.as_deref(), Some("2026-11-01T12:00:00Z"));
+
+        // An older server leaves `updated_at` out and it deserialises as empty:
+        // `--json` says null rather than handing out an empty string as a date.
+        assert_eq!(cloud_row(manifest_entry("")).updated_at, None);
     }
 }

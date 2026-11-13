@@ -252,4 +252,108 @@ mod tests {
             .unwrap_err();
         assert_eq!(classify(&e).code, "not_found");
     }
+
+    /// The exit groups are what a shell script branches on without parsing
+    /// JSON, so every typed failure has to land in the group its reaction
+    /// belongs to. `Network` is left out only because a `reqwest::Error` cannot
+    /// be built by hand.
+    #[test]
+    fn every_api_failure_lands_in_its_exit_group() {
+        use hoard_agent::api::{NonFastForward, QuotaExceeded, SaveTooLarge};
+
+        let cases = [
+            (ApiError::Unauthorized, "unauthorized", 2),
+            (ApiError::Forbidden, "forbidden", 2),
+            (ApiError::NotFound, "not_found", 3),
+            (
+                ApiError::QuotaExceeded(QuotaExceeded::default()),
+                "quota_exceeded",
+                5,
+            ),
+            (ApiError::TooLarge(SaveTooLarge::default()), "too_large", 5),
+            (ApiError::Archived, "archived", 5),
+            (
+                ApiError::StorageUnreachable {
+                    host: "r2.example".into(),
+                    reason: "timed out".into(),
+                },
+                "storage_unreachable",
+                6,
+            ),
+            (
+                ApiError::NonFastForward(NonFastForward::default()),
+                "conflict",
+                1,
+            ),
+            (ApiError::PatchBaseGone("abc".into()), "conflict", 1),
+            (ApiError::Conflict("taken".into()), "conflict", 1),
+            (ApiError::BadRequest("nope".into()), "bad_request", 1),
+            (
+                ApiError::Server {
+                    status: 503,
+                    body: String::new(),
+                },
+                "server",
+                1,
+            ),
+        ];
+        for (error, code, exit) in cases {
+            let shown = error.to_string();
+            let c = classify(&anyhow::Error::new(error));
+            assert_eq!((c.code, c.exit), (code, exit), "{shown}");
+            assert_eq!(c.retry_after_seconds, None, "only a 429 carries a wait");
+        }
+    }
+
+    /// A code the CLI raises itself is passed through as-is; only the two with
+    /// a group of their own get a special exit status. The envelope's `message`
+    /// is `{e:#}`, so the code must not leak into the text: it has its own field.
+    #[test]
+    fn coded_errors_get_their_group_or_the_generic_one() {
+        let c = classify(&err("no_session", "sign in first"));
+        assert_eq!((c.code, c.exit), ("no_session", 2));
+
+        let e = err("needs_confirmation", "pass --yes");
+        let c = classify(&e);
+        assert_eq!((c.code, c.exit), ("needs_confirmation", 1));
+        assert_eq!(format!("{e:#}"), "pass --yes");
+    }
+
+    #[test]
+    fn a_coded_error_keeps_its_code_under_context() {
+        use anyhow::Context;
+        let e = Err::<(), _>(err("not_tracked", "no such save"))
+            .context("untracking")
+            .unwrap_err();
+        let c = classify(&e);
+        assert_eq!((c.code, c.exit), ("not_tracked", 3));
+    }
+
+    /// `retry_after_seconds` is part of the error envelope only on a 429; on any
+    /// other failure the key is absent rather than null.
+    #[test]
+    fn the_error_envelope_names_a_wait_only_when_there_is_one() {
+        let envelope = |retry_after_seconds| {
+            serde_json::to_value(Err_ {
+                ok: false,
+                error: ErrBody {
+                    code: "rate_limited",
+                    message: "slow down".into(),
+                    retry_after_seconds,
+                },
+            })
+            .unwrap()
+        };
+
+        let waited = envelope(Some(30));
+        assert_eq!(waited["ok"], false);
+        assert_eq!(waited["error"]["code"], "rate_limited");
+        assert_eq!(waited["error"]["retry_after_seconds"], 30);
+
+        let plain = envelope(None);
+        assert!(!plain["error"]
+            .as_object()
+            .unwrap()
+            .contains_key("retry_after_seconds"));
+    }
 }

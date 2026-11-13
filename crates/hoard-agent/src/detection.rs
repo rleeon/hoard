@@ -7571,6 +7571,7 @@ mod tests {
                 paused: false,
                 preset: None,
                 allow_device_local: None,
+                backup_on_close: None,
                 set_hash: None,
                 processes: Vec::new(),
                 shared_processes: false,

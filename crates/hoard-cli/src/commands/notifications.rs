@@ -130,3 +130,73 @@ fn print(s: &SwitchesOut) {
         println!("{name:<18} {}", if on { "on" } else { "off" });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    use clap::ValueEnum;
+    use serde_json::Value;
+
+    /// Spelled out field by field on purpose: a switch added to the wire stops
+    /// this from compiling, which is the moment to give it a name here too.
+    const ALL_OFF: NotificationSwitches = NotificationSwitches {
+        backup_success: false,
+        backup_problems: false,
+        restore_success: false,
+        restore_problems: false,
+        game_activity: false,
+        updates: false,
+    };
+
+    /// What the service is told when somebody types `arg`.
+    fn sent(arg: SwitchArg) -> String {
+        match serde_json::to_value(NotificationSwitch::from(arg)).unwrap() {
+            Value::String(name) => name,
+            other => panic!("a switch goes over the wire as a name, not {other}"),
+        }
+    }
+
+    fn keys(value: Value) -> BTreeSet<String> {
+        value.as_object().unwrap().keys().cloned().collect()
+    }
+
+    /// `hoard notifications off backup-success` has to turn off that switch and
+    /// not its neighbour: the name typed and the name sent are the same words.
+    #[test]
+    fn each_switch_typed_is_the_switch_sent() {
+        for arg in SwitchArg::value_variants() {
+            let typed = arg.to_possible_value().unwrap();
+            assert_eq!(typed.get_name().replace('-', "_"), sent(*arg));
+        }
+    }
+
+    #[test]
+    fn every_switch_the_service_keeps_can_be_flipped_from_here() {
+        let sendable: BTreeSet<String> = SwitchArg::value_variants()
+            .iter()
+            .map(|arg| sent(*arg))
+            .collect();
+        let kept = keys(serde_json::to_value(ALL_OFF).unwrap());
+        assert_eq!(sendable, kept);
+    }
+
+    /// `--json` declares its own shape so the wire can change, but each switch
+    /// has to come out under its own name and carry its own state.
+    #[test]
+    fn the_json_output_reports_each_switch_under_its_own_name() {
+        let names = keys(serde_json::to_value(ALL_OFF).unwrap());
+        for on in &names {
+            let mut wire = serde_json::to_value(ALL_OFF).unwrap();
+            wire[on.as_str()] = Value::Bool(true);
+            let switches: NotificationSwitches = serde_json::from_value(wire).unwrap();
+
+            let shown = serde_json::to_value(SwitchesOut::from(switches)).unwrap();
+            assert_eq!(keys(shown.clone()), names);
+            for (name, state) in shown.as_object().unwrap() {
+                assert_eq!(state, &Value::Bool(name == on), "{name} with {on} on");
+            }
+        }
+    }
+}

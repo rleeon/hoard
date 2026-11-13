@@ -13,19 +13,19 @@
 //!   their hours accrue for the recap without ever backing anything up. The
 //!   user can drop any of them; the opt-out persists in `CliState`.
 
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::time::Duration;
 
-use hoard_agent::agent::WatchedSave;
-use hoard_agent::manifest::Os;
+use hoard_agent::library::{self, PlaytimeGameInfo};
 use hoard_agent::playtime::{PlaytimeStore, PlaytimeSummary};
-use hoard_agent::playtime_catalog;
 use hoard_agent::state::CliState;
-use hoard_agent::{launchers, steam};
-use serde::Serialize;
+use hoard_core::ipc::{Payload, Request};
 use tauri::State;
 
 use crate::state::AppState;
+
+/// The service answers within one sweep of the disks, 20 s at most with every
+/// place walked at once. This only catches a service that stopped answering.
+const PLAYTIME_GAMES_LIMIT: Duration = Duration::from_secs(2 * 60);
 
 /// Per-day / per-game playtime totals for the recap heatmap. Empty until the
 /// agent has observed a tracked game running for at least one poll interval.
@@ -38,134 +38,44 @@ pub fn list_playtime() -> Result<PlaytimeSummary, String> {
     Ok(PlaytimeStore::load(&path).summary())
 }
 
-/// One playtime-only game surfaced to the UI (the amber "Jugados, sin copia"
-/// list). `excluded` is the user's opt-out: when true the game is in the
-/// catalog/installed set but we are *not* counting it.
-#[derive(Debug, Clone, Serialize)]
-pub struct PlaytimeGameInfo {
-    pub slug: String,
-    pub display_name: String,
-    pub excluded: bool,
-}
-
 /// Synthetic `save_id` for a playtime-only slot. Prefixed so it never collides
 /// with a real save's UUID and is obvious in logs.
 fn playtime_save_id(slug: &str) -> String {
     format!("playtime:{slug}")
 }
 
-/// Installed games (any launcher) that match the curated playtime catalog,
-/// keyed by catalog slug, paired with the install dir we found them in (used
-/// as the process poll's dir-prefix fallback when a process-name match misses).
-/// First match per slug wins. Epic/GOG/MS readers no-op off Windows; Steam
-/// works everywhere, so on Linux this still finds e.g. Rust.
-fn installed_catalog_games(os: Os) -> Vec<(&'static str, Option<PathBuf>)> {
-    let mut sources: Vec<(String, PathBuf)> = Vec::new();
-    for app in steam::list_installed_steam_games(os).unwrap_or_default() {
-        sources.push((app.name, app.install_dir));
-    }
-    for app in launchers::list_installed_epic_games(os) {
-        sources.push((app.name, app.install_dir));
-    }
-    for app in launchers::list_installed_gog_games(os) {
-        sources.push((app.name, app.install_dir));
-    }
-    for app in launchers::list_installed_msstore_games(os) {
-        sources.push((app.name, app.install_dir));
-    }
-    let mut out: Vec<(&'static str, Option<PathBuf>)> = Vec::new();
-    let mut seen: HashSet<&'static str> = HashSet::new();
-    for (name, dir) in sources {
-        if let Some(g) = playtime_catalog::game_for_store_name(&name) {
-            if seen.insert(g.slug) {
-                out.push((g.slug, Some(dir)));
-            }
-        }
-    }
-    out
-}
-
-/// Construct the `track_only` slot for one catalog slug.
-fn playtime_watched_save(slug: &str, install_dir: Option<PathBuf>) -> WatchedSave {
-    let game = playtime_catalog::by_slug(slug);
-    let display_name = game
-        .map(|g| g.display_name.to_string())
-        .unwrap_or_else(|| slug.to_string());
-    let processes = game
-        .map(|g| g.processes.iter().map(|p| p.to_string()).collect())
-        .unwrap_or_default();
-    WatchedSave {
-        allow_device_local: None,
-        save_id: playtime_save_id(slug),
-        game_slug: slug.to_string(),
-        display_name,
-        label: "playtime".to_string(),
-        // Playtime-only: no folder on disk. The agent's track_only guards keep
-        // this sentinel out of every watch/backup/restore path.
-        local_path: PathBuf::new(),
-        steam_install_dir: install_dir,
-        processes,
-        // Hours only: its process list comes from the playtime catalogue, which is
-        // one game per entry, so nobody shares it.
-        shared_processes: false,
-        policy: Default::default(),
-        known_version: None,
-        set_hash: None,
-        track_only: true,
-    }
-}
-
-/// Slugs already tracked as real saves on this machine (their playtime is
-/// counted via the save slot, so we never enrol a playtime-only duplicate).
-fn tracked_slugs(cli_state: &CliState) -> HashSet<String> {
-    cli_state
-        .saves
-        .values()
-        .map(|s| s.game_slug.clone())
-        .collect()
-}
-
-/// The amber "Jugados, sin copia" list: installed catalog games not tracked as
-/// saves (flagged with the user's opt-out state), plus any excluded-but-now-
-/// uninstalled game so the user can still re-enable it.
+/// The amber "Jugados, sin copia" list.
+///
+/// Async, and asked of the service: knowing what is installed sweeps the disks
+/// for Steam libraries, and as a sync command that ran on the window's thread.
+/// With a NAS mapped as `Z:` it held the window long enough for Windows to grey
+/// it out as not responding (issue #67), while the service swept the same
+/// share for its own scan. A service from before the request, or one that
+/// can't answer, gets the list worked out here, off the window's thread.
 #[tauri::command]
-pub fn list_playtime_games() -> Result<Vec<PlaytimeGameInfo>, String> {
-    let (cli_state, _) = CliState::load_default().map_err(|e| e.to_string())?;
-    let tracked = tracked_slugs(&cli_state);
-    let mut out: Vec<PlaytimeGameInfo> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-
-    for (slug, _) in installed_catalog_games(Os::current()) {
-        if tracked.contains(slug) {
-            continue;
-        }
-        let Some(g) = playtime_catalog::by_slug(slug) else {
-            continue;
-        };
-        out.push(PlaytimeGameInfo {
-            slug: slug.to_string(),
-            display_name: g.display_name.to_string(),
-            excluded: cli_state.is_playtime_excluded(slug),
-        });
-        seen.insert(slug.to_string());
-    }
-
-    // Excluded games no longer installed still get a row so they're re-enablable.
-    for slug in &cli_state.playtime_excluded {
-        if seen.contains(slug) || tracked.contains(slug) {
-            continue;
-        }
-        if let Some(g) = playtime_catalog::by_slug(slug) {
-            out.push(PlaytimeGameInfo {
-                slug: slug.clone(),
-                display_name: g.display_name.to_string(),
-                excluded: true,
-            });
+pub async fn list_playtime_games(
+    state: State<'_, AppState>,
+) -> Result<Vec<PlaytimeGameInfo>, String> {
+    if state.daemon.owns_detection().await {
+        match state
+            .daemon
+            .request_long(Request::PlaytimeGames, PLAYTIME_GAMES_LIMIT)
+            .await
+        {
+            Ok(Payload::PlaytimeGames { games }) => {
+                return serde_json::from_value(games).map_err(|e| e.to_string());
+            }
+            Ok(other) => tracing::warn!(?other, "unexpected answer to the playtime games"),
+            Err(e) => tracing::info!(
+                error = %format!("{e:#}"),
+                "the service can't list the playtime games; working them out here"
+            ),
         }
     }
-
-    out.sort_by_key(|e| e.display_name.to_lowercase());
-    Ok(out)
+    tokio::task::spawn_blocking(library::playtime_games)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 /// Drop `slug` from playtime tracking: persist the opt-out and detach its live
@@ -183,9 +93,8 @@ pub async fn exclude_playtime_game(state: State<'_, AppState>, slug: String) -> 
     Ok(())
 }
 
-/// Re-allow `slug` for playtime tracking: clear the opt-out and, if it's
-/// installed, attach its slot to the running agent so it counts without a
-/// restart. Idempotent.
+/// Re-allow `slug` for playtime tracking: clear the opt-out and let the service
+/// know, so an installed game counts without a restart. Idempotent.
 #[tauri::command]
 pub async fn include_playtime_game(state: State<'_, AppState>, slug: String) -> Result<(), String> {
     let slug = slug.trim().to_string();
@@ -195,15 +104,9 @@ pub async fn include_playtime_game(state: State<'_, AppState>, slug: String) -> 
     let (mut cli_state, path) = CliState::load_default().map_err(|e| e.to_string())?;
     cli_state.include_playtime(&slug);
     cli_state.save(&path).map_err(|e| e.to_string())?;
-
-    // Attach live if the game is installed and not already a tracked save.
-    if !tracked_slugs(&cli_state).contains(&slug) {
-        if let Some((s, dir)) = installed_catalog_games(Os::current())
-            .into_iter()
-            .find(|(s, _)| *s == slug)
-        {
-            super::agent::attach_save_if_running(&state, playtime_watched_save(s, dir)).await;
-        }
-    }
+    // The service seeds the hours-only slots from `state.json` itself
+    // (`library::derive_playtime_saves`): whether the game is installed is its
+    // question, and asking it here swept the disks a second time.
+    state.daemon.notify_reload().await;
     Ok(())
 }

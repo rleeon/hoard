@@ -273,7 +273,7 @@ async fn interactive_select(state: &CliState) -> Result<(Target, PathBuf)> {
         let path = expand_tilde(&raw);
         Ok((
             Target {
-                slug: slugify(&name),
+                slug: hoard_core::ids::slugify(&name),
                 display_name: name,
                 best_path: Some(path.clone()),
                 steam_app_id: None,
@@ -331,30 +331,27 @@ fn expand_tilde(raw: &str) -> PathBuf {
     }
     PathBuf::from(raw)
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Local slug for the "Other" case (game outside the catalog). Same style as
-/// `hoard_manifest::ludusavi::slugify` but without pulling that dep into the CLI.
-fn slugify(name: &str) -> String {
-    let mut out = String::with_capacity(name.len());
-    let mut last_dash = true; // avoids a leading dash
-    for ch in name.chars() {
-        let c = ch.to_ascii_lowercase();
-        if c.is_ascii_alphanumeric() {
-            out.push(c);
-            last_dash = false;
-        } else if !last_dash {
-            out.push('-');
-            last_dash = true;
+    /// Only a leading `~/` means home. Anything else is a path as typed,
+    /// including another user's `~name`, which this does not try to resolve.
+    #[test]
+    fn only_a_leading_tilde_slash_is_expanded() {
+        for raw in ["/srv/saves", "saves/slot1", "~otheruser/saves", "a/~/b"] {
+            assert_eq!(expand_tilde(raw), PathBuf::from(raw), "{raw:?}");
         }
     }
-    while out.ends_with('-') {
-        out.pop();
+
+    #[test]
+    fn a_leading_tilde_slash_is_the_home_folder() {
+        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
+        let expected = match home {
+            Some(home) => PathBuf::from(home).join("Games/saves"),
+            // With no home to go to, the path is left as typed.
+            None => PathBuf::from("~/Games/saves"),
+        };
+        assert_eq!(expand_tilde("~/Games/saves"), expected);
     }
-    if out.is_empty() {
-        out.push_str("game");
-    }
-    if !out.starts_with(|c: char| c.is_ascii_alphanumeric()) {
-        out.insert(0, 'g');
-    }
-    out
 }

@@ -23,6 +23,7 @@
     Trash2,
     Trash,
     FolderOpen,
+    FolderPlus,
     Pencil,
     RotateCcw,
     RotateCw,
@@ -70,6 +71,11 @@
   } from "../lib/stores/agent";
   import CardResizeHandle from "../lib/components/CardResizeHandle.svelte";
   import Select from "../lib/components/Select.svelte";
+  import PinButton from "../lib/components/PinButton.svelte";
+  import SaveMirrors from "../lib/components/SaveMirrors.svelte";
+  import MirrorDialogs from "../lib/components/MirrorDialogs.svelte";
+  import { askAddMirror, isMirrorFolder, refreshMirrors } from "../lib/stores/mirrors.svelte";
+  import { comparePinned } from "../lib/stores/pins.svelte";
   import { fmtDate, fmtNumber } from "../lib/utils/format";
 
   let report = $state<DetectionReport | null>(null);
@@ -133,6 +139,7 @@
   let confidenceFilter = $state<"all" | Confidence>("all");
   let sourceFilter = $state<"all" | DetectionSource>("all");
   let unlisten: UnlistenFn | null = null;
+  let mirrorPoll: ReturnType<typeof setInterval> | null = null;
 
   /** Game whose folder is being chosen by scanning ("track with another
    *  folder", "no save folder yet"). Drives ScanFolderModal in target mode; a
@@ -205,6 +212,11 @@
     // Which tracked saves are frozen in the black box (drives the badge +
     // Reactivar button). Cloud-only; a no-op when self-hosted.
     void refreshArchivedSaves();
+    // Second folders, and again every so often while the page is open: a
+    // conflict between two of them shows up when the service finds it, not
+    // when anything is clicked here.
+    void refreshMirrors();
+    mirrorPoll = setInterval(() => void refreshMirrors(false), 15_000);
   });
 
   // Reactivate an archived save: recovers quota + resumes sync (within the
@@ -265,6 +277,7 @@
 
   onDestroy(() => {
     if (unlisten) unlisten();
+    if (mirrorPoll) clearInterval(mirrorPoll);
   });
 
   async function runScan() {
@@ -1033,6 +1046,15 @@
     const out: LibraryEntry[] = [];
 
     for (const g of filtered) {
+      // A game found only in folders that are some save's second folder is
+      // that save, in another place. It is not offered as a game of its own.
+      if (
+        !savesBySlug.has(g.slug) &&
+        g.found_paths.length > 0 &&
+        g.found_paths.every(isMirrorFolder)
+      ) {
+        continue;
+      }
       out.push({
         slug: g.slug,
         name: g.display_name,
@@ -1063,8 +1085,10 @@
       });
     }
 
-    // Lo que ya vigilas, primero; el resto por nombre.
+    // Pinned first, in their order; then what is already watched; the rest by name.
     out.sort((a, b) => {
+      const pin = comparePinned(a.slug, b.slug);
+      if (pin) return pin;
       const at = a.saves.length > 0;
       const bt = b.saves.length > 0;
       if (at !== bt) return at ? -1 : 1;
@@ -1087,7 +1111,7 @@
   function untrackedPaths(game: DetectedGame): { path: string; i: number }[] {
     return game.found_paths
       .map((path, i) => ({ path, i }))
-      .filter(({ path }) => !trackedByPath.has(path));
+      .filter(({ path }) => !trackedByPath.has(path) && !isMirrorFolder(path));
   }
 
   /** Whose history the cover opens: with several folders the saved-games one,
@@ -1448,6 +1472,15 @@
                         </button>
                         <button
                           type="button"
+                          onclick={() => askAddMirror(save, $_("second_folder.pick_title"))}
+                          aria-label={$_("second_folder.add_title")}
+                          title={$_("second_folder.add_title")}
+                          class="shrink-0 rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700/40 hover:text-emerald-300"
+                        >
+                          <FolderPlus size={11} />
+                        </button>
+                        <button
+                          type="button"
                           onclick={() => askRename(save)}
                           aria-label={$_("library.rename_button")}
                           title={$_("library.rename_title")}
@@ -1491,6 +1524,7 @@
                       <FolderOpen size={10} class="shrink-0" />
                       <span class="truncate">{save.local_path}</span>
                     </p>
+                    <SaveMirrors {save} />
 
                     <!-- Carpeta vacía y ni una copia jamás: casi siempre la
                          ruta rastreada no es donde guarda el juego (la nativa
@@ -1671,6 +1705,7 @@
                 >
                   <FolderOpen size={14} />
                 </button>
+                <PinButton slug={entry.slug} />
                 {#if !isTracked}
                   <button
                     type="button"
@@ -1682,6 +1717,12 @@
                     <Trash size={14} />
                   </button>
                 {/if}
+              </div>
+            {:else}
+              <!-- A game added by hand has no detection row, so none of the
+                   buttons above: the pin gets a row of its own. -->
+              <div class="mt-auto flex items-center gap-2 p-3 pt-1">
+                <PinButton slug={entry.slug} />
               </div>
             {/if}
           </div>
@@ -2252,4 +2293,6 @@
       </Button>
     {/snippet}
   </Modal>
+
+  <MirrorDialogs />
 </div>

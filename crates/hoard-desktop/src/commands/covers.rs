@@ -339,6 +339,25 @@ async fn source_bytes(
             let url = match appdetails_header_url(app_id).await {
                 Some(url) => url,
                 None => {
+                    // An id Steam keeps no art under at all gets the index's,
+                    // if it has any. The catalogue's id for the GTA trilogy,
+                    // 817628, is one: every asset 404s and the store answers
+                    // for it with an empty item, which left 12 people on the
+                    // letter tile with nothing the index could do about it.
+                    if let CoverKey::Slug(slug) = cover {
+                        match index_cover(slug, dir).await {
+                            Fetch::Bytes(bytes) => {
+                                let _ = tokio::fs::create_dir_all(&dir).await;
+                                let _ = tokio::fs::write(&portrait, &bytes).await;
+                                let _ = tokio::fs::remove_file(&marker).await;
+                                return Ok(bytes);
+                            }
+                            Fetch::Missing => {}
+                            Fetch::Unavailable => {
+                                return Err(format!("cover {slug}: index unreachable"))
+                            }
+                        }
+                    }
                     // On Steam and still nothing to show: neither the vertical
                     // capsule nor the header. Rare enough to be worth telling
                     // apart from the games that simply aren't on Steam.
@@ -508,7 +527,11 @@ const PORTRAIT_SUFFIX: &str = "_600x900";
 /// 3: added the hosted index, so every "artless" verdict reached before it
 /// existed has to be re-asked, which is the whole population this release is
 /// for.
-const LOOKUP_STRATEGY: u32 = 3;
+///
+/// 4: the manifest's 1x capsule is tried when its 2x turns out not to exist.
+/// ARK: Survival Evolved sat on the landscape header because of a verdict
+/// reached on the 2x alone.
+const LOOKUP_STRATEGY: u32 = 4;
 
 /// Steam publishes vertical art for older games later on, so a negative
 /// verdict also expires with time, not just with a better search.
@@ -582,11 +605,27 @@ async fn index_cover(slug: &str, dir: &std::path::Path) -> Fetch {
 /// The cover URL this index has for `slug`, if any.
 async fn index_lookup(slug: &str, dir: &std::path::Path) -> Option<String> {
     let index = load_index(dir).await?;
-    index
-        .get("covers")?
-        .get(slug)?
-        .as_str()
-        .map(|s| s.to_string())
+    url_in(&index, slug)
+}
+
+/// `slug`'s URL in a parsed index.
+///
+/// An emulator's saves are tracked one row per title, `emu-<id>-<title>`, and
+/// no list can name those: `emu-ryujinx-0000000000000001` is whichever game
+/// that profile holds, and 25 people had it with no art between 15 Aug and
+/// 10 Nov 2026. So an `emu-` slug with no entry of its own gets its
+/// emulator's, found by dropping segments off the end. Longest first, because
+/// ids have dashes too (`emu-retroarch-states`).
+fn url_in(index: &serde_json::Value, slug: &str) -> Option<String> {
+    let covers = index.get("covers")?;
+    let mut key = slug;
+    loop {
+        if let Some(url) = covers.get(key).and_then(|u| u.as_str()) {
+            return Some(url.to_string());
+        }
+        let rest = key.strip_prefix("emu-")?;
+        key = &key[.."emu-".len() + rest.rfind('-')?];
+    }
 }
 
 /// The index, from memory, else disk (while fresh), else the network.
@@ -653,7 +692,7 @@ async fn index_cache_is_fresh(path: &std::path::Path) -> bool {
 ///    asset type under its own hashed directory, so *every* guessable URL 404s and
 ///    the old code silently fell back to the landscape header, which is why
 ///    those games showed up as widescreen rectangles. See
-///    [`library_capsule_url`].
+///    [`library_capsule_urls`].
 ///
 /// [`Fetch::Missing`] only when Steam positively says there's no vertical art:
 /// a network error is not proof, and the caller writes a permanent marker on
@@ -668,8 +707,16 @@ async fn fetch_portrait(app_id: u32) -> Fetch {
         Fetch::Unavailable => return Fetch::Unavailable,
         Fetch::Missing => {}
     }
-    match library_capsule_url(app_id).await {
-        Capsule::At(url) => fetch(&url).await,
+    match library_capsule_urls(app_id).await {
+        Capsule::At(urls) => {
+            for url in urls {
+                match fetch(&url).await {
+                    Fetch::Missing => {}
+                    found_or_offline => return found_or_offline,
+                }
+            }
+            Fetch::Missing
+        }
         Capsule::Absent => Fetch::Missing,
         Capsule::Unavailable => Fetch::Unavailable,
     }
@@ -677,8 +724,8 @@ async fn fetch_portrait(app_id: u32) -> Fetch {
 
 /// What Steam's asset manifest says about a game's vertical art.
 enum Capsule {
-    /// The manifest points at a 600×900 capsule, here.
-    At(String),
+    /// The manifest lists a vertical capsule at these URLs, best first.
+    At(Vec<String>),
     /// The manifest came back and this game has no vertical art at all.
     Absent,
     /// The manifest was unreachable: no verdict either way.
@@ -693,7 +740,7 @@ enum Capsule {
 /// the header and the small capsules, each under a *different* hash. So
 /// `GetItems` is the one public answer to "where is this game's 600×900 art",
 /// and it also says whether the game has one at all.
-async fn library_capsule_url(app_id: u32) -> Capsule {
+async fn library_capsule_urls(app_id: u32) -> Capsule {
     let input = serde_json::json!({
         "ids": [{ "appid": app_id }],
         "context": { "language": "english", "country_code": "US" },
@@ -714,12 +761,17 @@ async fn library_capsule_url(app_id: u32) -> Capsule {
         // way there's nothing to learn, and a marker would be a lie.
         _ => return Capsule::Unavailable,
     };
-    match assets_of(&json).map(capsule_path) {
-        Some(Some(path)) => Capsule::At(format!(
-            "https://shared.cloudflare.steamstatic.com/store_item_assets/{path}"
-        )),
+    match assets_of(&json).map(capsule_paths) {
         // Manifest present, no library capsule in it: the game really has none.
-        Some(None) => Capsule::Absent,
+        Some(paths) if paths.is_empty() => Capsule::Absent,
+        Some(paths) => Capsule::At(
+            paths
+                .iter()
+                .map(|path| {
+                    format!("https://shared.cloudflare.steamstatic.com/store_item_assets/{path}")
+                })
+                .collect(),
+        ),
         None => Capsule::Unavailable,
     }
 }
@@ -733,19 +785,28 @@ fn assets_of(json: &serde_json::Value) -> Option<&serde_json::Value> {
         .get("assets")
 }
 
-/// Resolve an asset manifest to the CDN-relative path of the vertical capsule.
+/// Resolve an asset manifest to the CDN-relative paths of the vertical capsule,
+/// the 2x (the true 600×900) first and the 1x after it.
 ///
 /// `asset_url_format` is a template (`steam/apps/<id>/${FILENAME}?t=<epoch>`) and
 /// the capsule entry is the filename to substitute in, itself possibly
-/// prefixed by that asset's hash directory. Prefers the 2x (the true 600×900)
-/// and falls back to the 1x for games that only ship one.
-fn capsule_path(assets: &serde_json::Value) -> Option<String> {
-    let format = assets.get("asset_url_format")?.as_str()?;
-    let file = assets
-        .get("library_capsule_2x")
-        .or_else(|| assets.get("library_capsule"))?
-        .as_str()?;
-    Some(format.replace("${FILENAME}", file))
+/// prefixed by that asset's hash directory.
+///
+/// Both, because a listed file is not a file that exists: ARK: Survival
+/// Evolved (346110) lists a `library_600x900_2x.jpg` that 404s, next to a 1x
+/// that is a real 600×900. Taking the manifest at its word left it on the
+/// landscape header.
+fn capsule_paths(assets: &serde_json::Value) -> Vec<String> {
+    let Some(format) = assets.get("asset_url_format").and_then(|f| f.as_str()) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<String> = ["library_capsule_2x", "library_capsule"]
+        .iter()
+        .filter_map(|key| assets.get(key)?.as_str())
+        .map(|file| format.replace("${FILENAME}", file))
+        .collect();
+    paths.dedup();
+    paths
 }
 
 /// Returns `true` if the game has a user-set custom cover on disk.
@@ -951,7 +1012,7 @@ async fn steam_store_search_app_id(term: &str) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{assets_of, capsule_path, marker_still_stands, CoverKey, LOOKUP_STRATEGY};
+    use super::{assets_of, capsule_paths, marker_still_stands, CoverKey, LOOKUP_STRATEGY};
 
     #[test]
     fn a_numeric_key_is_a_steam_app_id() {
@@ -994,8 +1055,8 @@ mod tests {
         assert!(CoverKey::parse("slug-").is_none());
     }
 
-    /// Payload de `GetItems` para Elden Ring (1245620): layout plano, los
-    /// ficheros cuelgan directos de `apps/<id>/`.
+    /// `GetItems` payload for Elden Ring (1245620): flat layout, the files hang
+    /// straight off `apps/<id>/`.
     const FLAT: &str = r#"{"response":{"store_items":[{"assets":{
         "asset_url_format": "steam/apps/1245620/${FILENAME}?t=1784684281",
         "header": "header.jpg",
@@ -1013,9 +1074,33 @@ mod tests {
         "library_capsule_2x": "23c899254b69d740a0de3d3cc10a370b2316c51a/library_600x900_2x.jpg"
     }}]}}"#;
 
-    fn path_of(payload: &str) -> Option<String> {
+    fn paths_of(payload: &str) -> Vec<String> {
         let json: serde_json::Value = serde_json::from_str(payload).unwrap();
-        capsule_path(assets_of(&json).unwrap())
+        capsule_paths(assets_of(&json).unwrap())
+    }
+
+    /// The capsule asked for first.
+    fn path_of(payload: &str) -> Option<String> {
+        paths_of(payload).into_iter().next()
+    }
+
+    #[test]
+    fn the_1x_follows_the_2x() {
+        // ARK: Survival Evolved (346110) has this very manifest shape, and its
+        // 2x is a 404 on the CDN while the 1x is a 600×900 of 189 KB.
+        assert_eq!(
+            paths_of(FLAT),
+            [
+                "steam/apps/1245620/library_600x900_2x.jpg?t=1784684281",
+                "steam/apps/1245620/library_600x900.jpg?t=1784684281",
+            ]
+        );
+    }
+
+    #[test]
+    fn one_file_under_both_names_is_asked_once() {
+        let payload = FLAT.replace("library_600x900_2x.jpg", "library_600x900.jpg");
+        assert_eq!(paths_of(&payload).len(), 1);
     }
 
     #[test]
@@ -1050,18 +1135,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("3450310_600x900.none");
 
-        // Marcador vacio: el que escribian los builds de ese dia.
+        // An empty marker: what that day's builds wrote.
         tokio::fs::write(&marker, b"").await.unwrap();
         assert!(!marker_still_stands(&marker).await);
 
-        // Marcador de una estrategia anterior.
+        // A marker from an earlier strategy.
         tokio::fs::write(&marker, (LOOKUP_STRATEGY - 1).to_string())
             .await
             .unwrap();
         assert!(!marker_still_stands(&marker).await);
 
-        // El de hoy si vale: sin esto volveriamos a preguntar en cada arranque
-        // por cada juego que de verdad no tiene caratula vertical.
+        // Today's does stand: without it every launch would ask again about
+        // every game that really has no vertical art.
         tokio::fs::write(&marker, LOOKUP_STRATEGY.to_string())
             .await
             .unwrap();
@@ -1091,6 +1176,43 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_title_under_an_emulator_gets_the_emulators_art() {
+        let index = serde_json::json!({"covers": {
+            "emu-ryujinx": "ryujinx.png",
+            "emu-retroarch": "retroarch.png",
+            "emu-retroarch-states": "states.png",
+            "emu-eden-0100f2c0115b6000": "one-title.png",
+            "ryujinx": "bare.png",
+        }});
+        let url = |slug: &str| super::url_in(&index, slug);
+
+        assert_eq!(url("emu-ryujinx").as_deref(), Some("ryujinx.png"));
+        assert_eq!(
+            url("emu-ryujinx-0000000000000001").as_deref(),
+            Some("ryujinx.png")
+        );
+        // An id with a dash of its own wins over the shorter one it starts with.
+        assert_eq!(
+            url("emu-retroarch-states-snes9x").as_deref(),
+            Some("states.png")
+        );
+        assert_eq!(
+            url("emu-retroarch-mupen64plus-next").as_deref(),
+            Some("retroarch.png")
+        );
+        // A title that has a row of its own keeps it.
+        assert_eq!(
+            url("emu-eden-0100f2c0115b6000").as_deref(),
+            Some("one-title.png")
+        );
+        // No emulator's art for an emulator nobody listed, and none of this
+        // for a game that merely starts like one.
+        assert_eq!(url("emu-eden-0100000000010000"), None);
+        assert_eq!(url("emu-"), None);
+        assert_eq!(url("ryujinx-2"), None);
+    }
+
     #[tokio::test]
     async fn no_marker_means_ask() {
         let dir = tempfile::tempdir().unwrap();
@@ -1099,8 +1221,8 @@ mod tests {
 
     #[test]
     fn no_library_capsule_means_no_path() {
-        // Sin capsule vertical el caller escribe el marcador `.none` y se
-        // queda con el header: hay que distinguirlo de un fallo de red.
+        // With no vertical capsule the caller writes the `.none` marker and
+        // keeps the header: that has to be told apart from a network failure.
         let payload = HASHED.replace("library_capsule", "library_hero");
         assert!(path_of(&payload).is_none());
     }
