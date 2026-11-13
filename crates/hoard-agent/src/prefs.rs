@@ -266,6 +266,13 @@ pub struct Prefs {
     /// comes back, axis A comes back with it, and not before.
     #[serde(default = "default_data_saving")]
     pub data_saving: f64,
+
+    /// Back saves up once their game closes instead of each time it saves. Off by
+    /// default: a session's progress going up as it happens is the protection,
+    /// and a game Hoard cannot see running is backed up as it saves either way.
+    /// Each save can say otherwise (`SaveState::backup_on_close`).
+    #[serde(default)]
+    pub backup_on_close: bool,
 }
 
 fn default_true() -> bool {
@@ -328,6 +335,7 @@ impl Default for Prefs {
             cloud_savings_mode: false,
             live_activity_visible: true,
             data_saving: default_data_saving(),
+            backup_on_close: false,
         }
     }
 }
@@ -463,6 +471,25 @@ impl Prefs {
     pub fn load_default() -> Result<(Self, PathBuf)> {
         let path = Self::default_path()?;
         Ok((Self::load(&path)?, path))
+    }
+
+    /// Prefs for the CLI to change one setting in. With no file yet the engine
+    /// takes the machine for headless and syncs both ways
+    /// (`hoardd::engine::engine_config`); writing plain defaults would quietly
+    /// make it upload-only, so a first file carries the headless values.
+    pub fn load_for_cli_edit() -> Result<(Self, PathBuf)> {
+        let path = Self::default_path()?;
+        if path.exists() {
+            return Ok((Self::load(&path)?, path));
+        }
+        Ok((
+            Self {
+                auto_restore: true,
+                global_sync: true,
+                ..Self::default()
+            },
+            path,
+        ))
     }
 
     /// Atomically write the prefs file: temp sibling, fsync, rename over the

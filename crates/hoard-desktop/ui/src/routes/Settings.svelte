@@ -688,6 +688,17 @@
   // Rows are derived so they re-render when the active locale changes. Using
   // `$derived` instead of plain `const` keeps the labels reactive without
   // forcing a remount of the Settings page on language switch.
+  // How the mode behaves while a game is open. Each save can answer for
+  // itself in History; this is the default they fall back to.
+  const modeRows: Row[] = $derived([
+    {
+      field: "backup_on_close",
+      label: $_("settings.backup_on_close_label"),
+      description: $_("settings.backup_on_close_desc"),
+      icon: Gamepad2,
+    },
+  ]);
+
   const generalRows: Row[] = $derived([
     {
       field: "close_to_tray",
@@ -897,6 +908,16 @@
                   <p class="mt-0.5 text-xs text-zinc-400">{opt.desc}</p>
                 </div>
               </button>
+            {/each}
+          </div>
+          <div class="mt-2 divide-y divide-white/[0.06] border-t border-white/[0.06]">
+            {#each modeRows as row (row.field)}
+              <SettingsRow
+                {row}
+                value={$prefs[row.field] as boolean}
+                disabled={saving === row.field}
+                onChange={(v) => toggle(row.field, v)}
+              />
             {/each}
           </div>
         </Card>

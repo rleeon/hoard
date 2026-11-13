@@ -160,6 +160,16 @@ pub async fn notify_reload() -> &'static str {
     }
 }
 
+/// The global "back up when the game closes" setting changed in the prefs file.
+pub async fn notify_backup_on_close(enabled: bool) -> &'static str {
+    let request = Request::SetBackupOnClose { enabled };
+    if notify("push the backup-on-close setting", request).await {
+        "the sync service picked it up"
+    } else {
+        "it applies when the sync service starts"
+    }
+}
+
 /// How long one hold on a save lasts in the service, and how often it is
 /// renewed. A renewal that arrives late costs nothing; a client that dies stops
 /// renewing and the service lets go on its own two minutes later.

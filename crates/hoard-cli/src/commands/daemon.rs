@@ -420,6 +420,8 @@ fn fmt_bytes(b: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::tail_last_n_lines;
+    use super::{render, AgentEvent, TooLargeKind};
+    use hoard_core::ipc::events::BackupReason;
 
     #[test]
     fn tail_returns_last_n_lines() {
@@ -467,5 +469,103 @@ mod tests {
         std::fs::write(&path, "a\nb\nc\n").unwrap();
         let lines = tail_last_n_lines(&path, 2).unwrap();
         assert_eq!(lines, vec!["b".to_string(), "c".into()]);
+    }
+
+    fn backup_success(total_bytes: u64, already_landed: bool) -> AgentEvent {
+        AgentEvent::BackupSuccess {
+            save_id: "s1".into(),
+            version_num: 7,
+            total_bytes,
+            set_hash: None,
+            already_landed,
+            deliberate: false,
+        }
+    }
+
+    fn too_large(kind: TooLargeKind) -> String {
+        render(&AgentEvent::BackupTooLarge {
+            save_id: "s1".into(),
+            game_slug: "celeste".into(),
+            label: "main".into(),
+            kind,
+            plan: String::new(),
+            limit_bytes: 0,
+            actual_bytes: 0,
+            received_bytes: 0,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_backup_line_carries_its_version_and_size() {
+        assert_eq!(
+            render(&backup_success(1536, false)).as_deref(),
+            Some("✓  backup v7 (1.50K)")
+        );
+        assert_eq!(
+            render(&backup_success(512, false)).as_deref(),
+            Some("✓  backup v7 (512B)")
+        );
+    }
+
+    /// Nothing was uploaded because the server already had those bytes as its
+    /// head, so the line must not read like a backup of some size.
+    #[test]
+    fn a_backup_already_on_the_server_does_not_claim_an_upload() {
+        assert_eq!(
+            render(&backup_success(0, true)).as_deref(),
+            Some("✓  already on the server as v7")
+        );
+    }
+
+    #[test]
+    fn a_failed_backup_says_whether_it_will_retry() {
+        let failed = |will_retry| {
+            render(&AgentEvent::BackupFailed {
+                save_id: "s1".into(),
+                game_slug: "celeste".into(),
+                error: "disk full".into(),
+                will_retry,
+            })
+            .unwrap()
+        };
+        assert_eq!(failed(true), "✗  celeste failed: disk full (retrying)");
+        assert_eq!(failed(false), "✗  celeste failed: disk full");
+    }
+
+    /// Naming the wrong limit costs a search: only a self-hosted Hoard has the
+    /// `max_snapshot_size_mb` knob, and a proxy's limit is not Hoard's at all.
+    #[test]
+    fn too_large_names_the_limit_that_was_hit() {
+        let server = too_large(TooLargeKind::ServerLimit);
+        assert!(server.contains("storage.max_snapshot_size_mb"), "{server}");
+
+        let proxy = too_large(TooLargeKind::Proxy);
+        assert!(proxy.contains("reverse proxy"), "{proxy}");
+        assert!(!proxy.contains("max_snapshot_size_mb"), "{proxy}");
+
+        let plan = too_large(TooLargeKind::PlanCap);
+        assert!(plan.contains("plan's limit"), "{plan}");
+        assert!(!plan.contains("max_snapshot_size_mb"), "{plan}");
+    }
+
+    /// The bookkeeping the service does between backups is not news for
+    /// somebody watching the stream.
+    #[test]
+    fn internal_events_print_nothing() {
+        assert_eq!(
+            render(&AgentEvent::BackupScheduled {
+                save_id: "s1".into(),
+                delay_ms: 5000,
+                reason: BackupReason::FilesystemSettled,
+            }),
+            None
+        );
+        assert_eq!(
+            render(&AgentEvent::HeavyProcessDetected {
+                name: "game.exe".into()
+            }),
+            None
+        );
     }
 }
