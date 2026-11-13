@@ -263,9 +263,9 @@ pub struct PanelConfig {
     /// When set, `POST /panel/auth/proxy` trades it for an ordinary browser
     /// session, so the panel opens without a second password. It is believed
     /// only from a peer in `server.trusted_proxies`, and only when it names an
-    /// account that already exists: no account is ever created from it. The
-    /// endpoint sits under `/panel` so that the proxy rule guarding the pages
-    /// guards it too, while `/v1/` stays free for device tokens.
+    /// account that already exists, unless [`Self::trusted_header_create_accounts`]
+    /// is on. The endpoint sits under `/panel` so that the proxy rule guarding
+    /// the pages guards it too, while `/v1/` stays free for device tokens.
     ///
     /// Anyone who reaches the server through a trusted proxy *without* passing
     /// its authentication can write this header, so the proxy has to set it on
@@ -273,6 +273,46 @@ pub struct PanelConfig {
     /// [`crate::routes::session::proxy_login`] for the refusals.
     #[serde(default)]
     pub trusted_header: Option<String>,
+    /// Off: the header has to match the account name exactly. On, `ROOT` also
+    /// finds `root` when no other account matches. Off by default because an
+    /// identity provider that tells `Root` and `root` apart and lets people
+    /// register would otherwise hand the second one this server's admin.
+    #[serde(default)]
+    pub trusted_header_ignore_case: bool,
+    /// Create the account the first time the proxy names someone this server
+    /// has never seen, without a password and without admin rights (unless
+    /// [`Self::trusted_admin_group`] says otherwise). Off: who may use the
+    /// server stays a decision made here, not one made by whoever the identity
+    /// provider lets through.
+    #[serde(default)]
+    pub trusted_header_create_accounts: bool,
+    /// A header listing the signed-in user's groups (`Remote-Groups`,
+    /// `X-authentik-groups`, `X-Forwarded-Groups`). Only read together with
+    /// [`Self::trusted_admin_group`].
+    #[serde(default)]
+    pub trusted_groups_header: Option<String>,
+    /// With both this and the groups header set, being in this group is what
+    /// makes someone an admin here: each header login promotes or demotes to
+    /// match. A login that arrives without the groups header changes nothing,
+    /// and the last admin is never demoted, the same as in the users tab.
+    #[serde(default)]
+    pub trusted_admin_group: Option<String>,
+    /// Lifetime of a session that came from the header, in minutes. Unset, it
+    /// lasts `session_days` like any other. Set, the panel renews it through
+    /// the proxy whenever it runs out, so removing someone from the identity
+    /// provider locks them out within this many minutes instead of days.
+    #[serde(default)]
+    pub trusted_header_session_minutes: Option<u64>,
+    /// Off: the user and password form is gone (`/v1/auth/login` is not
+    /// mounted), so the identity provider and pasted tokens are the only ways
+    /// into the panel. Device tokens are not affected.
+    #[serde(default = "default_panel_password_login")]
+    pub password_login: bool,
+    /// Where "Sign out" sends the browser after closing the panel session,
+    /// typically the identity provider's own logout page. Unset, it just
+    /// reloads the panel.
+    #[serde(default)]
+    pub logout_url: Option<String>,
 }
 
 /// Floor on [`PanelConfig::login_throttle_secs`]. There is no "off": with no
@@ -300,11 +340,38 @@ impl PanelConfig {
     /// value counts as off: `trusted_header = ""` is how a templated config
     /// says "not this one", not a request for a header with no name.
     pub fn trusted_header(&self) -> Option<&str> {
-        self.trusted_header
-            .as_deref()
-            .map(str::trim)
-            .filter(|h| !h.is_empty())
+        non_blank(&self.trusted_header)
     }
+
+    /// Groups header and admin group, only when both are set.
+    pub fn trusted_admin_group(&self) -> Option<(&str, &str)> {
+        Some((
+            non_blank(&self.trusted_groups_header)?,
+            non_blank(&self.trusted_admin_group)?,
+        ))
+    }
+
+    /// Seconds a header session lasts. Five minutes at least: each renewal is
+    /// a round trip through the proxy, and a lifetime shorter than a page load
+    /// would spend more time renewing than working.
+    pub fn header_session_secs(&self) -> i64 {
+        match self.trusted_header_session_minutes {
+            Some(m) => (m.max(5) * 60) as i64,
+            None => self.session_secs(),
+        }
+    }
+
+    pub fn session_secs(&self) -> i64 {
+        (self.session_days.max(1) * 86_400) as i64
+    }
+
+    pub fn logout_url(&self) -> Option<&str> {
+        non_blank(&self.logout_url)
+    }
+}
+
+fn non_blank(v: &Option<String>) -> Option<&str> {
+    v.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
 
 impl Default for PanelConfig {
@@ -314,11 +381,21 @@ impl Default for PanelConfig {
             session_days: default_panel_session_days(),
             login_throttle_secs: default_panel_login_throttle_secs(),
             trusted_header: None,
+            trusted_header_ignore_case: false,
+            trusted_header_create_accounts: false,
+            trusted_groups_header: None,
+            trusted_admin_group: None,
+            trusted_header_session_minutes: None,
+            password_login: default_panel_password_login(),
+            logout_url: None,
         }
     }
 }
 
 fn default_panel_enabled() -> bool {
+    true
+}
+fn default_panel_password_login() -> bool {
     true
 }
 fn default_panel_session_days() -> u64 {

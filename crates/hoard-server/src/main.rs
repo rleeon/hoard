@@ -488,26 +488,43 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
             .route("/panel/panel.css", get(panel_routes::css))
             .route("/panel/panel.js", get(panel_routes::js))
             .route("/panel/i18n/:lang", get(panel_routes::i18n))
-            .route("/v1/auth/login", post(session_routes::login));
+            .route("/panel/auth/config", get(session_routes::auth_config));
+        if cfg.panel.password_login {
+            public = public.route("/v1/auth/login", post(session_routes::login));
+        }
 
         // Header login rides on the panel switch too, and is off unless a
         // header is named. A config it can't run safely with is refused here,
         // loudly, rather than mounted and left to answer 404 forever.
+        let mut header_login = false;
         if let Some(raw) = cfg.panel.trusted_header() {
             match session_routes::proxy_login_header(raw, &state.trusted_proxies) {
                 Ok(name) => {
                     info!(
                         header = %name,
                         trusted_proxies = %state.trusted_proxies,
+                        ignore_case = cfg.panel.trusted_header_ignore_case,
+                        create_accounts = cfg.panel.trusted_header_create_accounts,
+                        admin_group = cfg.panel.trusted_admin_group().map(|(_, g)| g),
+                        session_secs = cfg.panel.header_session_secs(),
                         "panel: header login enabled at /panel/auth/proxy"
                     );
                     public = public.route("/panel/auth/proxy", post(session_routes::proxy_login));
+                    header_login = true;
                 }
                 Err(why) => warn!(
                     header = raw,
                     why, "panel: trusted_header is set but header login is OFF"
                 ),
             }
+        }
+        // Half of the pair does nothing, and a silent no-op is how someone ends
+        // up believing their admins follow the identity provider.
+        if cfg.panel.trusted_groups_header.is_some() != cfg.panel.trusted_admin_group.is_some() {
+            warn!("panel: trusted_groups_header and trusted_admin_group only work together; ignoring the one that is set");
+        }
+        if !cfg.panel.password_login && !header_login {
+            warn!("panel: password_login is off and header login is not on; only a pasted token opens the panel");
         }
     }
 

@@ -147,6 +147,16 @@ login_throttle_secs = 10
 # there and strip it everywhere else, or anyone who can reach the server
 # through it can name any account. See SELF-HOST_GUIDE.md.
 # trusted_header = "Remote-User"
+#
+# The rest only matters with trusted_header set, and all of it is off until
+# you set it. SELF-HOST_GUIDE.md explains each one.
+# trusted_header_ignore_case = false     # "Root" finds "root"
+# trusted_header_create_accounts = false # new names get an account, no password
+# trusted_groups_header = "Remote-Groups"
+# trusted_admin_group = "hoard-admins"   # admin rights follow this group
+# trusted_header_session_minutes = 15    # short sessions, renewed by the proxy
+# password_login = true                  # false removes the password form
+# logout_url = "https://auth.example.com/logout"
 
 [retention]
 # Days to keep soft-deleted snapshots in trash before permanent deletion.

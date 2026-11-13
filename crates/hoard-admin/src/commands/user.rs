@@ -13,8 +13,13 @@ pub enum UserCommand {
         #[arg(long)]
         admin: bool,
         /// Password (non-interactive; if omitted, prompts securely)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "no_password")]
         password: Option<String>,
+        /// No password at all: the account signs in to the panel only through
+        /// the identity provider (`panel.trusted_header`) or with a token.
+        /// `user passwd` gives it one later.
+        #[arg(long)]
+        no_password: bool,
     },
     /// List all users
     List,
@@ -62,25 +67,30 @@ pub async fn run(cmd: UserCommand, cfg: &Config) -> Result<()> {
             username,
             admin,
             password: pw_flag,
+            no_password,
         } => {
             use hoard_core::hashing::hash_password;
 
-            let password = if let Some(p) = pw_flag {
-                p
+            let hash = if no_password {
+                hoard_server::routes::session::NO_PASSWORD.to_string()
             } else {
-                let p1 = rpassword::prompt_password("Password: ")?;
-                let p2 = rpassword::prompt_password("Confirm:  ")?;
-                if p1 != p2 {
-                    anyhow::bail!("Passwords do not match");
+                let password = if let Some(p) = pw_flag {
+                    p
+                } else {
+                    let p1 = rpassword::prompt_password("Password: ")?;
+                    let p2 = rpassword::prompt_password("Confirm:  ")?;
+                    if p1 != p2 {
+                        anyhow::bail!("Passwords do not match");
+                    }
+                    p1
+                };
+                if password.len() < 8 {
+                    anyhow::bail!("Password must be at least 8 characters");
                 }
-                p1
+                hash_password(&password)?
             };
-            if password.len() < 8 {
-                anyhow::bail!("Password must be at least 8 characters");
-            }
 
             let id = uuid::Uuid::new_v4().to_string();
-            let hash = hash_password(&password)?;
             sqlx::query(
                 "INSERT INTO users (id, username, password_hash, is_admin) VALUES (?,?,?,?)",
             )

@@ -447,10 +447,10 @@ login_throttle_secs = 10
 
 If the rest of your homelab signs in through Authelia, Authentik or
 oauth2-proxy, the panel can too. In forward-auth mode those proxies check the
-browser's session and pass the user's name on to the app in a header —
-Authelia calls it `Remote-User`, Authentik `X-authentik-username`; check your
-proxy's documentation. Name that header under `[panel]` and the panel opens
-without asking for a password:
+browser's session and pass the user's name on to the app in a header:
+Authelia calls it `Remote-User`, Authentik `X-authentik-username`,
+oauth2-proxy `X-Forwarded-User`; check your proxy's documentation. Name that
+header under `[panel]` and the panel opens without asking for a password:
 
 ```toml
 [panel]
@@ -459,28 +459,46 @@ trusted_header = "Remote-User"
 
 When the panel loads without a session it calls `POST /panel/auth/proxy`, and
 the server trades the header for the same kind of browser session a password
-login gives. The rules:
+login gives. Everything else is optional and stays off until you set it:
 
-- **Only accounts that already exist.** The name has to match an account on
-  this server, the same way the password login matches it (case is forgiven
-  when only one account fits). Nothing is created: add people with
-  `hoard-admin user create` or the users tab. Someone your identity provider
-  lets in but who has no account here gets a message saying so.
+| Setting (under `[panel]`) | Default | What it does |
+|---|---|---|
+| `trusted_header_ignore_case` | `false` | Matches the name without minding case, the way the password form does. Leave it off if people can register with your identity provider: there `Root` and `root` can be two different people. |
+| `trusted_header_create_accounts` | `false` | Creates the account the first time someone new signs in, with no password and no admin rights. Off, only names that already have an account here get in, and the rest see a message saying so. |
+| `trusted_groups_header` and `trusted_admin_group` | unset | Admin rights follow a group in your identity provider, for example `"Remote-Groups"` and `"hoard-admins"`: each sign-in promotes or demotes to match. Groups can be separated by commas or `\|`. A sign-in without the groups header changes nothing, and the last admin is never demoted. Set both or neither. |
+| `trusted_header_session_minutes` | unset | Header sessions last this many minutes (five at least) instead of `session_days`, and the panel renews them through the proxy. Removing someone from your identity provider locks them out within that time. |
+| `password_login` | `true` | `false` removes the user and password form, so your identity provider and pasted tokens are the only ways into the panel. Devices keep using their tokens. |
+| `logout_url` | unset | Where **Sign out** sends the browser after closing the panel session, typically your identity provider's logout page. |
+
+People who will only ever sign in this way don't need a password here:
+`hoard-admin user create ana --no-password`, or leave the password blank in
+the users tab. Names may contain `@` and `+`, so an identity provider that
+sends email addresses maps straight onto accounts.
+
+The rules that keep it safe:
+
 - **Only from a trusted proxy.** The header counts only on a connection from
   `server.trusted_proxies`. With that list set to `any`, or empty, the server
   refuses to turn header login on and says why at startup.
 - **Your proxy has to own the header.** Anyone who reaches Hoard *through*
   your proxy without passing its authentication could write the header
   themselves, and a trusted proxy would carry it in. Run the authentication on
-  `/panel` (the prefix covers the sign-in endpoint) and set the header there;
-  strip it on every other path, and on any other site name that proxies to
-  Hoard. A header that arrives twice is refused rather than guessed at.
+  `/panel` (the prefix covers the sign-in endpoint) and set the header there,
+  the groups header too if you use one; strip them on every other path, and on
+  any other site name that proxies to Hoard. A header that arrives twice is
+  refused rather than guessed at.
+- **Nothing but the proxy should reach Hoard.** If Hoard's own port is open to
+  your network (a published Docker port, a firewall rule), a connection that
+  skips the proxy can still arrive from an address in `trusted_proxies`, the
+  Docker gateway for instance, and name any account it likes. Publish the port
+  to the proxy only.
 - **Leave `/v1/` outside the proxy's authentication.** The panel's own calls
   carry its session cookie, and your devices keep using their tokens.
 - **Signing out of your identity provider does not close a panel session
-  that is already open.** `panel.session_days` does; lower it if that matters
-  to you. Signing out of the panel skips header login once, so the button does
-  what it says; the next visit signs you straight back in.
+  that is already open.** It ends with the session: `session_days`, or
+  `trusted_header_session_minutes` if you set it. Signing out of the panel
+  skips header login once, so the button does what it says; with `logout_url`
+  it also takes you to your identity provider's logout.
 
 With nginx and `auth_request` it looks like this. The `auth_request` location
 itself comes from your identity provider's nginx guide (Authelia's is shown):
@@ -489,12 +507,15 @@ itself comes from your identity provider's nginx guide (Authelia's is shown):
 location /panel {
     auth_request /internal/authelia/authz;
     auth_request_set $user $upstream_http_remote_user;
+    auth_request_set $groups $upstream_http_remote_groups;
     proxy_set_header Remote-User $user;
+    proxy_set_header Remote-Groups $groups;
     proxy_pass http://127.0.0.1:12421;
 }
 
 location / {
-    proxy_set_header Remote-User "";   # never pass on a client's own copy
+    proxy_set_header Remote-User "";     # never pass on a client's own copy
+    proxy_set_header Remote-Groups "";
     proxy_pass http://127.0.0.1:12421;
 }
 ```
