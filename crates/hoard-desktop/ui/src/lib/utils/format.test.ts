@@ -15,6 +15,22 @@ describe("formatBytes", () => {
     expect(formatBytes(1024)).toBe("1.0 kB");
   });
 
+  it("moves up a unit when rounding reaches it", () => {
+    expect(formatBytes(1048575)).toBe("1.0 MB");
+    expect(formatBytes(1023.6)).toBe("1.0 kB");
+    expect(formatBytes(1024 ** 3 - 1)).toBe("1.0 GB");
+    expect(formatBytes(1048575, 0)).toBe("1 MB");
+    expect(formatBytes(1048575, 2)).toBe("1.00 MB");
+  });
+
+  it("leaves values that do not round up alone", () => {
+    expect(formatBytes(1024 * 1023.94)).toBe("1023.9 kB");
+    expect(formatBytes(1023)).toBe("1023 B");
+    expect(formatBytes(1024 ** 2)).toBe("1.0 MB");
+    expect(formatBytes(1024 ** 6 - 1)).toBe("1024.0 PB");
+  });
+
+
   it("honors the decimals argument", () => {
     expect(formatBytes(1.5 * 1024 ** 3, 2)).toBe("1.50 GB");
   });
