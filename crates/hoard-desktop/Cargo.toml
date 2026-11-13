@@ -27,7 +27,7 @@ custom-protocol = ["tauri/custom-protocol"]
 # versions Tauri's own `wry` builds against, so the controller it hands out is
 # the type these crates know.
 [target.'cfg(windows)'.dependencies]
-webview2-com = "0.38"
+webview2-com = "0.39"
 windows-core = "0.61"
 
 # The GLib log writer that catches GDK's Wayland protocol error (`graphics.rs`).
