@@ -124,6 +124,42 @@ them, and what keeps it out is detection's score, not a rule.
 `crates/hoardd/src/detect.rs`.
 
 
+## Games other programs know about
+
+Games that no launcher installed, such as ones copied into `C:\Games`, unpacked
+from an archive, installed by a library manager like a Playnite plugin, or run
+from a network share, are normally only noticed once their save folder exists.
+A program that knows about them can tell Hoard sooner by writing a JSON file to
+the `libraries` folder inside Hoard's config folder
+(`%APPDATA%\hoard\hoard\config\libraries\` on Windows). Hoard reads every
+`*.json` file there on each scan:
+
+```json
+{
+  "version": 1,
+  "source": "Playnite",
+  "games": [
+    { "name": "Hades", "installDir": "C:\\Games\\Hades", "exe": "x64\\Hades.exe" },
+    { "name": "Celeste", "steamAppId": 504230 }
+  ]
+}
+```
+
+- `name` is required. `installDir`, `exe` (absolute, or relative to
+  `installDir`) and `steamAppId` are optional.
+- Each game is matched to the catalogue by Steam app id, then by executable
+  name, then by title. A title-only near match is graded low.
+- The Library shows these games under the `source` name instead of "Steam".
+- A listed game is a game Hoard knows is installed, not a save it tracks.
+  Automatic mode still only tracks it once its save folder exists.
+- An `installDir` on a network share still identifies the game, but Hoard
+  **never** looks for saves inside it.
+- A malformed file is skipped with a warning; unknown fields are ignored.
+
+*Read the code:* `crates/hoard-agent/src/external_library.rs`,
+`crates/hoard-agent/src/detection.rs` (`apply_external_library`).
+
+
 ## Automatic mode
 
 Automatic mode is off by default. It is the one case where Hoard acts without

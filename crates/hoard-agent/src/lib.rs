@@ -24,6 +24,7 @@ pub mod detection;
 pub mod device_slot;
 pub mod doctor;
 pub mod emulators;
+pub mod external_library;
 pub mod feedback;
 mod hashcache;
 pub mod install;

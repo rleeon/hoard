@@ -2420,6 +2420,7 @@ pub fn scan_folder(root: &Path) -> Result<Vec<DetectedGame>> {
             needs_folder: false,
             // A loose folder resolves no catalogue entry, so there is no note to give.
             steam_cloud: false,
+            listed_by: None,
         })
         .collect())
 }
@@ -3729,6 +3730,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             }],
             catalog_size: 0,
             steam_apps_found: 0,
@@ -4243,6 +4245,7 @@ mod tests {
             install_dir: None,
             needs_folder: false,
             steam_cloud: false,
+            listed_by: None,
         }
     }
 
@@ -4473,6 +4476,7 @@ mod tests {
             install_dir: None,
             needs_folder: false,
             steam_cloud: false,
+            listed_by: None,
         }
     }
 
@@ -4655,6 +4659,7 @@ mod auto_declined_tests {
             install_dir: None,
             needs_folder: false,
             steam_cloud: false,
+            listed_by: None,
         }
     }
 

@@ -151,6 +151,12 @@ pub struct DetectedGame {
     /// says so next to the game; nothing in the pipeline reads it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub steam_cloud: bool,
+    /// The program that listed this game in an external library file (its
+    /// `source`, e.g. "Playnite"), when that is how the game was found. Lets
+    /// the UI name it instead of calling the row a Steam match. `None` for
+    /// every other detection path. See [`crate::external_library`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listed_by: Option<String>,
 }
 
 /// Aggregate result of a detection pass. The numeric counts let the UI show a
@@ -255,6 +261,9 @@ pub struct DetectionStats {
     pub steam_name_fuzzy: usize,
     pub launcher_exact: usize,
     pub launcher_fuzzy: usize,
+    /// Games listed by other programs in `<config>/libraries/*.json`
+    /// (see [`crate::external_library`]).
+    pub external_slugs: usize,
     pub fs_template_slugs: usize,
     pub registry_slugs: usize,
     pub proton_slugs: usize,
@@ -426,6 +435,7 @@ where
                 install_dir: Some(app.install_dir.clone()),
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
     }
@@ -459,6 +469,14 @@ where
         let (exact, fuzzy) = apply_launcher_name_fallback(catalog, apps, tag, &mut by_slug);
         stats.launcher_exact += exact;
         stats.launcher_fuzzy += fuzzy;
+    }
+
+    // Games other programs know about (a Playnite plugin, an archive manager…):
+    // copied into `C:\Games`, unpacked, or run from a NAS share, so no launcher
+    // has a record of them. Each lists name / folder / exe in a JSON file.
+    if let Some(dir) = crate::external_library::libraries_dir() {
+        let apps = crate::external_library::read_libraries(&dir);
+        stats.external_slugs = apply_external_library(catalog, &apps, &mut by_slug);
     }
 
     // Filesystem heuristic: spawn one blocking task per game, gated by the
@@ -1081,6 +1099,7 @@ where
                             install_dir: None,
                             needs_folder: false,
                             steam_cloud: false,
+                            listed_by: None,
                         },
                     );
                     new_games += 1;
@@ -1518,6 +1537,7 @@ fn apply_steam_name_fallback(
                 install_dir: Some(app.install_dir.clone()),
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
         if via_fuzzy {
@@ -1572,6 +1592,79 @@ const FUZZY_NAME_THRESHOLD: f32 = 0.15;
 /// install_dir attached to matched rows.
 ///
 /// Returns `(exact_added, fuzzy_added)` for the scan stats.
+/// Merges games listed in external library files (see
+/// [`crate::external_library`]). Matched by Steam appid, then executable, then
+/// name; returns how many slugs it added.
+///
+/// A listed folder only becomes `install_dir` when it is local: it's what lets
+/// `<base>`-relative templates find saves kept inside the game folder. A game run
+/// from a network share is still detected (so its saves in AppData / Documents are
+/// looked for and linkable), but the share is never swept for saves.
+fn apply_external_library(
+    catalog: &[LudusaviEntry],
+    apps: &[crate::external_library::ExternalApp],
+    by_slug: &mut HashMap<String, DetectedGame>,
+) -> usize {
+    if apps.is_empty() {
+        return 0;
+    }
+    let catalog_by_slug: HashMap<&str, &LudusaviEntry> =
+        catalog.iter().map(|e| (e.slug.as_str(), e)).collect();
+
+    let mut added = 0usize;
+    for app in apps {
+        let Some((slug, via_fuzzy)) = crate::external_library::resolve_slug(
+            app,
+            |s| catalog_by_slug.contains_key(s),
+            FUZZY_NAME_THRESHOLD,
+        ) else {
+            tracing::debug!(source = %app.source, name = %app.name, "external library: no catalogue match");
+            continue;
+        };
+        let entry = catalog_by_slug[slug.as_str()];
+        match by_slug.get_mut(&entry.slug) {
+            Some(existing) => {
+                if existing.install_dir.is_none() {
+                    existing.install_dir = app.install_dir.clone();
+                }
+            }
+            None => {
+                by_slug.insert(
+                    entry.slug.clone(),
+                    DetectedGame {
+                        slug: entry.slug.clone(),
+                        display_name: entry.display_name.clone(),
+                        found_paths: Vec::new(),
+                        path_confidences: Vec::new(),
+                        path_reasons: Vec::new(),
+                        confidence: if via_fuzzy {
+                            Confidence::Low
+                        } else {
+                            Confidence::Medium
+                        },
+                        source: DetectionSource::SteamLibrary,
+                        steam_app_id: app.steam_app_id.or(entry.steam_app_id),
+                        install_dir: app.install_dir.clone(),
+                        needs_folder: false,
+                        steam_cloud: false,
+                        listed_by: Some(app.source.clone()),
+                    },
+                );
+                added += 1;
+            }
+        }
+        tracing::info!(
+            source = %app.source,
+            name = %app.name,
+            slug = %entry.slug,
+            fuzzy = via_fuzzy,
+            local_install = app.install_dir.is_some(),
+            "external library → catalog match"
+        );
+    }
+    added
+}
+
 fn apply_launcher_name_fallback(
     catalog: &[LudusaviEntry],
     apps: &[LauncherApp],
@@ -1624,6 +1717,7 @@ fn apply_launcher_name_fallback(
                         install_dir: Some(app.install_dir.clone()),
                         needs_folder: false,
                         steam_cloud: false,
+                        listed_by: None,
                     },
                 );
             }
@@ -1774,6 +1868,7 @@ fn merge_fs_hit(
                     install_dir: None,
                     needs_folder: false,
                     steam_cloud: false,
+                    listed_by: None,
                 },
             );
         }
@@ -2115,6 +2210,7 @@ fn apply_manual_overrides(
                     install_dir: None,
                     needs_folder: false,
                     steam_cloud: false,
+                    listed_by: None,
                 },
             );
             applied += 1;
@@ -5104,6 +5200,7 @@ mod tests {
                 install_dir: Some(PathBuf::from("/steam/x")),
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
 
@@ -5546,6 +5643,71 @@ mod tests {
         }
     }
 
+    fn listed(name: &str, steam_app_id: Option<u64>) -> crate::external_library::ExternalApp {
+        crate::external_library::ExternalApp {
+            source: "Playnite".into(),
+            name: name.into(),
+            install_dir: Some(PathBuf::from("/games/listed")),
+            listed_dir: Some(PathBuf::from("/games/listed")),
+            exe: None,
+            steam_app_id,
+        }
+    }
+
+    /// A listed game the catalogue knows becomes a row named after the program
+    /// that listed it, graded Medium, with no save folder yet.
+    #[test]
+    fn external_library_adds_row_named_after_its_source() {
+        let catalog = vec![synthetic_entry("test-game", "Test Game", None)];
+        let mut by_slug: HashMap<String, DetectedGame> = HashMap::new();
+
+        let added = apply_external_library(&catalog, &[listed("Test Game", None)], &mut by_slug);
+
+        assert_eq!(added, 1);
+        let g = by_slug
+            .get("test-game")
+            .expect("listed game should be added");
+        assert_eq!(g.source, DetectionSource::SteamLibrary);
+        assert_eq!(g.listed_by.as_deref(), Some("Playnite"));
+        assert_eq!(g.confidence, Confidence::Medium);
+        assert_eq!(g.install_dir, Some(PathBuf::from("/games/listed")));
+        assert!(g.found_paths.is_empty());
+    }
+
+    /// A game a launcher already reported keeps its row and its label; the
+    /// listing only fills in an install folder it was missing.
+    #[test]
+    fn external_library_never_relabels_an_existing_row() {
+        let catalog = vec![synthetic_entry("test-game", "Test Game", Some(999))];
+        let steam_apps = vec![synthetic_steam_app(999, "Test Game", "/steam/Test Game")];
+        let mut by_slug: HashMap<String, DetectedGame> = HashMap::new();
+        apply_steam_name_fallback(&catalog, &steam_apps, &mut by_slug);
+
+        let added =
+            apply_external_library(&catalog, &[listed("Test Game", Some(999))], &mut by_slug);
+
+        assert_eq!(added, 0);
+        let g = &by_slug["test-game"];
+        assert_eq!(g.listed_by, None);
+        assert_eq!(g.install_dir, Some(PathBuf::from("/steam/Test Game")));
+    }
+
+    /// Unknown titles add nothing.
+    #[test]
+    fn external_library_skips_games_outside_the_catalogue() {
+        let catalog = vec![synthetic_entry("test-game", "Test Game", None)];
+        let mut by_slug: HashMap<String, DetectedGame> = HashMap::new();
+
+        let added = apply_external_library(
+            &catalog,
+            &[listed("zzz nothing like any title qqq", None)],
+            &mut by_slug,
+        );
+
+        assert_eq!(added, 0);
+        assert!(by_slug.is_empty());
+    }
+
     fn synthetic_steam_app(app_id: u64, name: &str, install: &str) -> SteamApp {
         SteamApp {
             app_id,
@@ -5598,6 +5760,7 @@ mod tests {
                 install_dir: Some(PathBuf::from("/steam/Test Game")),
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
 
@@ -5839,6 +6002,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
 
@@ -5876,6 +6040,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
 
@@ -5917,6 +6082,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
 
@@ -5951,6 +6117,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
 
@@ -6031,6 +6198,7 @@ mod tests {
                 install_dir: Some(PathBuf::from("/steam/stellaris")),
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
         let mut overrides = HashMap::new();
@@ -6083,6 +6251,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
         let overrides = HashMap::from([("factorio".to_string(), picked.clone())]);
@@ -6113,6 +6282,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: false,
+                listed_by: None,
             },
         );
         let overrides = HashMap::from([("stellaris".to_string(), b.clone())]);
@@ -7206,6 +7376,7 @@ mod tests {
             install_dir: None,
             needs_folder: false,
             steam_cloud: false,
+            listed_by: None,
         };
         let by_slug = HashMap::from([("stardew-valley".to_string(), game)]);
         let out = claim_for_shortcuts(
@@ -7699,6 +7870,7 @@ mod tests {
                 install_dir: None,
                 needs_folder: false,
                 steam_cloud: true,
+                listed_by: None,
             },
         );
         grade_and_rank_paths(&mut map, &CorrelationStore::default());
@@ -7739,6 +7911,7 @@ mod tests {
             install_dir: None,
             needs_folder: false,
             steam_cloud: true,
+            listed_by: None,
         }];
         let warnings = detect_tracked_mirrors(&state, &games);
         assert_eq!(warnings.len(), 1, "one warning for the tracked mirror");

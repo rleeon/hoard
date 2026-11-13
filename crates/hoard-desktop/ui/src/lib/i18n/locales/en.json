@@ -252,6 +252,7 @@
   "library.medium": "Medium",
   "library.low": "Low",
   "library.both_sources": "Steam + filesystem",
+  "library.listed_both_sources": "{name} + filesystem",
   "library.steam_only": "Steam only",
   "library.filesystem_only": "Filesystem only",
   "library.steam_label": "Steam",

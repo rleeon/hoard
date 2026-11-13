@@ -252,6 +252,7 @@
   "library.medium": "Média",
   "library.low": "Baixa",
   "library.both_sources": "Steam + sistema",
+  "library.listed_both_sources": "{name} + sistema",
   "library.steam_only": "Só Steam",
   "library.filesystem_only": "Só sistema",
   "library.steam_label": "Steam",

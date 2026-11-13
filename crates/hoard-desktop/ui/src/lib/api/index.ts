@@ -109,6 +109,12 @@ export type DetectedGame = {
    */
   path_confidences: Confidence[];
   source: DetectionSource;
+  /**
+   * The program that listed this game in an external library file (e.g.
+   * "Playnite"), when that is how it was found. Shown on the badge instead of
+   * "Steam". Absent for every other detection path.
+   */
+  listed_by?: string | null;
   steam_app_id: number | null;
   /**
    * Steam install directory (e.g. `…/steamapps/common/Stellaris`). Show

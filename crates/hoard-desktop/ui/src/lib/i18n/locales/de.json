@@ -252,6 +252,7 @@
   "library.medium": "Mittel",
   "library.low": "Niedrig",
   "library.both_sources": "Steam + Dateisystem",
+  "library.listed_both_sources": "{name} + Dateisystem",
   "library.steam_only": "Nur Steam",
   "library.filesystem_only": "Nur Dateisystem",
   "library.steam_label": "Steam",

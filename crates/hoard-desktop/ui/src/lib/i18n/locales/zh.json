@@ -252,6 +252,7 @@
   "library.medium": "中",
   "library.low": "低",
   "library.both_sources": "Steam + 文件",
+  "library.listed_both_sources": "{name} + 文件",
   "library.steam_only": "仅 Steam",
   "library.filesystem_only": "仅文件",
   "library.steam_label": "Steam",

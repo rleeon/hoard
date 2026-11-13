@@ -919,7 +919,10 @@
     return c === "high" ? $_("library.high") : c === "medium" ? $_("library.medium") : $_("library.low");
   }
 
-  function sourceLabel(s: DetectionSource): string {
+  function sourceLabel(s: DetectionSource, listedBy?: string | null): string {
+    // Found through another program's library file: name that program, not Steam.
+    if (listedBy && s === "both") return $_("library.listed_both_sources", { values: { name: listedBy } });
+    if (listedBy && s === "steam_library") return listedBy;
     if (s === "both") return $_("library.both_sources");
     if (s === "steam_library") return $_("library.steam_label");
     if (s === "manual_override") return $_("library.manual_label");
@@ -1382,7 +1385,7 @@
                     {:else}
                       <HardDrive size={10} />
                     {/if}
-                    {sourceLabel(game.source)}
+                    {sourceLabel(game.source, game.listed_by)}
                   </span>
                   <!-- Sólo una nota: Steam Cloud cubre la copia de Steam, se
                        puede desactivar por juego y no guarda histórico, así que
