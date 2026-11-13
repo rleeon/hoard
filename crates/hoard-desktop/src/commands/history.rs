@@ -870,8 +870,8 @@ pub async fn set_save_backup_on_close(
     on_close: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let reseat = hoard_agent::library::set_backup_on_close(&save_id, on_close)
-        .map_err(|e| e.to_string())?;
+    let reseat =
+        hoard_agent::library::set_backup_on_close(&save_id, on_close).map_err(|e| e.to_string())?;
     apply_reseat(&state, reseat).await;
     Ok(())
 }

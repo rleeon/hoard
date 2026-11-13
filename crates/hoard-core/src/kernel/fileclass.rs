@@ -544,7 +544,11 @@ mod tests {
         ] {
             assert_eq!(c(p), FileClass::SaveData, "{p}");
         }
-        assert_eq!(c("123.log"), FileClass::Junk, "too short for a database log");
+        assert_eq!(
+            c("123.log"),
+            FileClass::Junk,
+            "too short for a database log"
+        );
     }
 
     #[test]

@@ -107,7 +107,10 @@ mod tests {
 
     #[test]
     fn the_side_that_changed_is_the_source() {
-        assert_eq!(decide(settled("p1", "m0")), Verdict::CopyFrom(Side::Primary));
+        assert_eq!(
+            decide(settled("p1", "m0")),
+            Verdict::CopyFrom(Side::Primary)
+        );
         assert_eq!(decide(settled("p0", "m1")), Verdict::CopyFrom(Side::Mirror));
     }
 

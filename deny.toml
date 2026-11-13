@@ -98,6 +98,15 @@ ignore = [
     # AWS SDK's smithy crates (the server's S3 store) and by Slint's `spin_on`
     # (the graphical installer). It goes when they drop it.
     "RUSTSEC-2026-0441",
+    # libsqlite3-sys 0.30 bundles SQLite < 3.54, which can return stale page
+    # cache memory when a database is opened next to a crafted `-wal` with a
+    # different page size. Pulled by sqlx-sqlite (the self-hosted server and
+    # hoard-admin) and sqlx's macros at build time; sqlx 0.8 pins this minor,
+    # so there is no in-line upgrade. The only files it opens are the
+    # server's own database in its data directory: planting a pair there
+    # already takes write access to the data it would leak. Remove once sqlx
+    # ships a SQLite >= 3.54.
+    "RUSTSEC-2026-0459",
 ]
 
 [licenses]

@@ -621,7 +621,9 @@ impl AgentHandle {
     /// Push the global "back up when the game closes" setting into the running
     /// agent. See [`AgentConfig::backup_on_close`].
     pub async fn set_backup_on_close(&self, enabled: bool) -> Result<()> {
-        self.tx.send(AgentCommand::SetBackupOnClose(enabled)).await?;
+        self.tx
+            .send(AgentCommand::SetBackupOnClose(enabled))
+            .await?;
         Ok(())
     }
 
@@ -4208,9 +4210,7 @@ async fn run_mirror_pass(
             }
         }
     }
-    let _ = cmd_tx
-        .send(AgentCommand::MirrorDone { id, report })
-        .await;
+    let _ = cmd_tx.send(AgentCommand::MirrorDone { id, report }).await;
 }
 
 /// Re-reads which saves have second folders, and owes a pass to the ones the
@@ -7885,13 +7885,33 @@ mod tests {
         std::fs::create_dir_all(root.join("Saved/SaveGames")).unwrap();
         let no_shields: Vec<String> = Vec::new();
 
-        assert!(!wakes_engine(root, &root.join("Saved/Logs/SMG029UE5.log"), &no_shields));
+        assert!(!wakes_engine(
+            root,
+            &root.join("Saved/Logs/SMG029UE5.log"),
+            &no_shields
+        ));
         assert!(!wakes_engine(root, &root.join("Saved/Logs"), &no_shields));
-        assert!(wakes_engine(root, &root.join("Saved/SaveGames/DP01.sav"), &no_shields));
-        assert!(wakes_engine(root, &root.join("Saved/SaveGames"), &no_shields));
-        assert!(wakes_engine(root, &root.join("Saved/Config/Windows/Engine.ini"), &no_shields));
+        assert!(wakes_engine(
+            root,
+            &root.join("Saved/SaveGames/DP01.sav"),
+            &no_shields
+        ));
+        assert!(wakes_engine(
+            root,
+            &root.join("Saved/SaveGames"),
+            &no_shields
+        ));
+        assert!(wakes_engine(
+            root,
+            &root.join("Saved/Config/Windows/Engine.ini"),
+            &no_shields
+        ));
         assert!(wakes_engine(root, root, &no_shields));
-        assert!(wakes_engine(root, Path::new("/elsewhere/x.log"), &no_shields));
+        assert!(wakes_engine(
+            root,
+            Path::new("/elsewhere/x.log"),
+            &no_shields
+        ));
 
         let shields = vec!["*.log".to_string()];
         assert!(wakes_engine(root, &root.join("journal.log"), &shields));

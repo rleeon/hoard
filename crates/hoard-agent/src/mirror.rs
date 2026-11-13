@@ -171,7 +171,9 @@ pub(crate) fn store_stamp() -> Option<SystemTime> {
 pub fn list() -> Result<HashMap<String, Vec<Folder>>> {
     let (state, _) = CliState::load_default()?;
     let mut store = load(&store_path()?);
-    store.saves.retain(|id, folders| state.saves.contains_key(id) && !folders.is_empty());
+    store
+        .saves
+        .retain(|id, folders| state.saves.contains_key(id) && !folders.is_empty());
     Ok(store.saves)
 }
 
@@ -272,13 +274,7 @@ fn owner_in(state: &CliState, store: &Store, folder: &Path) -> Option<(String, P
 /// that detection and automatic mode filter by.
 pub fn claimed_folders() -> Vec<PathBuf> {
     list()
-        .map(|by_save| {
-            by_save
-                .into_values()
-                .flatten()
-                .map(|f| f.path)
-                .collect()
-        })
+        .map(|by_save| by_save.into_values().flatten().map(|f| f.path).collect())
         .unwrap_or_default()
 }
 
@@ -334,11 +330,9 @@ fn check_new_folder(state: &CliState, store: &Store, save_id: &str, folder: &Pat
             folder.display()
         );
     }
-    if let Some((_, other)) = state
-        .saves
-        .iter()
-        .find(|(id, st)| id.as_str() != save_id && crate::detection::paths_overlap(&st.local_path, folder))
-    {
+    if let Some((_, other)) = state.saves.iter().find(|(id, st)| {
+        id.as_str() != save_id && crate::detection::paths_overlap(&st.local_path, folder)
+    }) {
         anyhow::bail!(
             "'{}' already tracks {}. Stop tracking it there first, then add the folder here.",
             other.game_slug,
@@ -351,7 +345,10 @@ fn check_new_folder(state: &CliState, store: &Store, save_id: &str, folder: &Pat
             .get(&owner)
             .map(|s| s.game_slug.as_str())
             .unwrap_or("another save");
-        anyhow::bail!("{} is already a second folder of '{slug}'.", taken.display());
+        anyhow::bail!(
+            "{} is already a second folder of '{slug}'.",
+            taken.display()
+        );
     }
     Ok(())
 }
@@ -438,8 +435,15 @@ fn commit(pass: &Pass<'_>, before: &[Folder], after: &[Folder]) {
             continue;
         }
         // An answer given while the pass ran is for the next one.
-        let keep = if entry.keep == old.keep { new.keep } else { entry.keep };
-        *entry = Folder { keep, ..new.clone() };
+        let keep = if entry.keep == old.keep {
+            new.keep
+        } else {
+            entry.keep
+        };
+        *entry = Folder {
+            keep,
+            ..new.clone()
+        };
     }
     if let Err(e) = save(pass.store, &store) {
         tracing::warn!(save_id = pass.save_id, error = %format!("{e:#}"), "mirror: couldn't save the pass");
@@ -506,7 +510,10 @@ fn level_pair(pass: &Pass<'_>, entry: &mut Folder, report: &mut Report) -> Resul
         }
         Verdict::CopyFrom(side) => {
             let Some(root) = pass.conflict_root else {
-                tracing::warn!(save_id = pass.save_id, "mirror: no conflicts folder configured; not copying");
+                tracing::warn!(
+                    save_id = pass.save_id,
+                    "mirror: no conflicts folder configured; not copying"
+                );
                 return Ok(());
             };
             let (source, target_root) = match side {
@@ -682,13 +689,20 @@ fn copy_over(source: &[UploadFile], target_root: &Path, backup_dir: &Path) -> Re
                 .with_context(|| format!("saving {} before replacing it", dest.display()))?;
             stats.replaced += 1;
         } else if dest.exists() {
-            anyhow::bail!("{} is a folder where a save file should go.", dest.display());
+            anyhow::bail!(
+                "{} is a folder where a save file should go.",
+                dest.display()
+            );
         } else if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating {}", parent.display()))?;
         }
         stats.bytes += place_copy(&file.absolute_path, &dest).with_context(|| {
-            format!("copying {} to {}", file.absolute_path.display(), dest.display())
+            format!(
+                "copying {} to {}",
+                file.absolute_path.display(),
+                dest.display()
+            )
         })?;
         stats.copied += 1;
     }
@@ -941,7 +955,10 @@ mod tests {
         assert_eq!(entry.status, Status::InSync);
         assert_eq!(entry.keep, None);
         assert_eq!(entry.sides, None);
-        assert_eq!(std::fs::read(&rig.backed_up()[0]).unwrap(), b"stale rewrite");
+        assert_eq!(
+            std::fs::read(&rig.backed_up()[0]).unwrap(),
+            b"stale rewrite"
+        );
     }
 
     #[test]
@@ -1117,7 +1134,11 @@ mod tests {
     #[test]
     fn a_second_folder_has_to_be_free() {
         let tmp = tempfile::tempdir().unwrap();
-        let (a, b, c) = (tmp.path().join("a"), tmp.path().join("b"), tmp.path().join("c"));
+        let (a, b, c) = (
+            tmp.path().join("a"),
+            tmp.path().join("b"),
+            tmp.path().join("c"),
+        );
         for d in [&a, &b, &c] {
             std::fs::create_dir_all(d.join("inner")).unwrap();
         }
@@ -1129,17 +1150,33 @@ mod tests {
         let err = |r: Result<()>| format!("{:#}", r.unwrap_err());
         assert!(err(check_new_folder(&state, &store, "gone", &c)).contains("isn't tracked"));
         assert!(err(check_new_folder(&state, &store, "one", &a)).contains("own folder"));
-        assert!(err(check_new_folder(&state, &store, "one", &a.join("inner"))).contains("own folder"));
+        assert!(
+            err(check_new_folder(&state, &store, "one", &a.join("inner"))).contains("own folder")
+        );
         assert!(err(check_new_folder(&state, &store, "one", &b)).contains("already tracks"));
-        assert!(err(check_new_folder(&state, &store, "one", &tmp.path().join("nope")))
-            .contains("isn't a folder"));
+        assert!(err(check_new_folder(
+            &state,
+            &store,
+            "one",
+            &tmp.path().join("nope")
+        ))
+        .contains("isn't a folder"));
         check_new_folder(&state, &store, "one", &c).unwrap();
 
-        store.saves.insert("one".into(), vec![Folder::new(c.clone())]);
-        assert!(err(check_new_folder(&state, &store, "two", &c)).contains("already a second folder"));
-        assert!(err(check_new_folder(&state, &store, "two", &c.join("inner")))
-            .contains("already a second folder"));
-        assert_eq!(owner_in(&state, &store, &c).map(|(id, _)| id), Some("one".to_string()));
+        store
+            .saves
+            .insert("one".into(), vec![Folder::new(c.clone())]);
+        assert!(
+            err(check_new_folder(&state, &store, "two", &c)).contains("already a second folder")
+        );
+        assert!(
+            err(check_new_folder(&state, &store, "two", &c.join("inner")))
+                .contains("already a second folder")
+        );
+        assert_eq!(
+            owner_in(&state, &store, &c).map(|(id, _)| id),
+            Some("one".to_string())
+        );
 
         // A save that is no longer tracked holds nothing.
         state.saves.remove("one");

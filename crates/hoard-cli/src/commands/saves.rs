@@ -215,7 +215,15 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
             remove,
             resolve,
             keep,
-        } => return folders(id, add.as_deref(), remove.as_deref(), resolve.as_deref(), *keep),
+        } => {
+            return folders(
+                id,
+                add.as_deref(),
+                remove.as_deref(),
+                resolve.as_deref(),
+                *keep,
+            )
+        }
         SaveCommand::Untrack { id } => {
             // `library::untrack` drops the row whether or not it was there. For
             // a person that is harmless; for a caller that got the id wrong, a
