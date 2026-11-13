@@ -159,7 +159,7 @@ proptest = "1"
 # ZIP writer for cloud account exports (server, `cloud` feature). No default
 # features: game saves are already compressed, so export entries are `Stored`
 # (no re-deflate): we only need the archive container, not compression.
-zip = { version = "2", default-features = false }
+zip = { version = "9", default-features = false }
 
 # Smaller, slightly faster release binaries (desktop bundle, server, sidecar).
 # Thin LTO + one codegen unit trade release-build time for output quality;
