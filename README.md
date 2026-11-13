@@ -17,8 +17,9 @@ needs no Hoard account and has no quota beyond your own disk.
 Steam Cloud, GOG Galaxy and friends work fine, right up until they overwrite
 a 200-hour save with a corrupted one from another machine, the publisher
 kills the service, or the game just isn't covered. Hoard is the boring,
-paranoid alternative: it snapshots your saves every time you stop playing,
-hashes every file, and lets you roll back to any earlier version or pull
+paranoid alternative: it snapshots your saves every time the game writes
+them (or only when you quit, if you'd rather), hashes every file, and lets
+you roll back to any earlier version or pull
 your entire library onto a fresh machine. Nothing is ever silently
 overwritten, that's the entire point.
 
