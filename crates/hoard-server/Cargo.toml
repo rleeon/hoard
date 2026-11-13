@@ -97,7 +97,7 @@ aws-config = { version = "1", optional = true }
 aws-credential-types = { version = "1", optional = true }
 aws-smithy-runtime-api = { version = "1", optional = true }
 jsonwebtoken = "9"
-hmac = { version = "0.12", optional = true }
+hmac = { version = "0.13", optional = true }
 # Polar webhooks use Standard Webhooks: base64-encoded HMAC-SHA256 over
 # `id.timestamp.body`.
 base64 = "0.22"
