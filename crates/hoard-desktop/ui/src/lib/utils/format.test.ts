@@ -97,6 +97,12 @@ describe("fmtRelativeTime", () => {
     expect(ago(172800)).toBe("2d");
   });
 
+  it("returns an unreadable timestamp as it is", () => {
+    expect(get(fmtRelativeTime)("not a date", now)).toBe("not a date");
+    expect(get(fmtRelativeTime)("", now)).toBe("");
+  });
+
+
   it("treats a timestamp in the future (clock skew) as just now", () => {
     expect(ago(-300)).toBe("now");
   });
