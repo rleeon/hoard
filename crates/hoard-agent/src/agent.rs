@@ -120,6 +120,10 @@ pub struct AgentConfig {
     /// exception left: the pre-launch barrier died with the inversion of
     /// `run_agent` (ADR 0021 Slice 2b): the tick is the only authority.
     pub global_sync: bool,
+    /// Mirror of `Prefs::backup_on_close`: back every save up once its game
+    /// closes rather than each time it saves. A save's own answer
+    /// (`SavePolicy::backup_on_close`) wins over it.
+    pub backup_on_close: bool,
 }
 
 impl Default for AgentConfig {
@@ -133,6 +137,7 @@ impl Default for AgentConfig {
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
             global_sync: false,
+            backup_on_close: false,
         }
     }
 }
@@ -383,6 +388,8 @@ enum AgentCommand {
     /// immediate sweep so every outdated-but-idle save catches up right away.
     /// See [`AgentConfig::global_sync`].
     SetGlobalSync(bool),
+    /// The global "back up when the game closes" setting moved.
+    SetBackupOnClose(bool),
     /// Overwrite the client's cached per-save cap after the user changed it.
     /// See [`hoard_core::ipc::Request::SetPlanCap`].
     SetPlanCap {
@@ -507,6 +514,11 @@ enum AgentCommand {
         /// probe). Only a definite value moves the latch.
         is_cloud: Option<bool>,
     },
+    /// A pass over a save's second folders ended ([`run_mirror_pass`]).
+    MirrorDone {
+        id: String,
+        report: crate::mirror::Report,
+    },
     QueryStatus(oneshot::Sender<Vec<AgentSlotStatus>>),
     Shutdown,
 }
@@ -603,6 +615,13 @@ impl AgentHandle {
     /// [`AgentConfig::global_sync`].
     pub async fn set_global_sync(&self, enabled: bool) -> Result<()> {
         self.tx.send(AgentCommand::SetGlobalSync(enabled)).await?;
+        Ok(())
+    }
+
+    /// Push the global "back up when the game closes" setting into the running
+    /// agent. See [`AgentConfig::backup_on_close`].
+    pub async fn set_backup_on_close(&self, enabled: bool) -> Result<()> {
+        self.tx.send(AgentCommand::SetBackupOnClose(enabled)).await?;
         Ok(())
     }
 
@@ -927,7 +946,57 @@ struct SaveSlot {
     /// The head a restore that just let go vouched for, queued for the next
     /// observation. Maps to [`kernel::Observation::adopted_head`].
     adopted_head: Option<i64>,
+    /// The save's second folders on this machine ([`crate::mirror`]).
+    mirror: SlotMirror,
 }
+
+/// What the engine keeps per slot to hold a save's second folders level with
+/// its own. The decisions and the copying are [`crate::mirror`]'s; this is the
+/// watching and the timing.
+#[derive(Default)]
+struct SlotMirror {
+    folders: Vec<PathBuf>,
+    watchers: Vec<(PathBuf, Debouncer<notify::RecommendedWatcher>)>,
+    /// When to try again to watch a folder that is missing or could not be
+    /// watched.
+    rearm_at: Option<TokioInstant>,
+    /// A pass is owed: a folder changed, the store changed, or it is the first
+    /// look since the engine started.
+    due: bool,
+    /// Not before this: writes are still arriving, or the last pass asked to
+    /// be repeated.
+    not_before: Option<TokioInstant>,
+    checked_at: Option<TokioInstant>,
+    /// The pass in flight. While it runs the slot is left alone, exactly as
+    /// while a manual restore holds it: an upload now could publish a folder
+    /// that is half copied.
+    task: Option<JoinHandle<()>>,
+}
+
+impl SlotMirror {
+    fn busy(&self) -> bool {
+        self.task.as_ref().is_some_and(|t| !t.is_finished())
+    }
+
+    /// A write was seen in one of the save's folders.
+    fn touched(&mut self) {
+        if self.folders.is_empty() {
+            return;
+        }
+        self.due = true;
+        self.not_before = Some(TokioInstant::now() + MIRROR_SETTLE);
+    }
+}
+
+/// How long the save's folders have to stay quiet before files are copied
+/// between them. A game writes a save in several steps, and copying in the
+/// middle carries half of one across.
+const MIRROR_SETTLE: Duration = Duration::from_secs(10);
+/// How long before a pass that found a folder in use is repeated.
+const MIRROR_RETRY: Duration = Duration::from_secs(30);
+/// A look with no event behind it, for the write a watcher missed.
+const MIRROR_RECHECK: Duration = Duration::from_secs(10 * 60);
+const MIRROR_REARM: Duration = Duration::from_secs(60);
 
 /// The kernel's deterministic RNG seed for this save (ADR 0021 C.2): the throttle
 /// backoff's jitter has to be reproducible, so it derives from the `save_id` rather
@@ -992,6 +1061,7 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
             .policy
             .min_snapshot_interval_secs
             .unwrap_or(config.min_snapshot_interval_secs),
+        backup_on_close: backs_up_on_close(slot, config),
         is_running: slot.is_running,
         // Passthrough: `process_alive` equals `is_running` in the observation, so
         // the kernel's grace never extends beyond the shell's sticky.
@@ -1467,7 +1537,17 @@ fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation 
         // was not checked (nobody uploaded anything this tick).
         upload_landed: slot.pending_upload_landed.take(),
         adopted_head: slot.adopted_head.take(),
+        backup_requested: slot.manual_requested,
     }
+}
+
+/// Whether this save waits for its game to close before backing up: its own
+/// answer, or failing that the global one.
+fn backs_up_on_close(slot: &SaveSlot, config: &AgentConfig) -> bool {
+    slot.save
+        .policy
+        .backup_on_close
+        .unwrap_or(config.backup_on_close)
 }
 
 /// The reconciliation step (ADR 0021 C.1, Slice 2b): the inverted authority. For
@@ -1503,6 +1583,9 @@ fn reconcile_all(
             slot.held_until = None;
             tracing::info!(save_id = %id, "agent: the restore's hold lapsed without being released");
         }
+        if mirror_gate(slot, config, cmd_tx) {
+            continue;
+        }
         // A pre-reducer snapshot to derive the observability events (stuck and
         // recovered) from `restore_failures`' delta.
         let was_stuck = slot.restore_failures.stuck_notified;
@@ -1522,6 +1605,7 @@ fn reconcile_all(
         // next go out, and the shell owes the user that number (see the
         // `Hold` arm below).
         let floor = kernel::reconcile::backup_floor(&next);
+        let nothing_to_upload = kernel::reconcile::nothing_to_upload(&next, &obs);
         // Read while `slot` is still borrowed: `execute_action` takes the whole
         // map, so the head has to be resolved and cloned before that.
         let server_head = cloud.head_for(&slot.save).cloned();
@@ -1611,7 +1695,28 @@ fn reconcile_all(
                     tracing::debug!(save_id = %id, reason, "agent: reconcile hold");
                     if kernel::reconcile::hold_is_paced_backup(reason) {
                         announce_backup_wait(slots, &id, floor, now, events_tx);
+                    } else if reason == kernel::reconcile::HOLD_BACKUP_UNTIL_CLOSE {
+                        // No time to count down to: the close is the deadline.
+                        // Nothing was announced for it (see the `fs_rx` branch).
+                        if let Some(slot) = slots.get_mut(&id) {
+                            slot.next_scheduled_backup_at = None;
+                        }
                     }
+                }
+            }
+        }
+
+        // The debounce's time has come and the write it announced left nothing to
+        // upload, so no backup will close the countdown it put on screen.
+        if nothing_to_upload {
+            if let Some(slot) = slots.get_mut(&id) {
+                let due = slot.next_scheduled_backup_at.is_some_and(|t| t <= now);
+                if due && slot.in_flight.is_none() {
+                    slot.next_scheduled_backup_at = None;
+                    slot.first_pending_event_at = None;
+                    let _ = events_tx.try_send(AgentEvent::BackupUnchanged {
+                        save_id: id.clone(),
+                    });
                 }
             }
         }
@@ -1943,6 +2048,9 @@ async fn run_agent(
     // first `refresh_if_stale`.
     let mut steam_index = crate::playtime_index::SteamPlaytimeIndex::new();
 
+    // The date of the second-folders store as last read ([`refresh_mirrors`]).
+    let mut mirror_store_seen: Option<std::time::SystemTime> = None;
+
     tracing::info!(
         debounce_secs = config.debounce_secs,
         poll_secs = config.poll_secs,
@@ -1963,11 +2071,28 @@ async fn run_agent(
                         // the session) is taken by the reducer in the reconcile
                         // below; the recency veto covers the "folder touched
                         // recently" case that used to be deferred by hand.
+                        let added = save.save_id.clone();
                         handle_add(&mut slots, *save, &fs_tx);
+                        refresh_mirrors(&mut slots, &fs_tx, Some(&added));
                         reconcile_all(
                             &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                             &cloud_heads,
                         );
+                    }
+                    Some(AgentCommand::MirrorDone { id, report }) => {
+                        if let Some(slot) = slots.get_mut(&id) {
+                            slot.mirror.task = None;
+                            if report.retry {
+                                slot.mirror.due = true;
+                                slot.mirror.not_before = Some(TokioInstant::now() + MIRROR_RETRY);
+                            }
+                            // Its own watcher says the same a moment later. This
+                            // covers a folder whose watcher never armed.
+                            if report.wrote_primary {
+                                slot.has_pending = true;
+                                slot.needs_l1 = true;
+                            }
+                        }
                     }
                     Some(AgentCommand::RearmWatcher(id)) => {
                         // Auto-restore created files where there were none, so
@@ -2037,6 +2162,21 @@ async fn run_agent(
                                 &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
                                 &cloud_heads,
                             );
+                            // The reducer took the head this tick; only an event
+                            // carries it to `state.json` and the screen. A manual
+                            // restore "completed but stayed at v7" without it.
+                            if let Some(head) = adopt_head {
+                                let synced = held_slot_id(&slots, &cloud_heads, &id)
+                                    .and_then(|local| slots.get(&local))
+                                    .filter(|slot| slot.known_version == Some(head));
+                                if let Some(slot) = synced {
+                                    let _ = events_tx.try_send(AgentEvent::SaveSynced {
+                                        save_id: slot.save.save_id.clone(),
+                                        game_slug: slot.save.game_slug.clone(),
+                                        version_num: head,
+                                    });
+                                }
+                            }
                         }
                     }
                     Some(AgentCommand::SetAutoRestore(enabled)) => {
@@ -2074,6 +2214,18 @@ async fn run_agent(
                                 &cloud_heads,
                             );
                         }
+                    }
+                    Some(AgentCommand::SetBackupOnClose(enabled)) => {
+                        config.backup_on_close = enabled;
+                        tracing::info!(
+                            backup_on_close = enabled,
+                            "agent: backup-on-close preference updated"
+                        );
+                        // Turned off mid-game, whatever was held goes up now.
+                        reconcile_all(
+                            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
+                            &cloud_heads,
+                        );
                     }
                     Some(AgentCommand::ForceRestore {
                         save_id,
@@ -2349,6 +2501,20 @@ async fn run_agent(
 
             // ----- Filesystem debounce hits -----
             Some(path) = fs_rx.recv() => {
+                // A write in a save's second folder is not a change to upload.
+                // It only owes the pair a pass; if that pass brings the write
+                // into the save's own folder, its watcher reports it as usual.
+                if let Some(save_id) = mirror_owner_of(&slots, &path) {
+                    if let Some(slot) = slots.get_mut(&save_id) {
+                        slot.mirror.touched();
+                    }
+                    tracing::debug!(
+                        save_id = %save_id,
+                        path = %path.display(),
+                        "agent: fs event in a second folder"
+                    );
+                    continue;
+                }
                 if let Some(save_id) = match_save_for_path(&slots, &path) {
                     let now = OffsetDateTime::now_utc();
                     // Per-save preset overrides win over the global config.
@@ -2364,6 +2530,11 @@ async fn run_agent(
                     let already_scheduled = slots
                         .get(&save_id)
                         .is_some_and(|s| s.next_scheduled_backup_at.is_some());
+                    // A save that backs up on close says nothing while its game is
+                    // open: a countdown would end in a hold and stay on screen.
+                    let waits_for_close = slots
+                        .get(&save_id)
+                        .is_some_and(|s| s.is_running && backs_up_on_close(s, &config));
                     if let Some(slot) = slots.get_mut(&save_id) {
                         // Watcher hints (ADR 0021 C.1): they mark pending and focus the
                         // save for L1 sampling, since an in-place rewrite in a
@@ -2374,6 +2545,7 @@ async fn run_agent(
                         slot.has_pending = true;
                         slot.last_fs_event_at = Some(now);
                         slot.needs_l1 = true;
+                        slot.mirror.touched();
                         // The anti-starvation cap. Every fs event restarts the
                         // debounce, so a game writing every second would never settle
                         // ("it all stayed queued"). This anchors the oldest change
@@ -2413,7 +2585,7 @@ async fn run_agent(
                     // nothing when the window was already open. (The reducer may still
                     // defer the upload on min-interval; the announcement belongs to
                     // the debounce, as it always did.)
-                    if delay > Duration::ZERO && !already_scheduled {
+                    if delay > Duration::ZERO && !already_scheduled && !waits_for_close {
                         let _ = events_tx.try_send(AgentEvent::BackupScheduled {
                             save_id: save_id.clone(),
                             delay_ms: delay.as_millis() as u64,
@@ -2514,6 +2686,15 @@ async fn run_agent(
                     } else if slot.watcher.is_some() && slot.watcher_rearm_at.is_some() {
                         arm_watcher(slot, &fs_tx);
                     }
+                }
+                // Second folders: pick up what the app or the command line
+                // changed, and watch the ones that have appeared since.
+                let stamp = crate::mirror::store_stamp();
+                if stamp != mirror_store_seen {
+                    mirror_store_seen = stamp;
+                    refresh_mirrors(&mut slots, &fs_tx, None);
+                } else {
+                    arm_mirror_watchers(&mut slots, &fs_tx);
                 }
                 // The reconciliation (ADR 0021 C.1): the tick is the source of truth.
                 // `process_poll` already sampled the world (processes into
@@ -2649,6 +2830,12 @@ fn handle_add(
     // A reload rebuilds the slot; a restore's hold on it survives that. The
     // restore that ends with `--remember` reloads before it lets go.
     let held_until = slots.get(&save_id).and_then(|s| s.held_until);
+    // So do the second folders: a pass that is copying keeps the new slot
+    // waiting like it kept the old one.
+    let mirror = slots
+        .get_mut(&save_id)
+        .map(|s| std::mem::take(&mut s.mirror))
+        .unwrap_or_default();
     let mut slot = SaveSlot {
         save,
         watcher: None,
@@ -2687,6 +2874,7 @@ fn handle_add(
         deferred_notified: false,
         held_until,
         adopted_head: None,
+        mirror,
     };
     // Playtime-only entries exist purely to be matched by the process poll
     // so their hours accrue for the recap. They own no save folder, so we
@@ -2742,6 +2930,10 @@ fn apply_hold(
         tracing::info!(save_id = %id, secs, "agent: holding the save while a restore writes into it");
     }
     slot.held_until = Some(now + Duration::from_secs(u64::from(secs)));
+    if slot.mirror.busy() {
+        tracing::info!(save_id = %id, "agent: the restore waits for the copy between the save's folders");
+        return HoldState::Busy;
+    }
     if slot.in_flight.is_some() && slot.pending_op_result.is_none() {
         tracing::info!(save_id = %id, op = ?slot.in_flight, "agent: the restore waits for the save's running op");
         HoldState::Busy
@@ -3060,7 +3252,18 @@ fn spawn_auto_restore(
                         outcome.conflicts_local_wins
                     );
                 }
-                // else: every file present and identical, so a silent no-op.
+                // Nothing written, and still this device is at that version now. Kept
+                // only in memory, the next service start read the old number, saw the
+                // cloud ahead and downloaded the whole snapshot again to write nothing.
+                if touched == 0 {
+                    let _ = events_tx
+                        .send(AgentEvent::SaveSynced {
+                            save_id: save.save_id.clone(),
+                            game_slug: save.game_slug.clone(),
+                            version_num: outcome.version_num,
+                        })
+                        .await;
+                }
             }
             // Nothing to pull, either way. `run_auto_restore` already logged which
             // case it was, so don't second-guess it here; the old unconditional "no
@@ -3918,6 +4121,189 @@ async fn files_have_equal_bytes(a: &Path, b: &Path) -> Result<bool> {
     Ok(bytes_a == bytes_b)
 }
 
+/// Whether this tick belongs to the save's second folders: a pass is running,
+/// or one is owed and the slot is quiet enough to start it. `true` skips the
+/// reconcile for the slot, for the reason a restore's hold does.
+///
+/// A pass waits for the upload or restore in flight, for the game to be closed
+/// and for the folders to settle. It reads and writes the same files those do.
+fn mirror_gate(
+    slot: &mut SaveSlot,
+    config: &AgentConfig,
+    cmd_tx: &mpsc::Sender<AgentCommand>,
+) -> bool {
+    if slot.mirror.busy() {
+        return true;
+    }
+    slot.mirror.task = None;
+    if slot.mirror.folders.is_empty() {
+        return false;
+    }
+    let now = TokioInstant::now();
+    if slot
+        .mirror
+        .checked_at
+        .is_none_or(|at| now.duration_since(at) >= MIRROR_RECHECK)
+    {
+        slot.mirror.due = true;
+    }
+    if !slot.mirror.due || slot.mirror.not_before.is_some_and(|at| now < at) {
+        return false;
+    }
+    if slot.in_flight.is_some() || slot.pending_op_result.is_some() || slot.is_running {
+        return false;
+    }
+    slot.mirror.due = false;
+    slot.mirror.not_before = None;
+    slot.mirror.checked_at = Some(now);
+    slot.mirror.task = Some(tokio::spawn(run_mirror_pass(
+        slot.save.save_id.clone(),
+        slot.save.game_slug.clone(),
+        slot.save.local_path.clone(),
+        config.conflict_root.clone(),
+        config.conflict_retention_days,
+        cmd_tx.clone(),
+    )));
+    true
+}
+
+/// One pass of [`crate::mirror::run_pass`] off the loop, reported back as
+/// [`AgentCommand::MirrorDone`].
+async fn run_mirror_pass(
+    id: String,
+    game_slug: String,
+    primary: PathBuf,
+    conflict_root: Option<PathBuf>,
+    conflict_retention_days: u32,
+    cmd_tx: mpsc::Sender<AgentCommand>,
+) {
+    let (save_id, root) = (id.clone(), conflict_root.clone());
+    let pass = tokio::task::spawn_blocking(move || {
+        let Ok(store) = crate::mirror::store_path() else {
+            return crate::mirror::Report::default();
+        };
+        let filter = crate::backup::SourceFilter::for_slug(&game_slug);
+        crate::mirror::run_pass(&crate::mirror::Pass {
+            store: &store,
+            save_id: &save_id,
+            primary: &primary,
+            filter: &filter,
+            conflict_root: root.as_deref(),
+            now: std::time::SystemTime::now(),
+        })
+    })
+    .await;
+    let report = pass.unwrap_or_else(|e| {
+        tracing::warn!(save_id = %id, error = %e, "agent: the pass over the save's second folders died");
+        crate::mirror::Report {
+            retry: true,
+            ..Default::default()
+        }
+    });
+    if report.backed_up > 0 {
+        if let Some(root) = &conflict_root {
+            let retention = Duration::from_secs(u64::from(conflict_retention_days) * 86_400);
+            if let Err(e) = cleanup_old_conflicts(root, retention).await {
+                tracing::debug!(error = %e, "cleanup_old_conflicts failed");
+            }
+        }
+    }
+    let _ = cmd_tx
+        .send(AgentCommand::MirrorDone { id, report })
+        .await;
+}
+
+/// Re-reads which saves have second folders, and owes a pass to the ones the
+/// store says are waiting for it.
+///
+/// The store is written by the app and the command line, and the engine learns
+/// of it by the file's date: a `Reload` only tells it about saves that came or
+/// went, and a second folder is neither. A pass writes the store too, and that
+/// lands here like any other change; it owes nothing, because what a pass
+/// leaves behind is never a folder that asks. `only` narrows it to one slot,
+/// for a save that has just been attached and gets its first look.
+fn refresh_mirrors(
+    slots: &mut HashMap<String, SaveSlot>,
+    fs_tx: &mpsc::Sender<PathBuf>,
+    only: Option<&str>,
+) {
+    let by_save = crate::mirror::folders_by_save();
+    for (id, slot) in slots.iter_mut() {
+        if slot.save.track_only || only.is_some_and(|one| one != id) {
+            continue;
+        }
+        let (want, asks) = by_save
+            .get(id)
+            .map(|w| (w.folders.clone(), w.asks))
+            .unwrap_or_default();
+        let changed = slot.mirror.folders != want;
+        if changed {
+            slot.mirror.watchers.clear();
+            slot.mirror.rearm_at = None;
+            slot.mirror.folders = want;
+        }
+        if slot.mirror.folders.is_empty() {
+            slot.mirror.due = false;
+        } else if changed || asks || only.is_some() {
+            slot.mirror.due = true;
+        }
+    }
+    arm_mirror_watchers(slots, fs_tx);
+}
+
+/// Watches every second folder that is there and not watched yet. One that is
+/// missing (a drive not plugged in) is looked for again a minute later.
+fn arm_mirror_watchers(slots: &mut HashMap<String, SaveSlot>, fs_tx: &mpsc::Sender<PathBuf>) {
+    let now = TokioInstant::now();
+    for slot in slots.values_mut() {
+        let mirror = &mut slot.mirror;
+        // A folder that went away took its watch with it. Dropping the dead
+        // watcher is what lets the folder be watched again when it is back.
+        mirror.watchers.retain(|(watched, _)| watched.is_dir());
+        if mirror.watchers.len() == mirror.folders.len()
+            || mirror.rearm_at.is_some_and(|at| now < at)
+        {
+            continue;
+        }
+        for folder in &mirror.folders {
+            if mirror.watchers.iter().any(|(watched, _)| watched == folder) || !folder.is_dir() {
+                continue;
+            }
+            let shields = crate::savefilter::shields_for_slug(&slot.save.game_slug);
+            match build_watcher(folder, shields, fs_tx.clone()) {
+                Ok((watcher, _)) => {
+                    tracing::info!(
+                        save_id = %slot.save.save_id,
+                        path = %folder.display(),
+                        "agent: fs watcher armed on a second folder"
+                    );
+                    mirror.watchers.push((folder.clone(), watcher));
+                    // Whatever was written there while nobody watched.
+                    mirror.due = true;
+                }
+                Err(e) => tracing::debug!(
+                    save_id = %slot.save.save_id,
+                    path = %folder.display(),
+                    error = %e,
+                    "agent: couldn't watch a second folder"
+                ),
+            }
+        }
+        mirror.rearm_at =
+            (mirror.watchers.len() < mirror.folders.len()).then(|| now + MIRROR_REARM);
+    }
+}
+
+/// The save a write in `path` belongs to when `path` is one of its second
+/// folders. The watcher reports the folder it was armed on, so this is an
+/// exact match.
+fn mirror_owner_of(slots: &HashMap<String, SaveSlot>, path: &Path) -> Option<String> {
+    slots
+        .values()
+        .find(|slot| slot.mirror.folders.iter().any(|folder| folder == path))
+        .map(|slot| slot.save.save_id.clone())
+}
+
 /// Try to attach an fs debouncer to `slot`. Tolerant: a missing folder or
 /// an inotify error logs and leaves `slot.watcher == None` so the agent
 /// keeps running for the other slots. Re-arming later is fine, since we just
@@ -3934,7 +4320,8 @@ fn arm_watcher(slot: &mut SaveSlot, fs_tx: &mpsc::Sender<PathBuf>) {
         slot.watcher_rearm_at = None;
         return;
     }
-    match build_watcher(&path, fs_tx.clone()) {
+    let shields = crate::savefilter::shields_for_slug(&slot.save.game_slug);
+    match build_watcher(&path, shields, fs_tx.clone()) {
         Ok((w, per_dir)) => {
             // A per-directory watch is rebuilt every few minutes, so it is only
             // announced the first time.
@@ -4065,6 +4452,7 @@ impl FairWalk {
 /// [`dirs_without_links`]) rather than the tree in one go.
 fn build_watcher(
     path: &Path,
+    shields: Vec<String>,
     fs_tx: mpsc::Sender<PathBuf>,
 ) -> Result<(Debouncer<notify::RecommendedWatcher>, bool)> {
     // A single-file save: the PARENT DIRECTORY is watched and filtered by name.
@@ -4096,7 +4484,9 @@ fn build_watcher(
                 // would wake this one.
                 let relevant = match &want_name {
                     Some(name) => events.iter().any(|e| e.path.file_name() == Some(name)),
-                    None => !events.is_empty(),
+                    None => events
+                        .iter()
+                        .any(|e| wakes_engine(&watch_root, &e.path, &shields)),
                 };
                 if relevant {
                     let _ = fs_tx.try_send(watch_root.clone());
@@ -4128,6 +4518,28 @@ fn build_watcher(
         .watcher()
         .watch(&watch_target, notify::RecursiveMode::Recursive)?;
     Ok((debouncer, false))
+}
+
+/// Does a write at `path` touch anything a backup of `root` carries? A game
+/// writing its log every two seconds used to wake the engine every two seconds
+/// (issue #68: ~10k "fs event observed" lines in one session), put a countdown on
+/// screen and hold off pulls, all for a file the walk then leaves out.
+///
+/// It answers as the walk does (`walk_source`): dropping something the walk
+/// keeps would leave that change waiting for the hourly sweep. Anything it
+/// cannot place wakes the engine.
+fn wakes_engine(root: &Path, path: &Path, shields: &[String]) -> bool {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return true;
+    };
+    let rel = rel.to_string_lossy().replace('\\', "/");
+    if rel.is_empty() {
+        return true;
+    }
+    if path.is_dir() {
+        return !kernel::fileclass::is_log_dir(&rel);
+    }
+    kernel::fileclass::classify(&rel, shields).is_backed_up()
 }
 
 /// Find which save a path event belongs to. The fs watcher emits the root
@@ -4303,6 +4715,9 @@ async fn run_backup_with_retry(
                     save_id = %save.save_id,
                     "agent: backup skipped, no content change since last upload"
                 );
+                let _ = events_tx.try_send(AgentEvent::BackupUnchanged {
+                    save_id: save.save_id.clone(),
+                });
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: None,
@@ -4321,6 +4736,9 @@ async fn run_backup_with_retry(
                     save_id = %save.save_id,
                     "agent: backup skipped, bytes unchanged despite mtime drift"
                 );
+                let _ = events_tx.try_send(AgentEvent::BackupUnchanged {
+                    save_id: save.save_id.clone(),
+                });
                 let _ = done_tx.try_send(BackupDone {
                     save_id: save.save_id.clone(),
                     new_set_hash: Some(signature),
@@ -4581,6 +4999,24 @@ async fn run_backup_with_retry(
                                     version_num = outcome.version_num,
                                     "agent: backup conflict reconciled to head with no local divergence, settled without re-upload"
                                 );
+                                // No `BackupSuccess` follows the `BackupStarted` this
+                                // attempt sent, so the "uploading" pill is closed here,
+                                // and the version is kept when the merge wrote nothing
+                                // (`SaveAutoRestored` above keeps it otherwise).
+                                if touched == 0 {
+                                    let _ = events_tx
+                                        .send(AgentEvent::SaveSynced {
+                                            save_id: save.save_id.clone(),
+                                            game_slug: save.game_slug.clone(),
+                                            version_num: outcome.version_num,
+                                        })
+                                        .await;
+                                }
+                                let _ = events_tx
+                                    .send(AgentEvent::BackupUnchanged {
+                                        save_id: save.save_id.clone(),
+                                    })
+                                    .await;
                                 let _ = done_tx
                                     .send(BackupDone {
                                         save_id: save.save_id.clone(),
@@ -6328,6 +6764,7 @@ mod tests {
             deferred_notified: false,
             held_until: None,
             adopted_head: None,
+            mirror: SlotMirror::default(),
         }
     }
 
@@ -6632,6 +7069,62 @@ mod tests {
         );
     }
 
+    /// A write that leaves the folder as synced gets no backup, so nothing else
+    /// closes the "backup in Ns" its debounce announced: the pill sat on "0s" for
+    /// good after every restore on a self-hoster's Deck and desktop (Nov 2026).
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_write_that_changes_nothing_closes_its_countdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("game.srm"), b"same bytes").unwrap();
+        let save = WatchedSave {
+            save_id: "settle-1".into(),
+            game_slug: "fake-game".into(),
+            display_name: "Fake Game".into(),
+            label: "main".into(),
+            local_path: tmp.path().to_path_buf(),
+            steam_install_dir: None,
+            processes: vec![],
+            shared_processes: false,
+            policy: Default::default(),
+            allow_device_local: None,
+            known_version: Some(9),
+            set_hash: None,
+            track_only: false,
+        };
+        let now = OffsetDateTime::now_utc();
+        let mut slot = test_slot(save);
+        slot.synced_fingerprint = observe_local_fingerprint(tmp.path(), "fake-game");
+        slot.known_version = Some(9);
+        slot.has_pending = true;
+        slot.needs_l1 = true;
+        slot.next_scheduled_backup_at = Some(now - time::Duration::seconds(1));
+        let mut slots = HashMap::new();
+        slots.insert("settle-1".to_string(), slot);
+
+        let api = ApiClient::new("http://127.0.0.1:1", "fake").unwrap();
+        let (events_tx, mut events_rx) = mpsc::channel::<AgentEvent>(8);
+        let (cmd_tx, _cmd_rx) = mpsc::channel::<AgentCommand>(8);
+        let (done_tx, _done_rx) = mpsc::channel::<BackupDone>(8);
+        let config = AgentConfig::default();
+        let heads = CloudHeads::new(now);
+
+        reconcile_all(
+            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &heads,
+        );
+        match events_rx.try_recv() {
+            Ok(AgentEvent::BackupUnchanged { save_id }) => assert_eq!(save_id, "settle-1"),
+            other => panic!("expected the countdown closed, got {other:?}"),
+        }
+        assert!(slots["settle-1"].next_scheduled_backup_at.is_none());
+        assert!(slots["settle-1"].in_flight.is_none(), "nothing to upload");
+
+        // Closed once: the next tick has nothing announced to close.
+        reconcile_all(
+            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx, &heads,
+        );
+        assert!(events_rx.try_recv().is_err());
+    }
+
     /// A Proton game that dies badly leaves its .exe defunct, keeping the name
     /// and exe path every strong matcher keys on. Nothing about a zombie says
     /// "the user is playing" (it can't write a save file) so it must never
@@ -6729,6 +7222,7 @@ mod tests {
             conflict_root: None,
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
+            backup_on_close: false,
         };
 
         let (handle, task) = spawn(api, config, vec![save], events_tx);
@@ -7345,7 +7839,7 @@ mod tests {
             .iter()
             .any(|d| d.starts_with(prefix.join("dosdevices/z:")) || d.starts_with(&outside)));
         let (tx, _rx) = mpsc::channel(4);
-        let (_watcher, per_dir) = build_watcher(&prefix, tx).unwrap();
+        let (_watcher, per_dir) = build_watcher(&prefix, Vec::new(), tx).unwrap();
         assert!(per_dir);
     }
 
@@ -7377,7 +7871,29 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("saves/slot1")).unwrap();
         assert_eq!(dirs_without_links(tmp.path()), None);
         let (tx, _rx) = mpsc::channel(4);
-        let (_watcher, per_dir) = build_watcher(tmp.path(), tx).unwrap();
+        let (_watcher, per_dir) = build_watcher(tmp.path(), Vec::new(), tx).unwrap();
         assert!(!per_dir);
+    }
+
+    /// Issue #68's folder: the game's log and its folder say nothing a backup
+    /// carries, the save and the config do.
+    #[test]
+    fn a_log_write_does_not_wake_the_engine() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("Saved/Logs")).unwrap();
+        std::fs::create_dir_all(root.join("Saved/SaveGames")).unwrap();
+        let no_shields: Vec<String> = Vec::new();
+
+        assert!(!wakes_engine(root, &root.join("Saved/Logs/SMG029UE5.log"), &no_shields));
+        assert!(!wakes_engine(root, &root.join("Saved/Logs"), &no_shields));
+        assert!(wakes_engine(root, &root.join("Saved/SaveGames/DP01.sav"), &no_shields));
+        assert!(wakes_engine(root, &root.join("Saved/SaveGames"), &no_shields));
+        assert!(wakes_engine(root, &root.join("Saved/Config/Windows/Engine.ini"), &no_shields));
+        assert!(wakes_engine(root, root, &no_shields));
+        assert!(wakes_engine(root, Path::new("/elsewhere/x.log"), &no_shields));
+
+        let shields = vec!["*.log".to_string()];
+        assert!(wakes_engine(root, &root.join("journal.log"), &shields));
     }
 }

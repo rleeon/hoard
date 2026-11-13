@@ -381,6 +381,44 @@ pub enum AgentEvent {
         /// The guard that vetoed, straight from `mid_session_reason`.
         reason: String,
     },
+    /// The backup a [`AgentEvent::BackupScheduled`] announced found nothing new to
+    /// upload, so the countdown is over. Without it the pill stayed on "backup in
+    /// 0s" for good: a restore's own writes wake the watcher, and the backup they
+    /// announce is a skip (a self-hoster on a Deck and a desktop, Nov 2026).
+    BackupUnchanged {
+        save_id: String,
+    },
+    /// This device holds `version_num` now, and neither an upload nor a restore
+    /// that wrote files says so: an automatic restore found every file already in
+    /// place, or a manual one let go of the save on top of that head. Before this,
+    /// only `BackupSuccess` and `SaveAutoRestored` moved the cursor in
+    /// `state.json`, so a head with the same bytes as the folder read "cloud v9,
+    /// this device v7" forever and was downloaded again on every service start.
+    SaveSynced {
+        save_id: String,
+        game_slug: String,
+        version_num: i64,
+    },
+}
+
+impl AgentEvent {
+    /// The cap a client has to send in its `Hello` to receive this event. A client
+    /// decodes the whole frame or drops the connection, and the event stays in the
+    /// journal, so an older one would reconnect into the same row forever.
+    pub fn required_cap(&self) -> Option<&'static str> {
+        match self {
+            AgentEvent::BackupUnchanged { .. } | AgentEvent::SaveSynced { .. } => {
+                Some(super::CAP_SYNC_SETTLED)
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether a client that sent `caps` can decode this event.
+    pub fn reaches(&self, caps: &[String]) -> bool {
+        self.required_cap()
+            .is_none_or(|cap| caps.iter().any(|c| c == cap))
+    }
 }
 
 /// Why we scheduled a backup. Useful in the UI to explain "the game just

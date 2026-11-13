@@ -35,6 +35,7 @@
   import Button from "./Button.svelte";
   import CardResizeHandle from "./CardResizeHandle.svelte";
   import Cover from "./Cover.svelte";
+  import PinButton from "./PinButton.svelte";
   import { byKeys, navFocus } from "../actions/spatialNav";
   import type { TrackedSave } from "../api";
   import {
@@ -482,7 +483,7 @@
       {/if}
     </div>
 
-    <!-- Overflow menu: rename / pause-resume / history. -->
+    <!-- Overflow menu: pin / rename / pause-resume / history. -->
     <div class="absolute right-2.5 top-2.5" bind:this={menuEl} onfocusout={onMenuFocusOut}>
       <button
         bind:this={menuButton}
@@ -501,6 +502,16 @@
         <div
           class="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-lg border border-white/[0.08] bg-layer-3 p-1 shadow-xl"
         >
+          <!-- Unpinning sends the card back down the grid, so the menu closes
+               instead of travelling with it. Pinning keeps it open: the
+               number is typed right here. -->
+          <PinButton
+            slug={save.game_slug}
+            variant="menu"
+            onToggle={(pinned) => {
+              if (!pinned) setMenu(false);
+            }}
+          />
           <button
             type="button"
             class={menuItemClass}

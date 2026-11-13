@@ -1,0 +1,5 @@
+# Both come in through svelte-i18n. es5-ext's install script only prints a
+# message, so it stays off.
+allowBuilds:
+  esbuild: true
+  es5-ext: false

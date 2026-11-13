@@ -394,6 +394,10 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_global_sync(enabled).await })
                     .await
             }
+            Request::SetBackupOnClose { enabled } => {
+                self.with_engine(|h| async move { h.set_backup_on_close(enabled).await })
+                    .await
+            }
             Request::SetPlanCap { limit_bytes, plan } => {
                 self.with_engine(|h| async move { h.set_plan_cap(limit_bytes, plan).await })
                     .await
@@ -450,6 +454,14 @@ impl Daemon {
                 match tokio::task::spawn_blocking(move || hoard_agent::catalog::facts(&slug)).await
                 {
                     Ok(facts) => Reply::Ok(Payload::GameFacts(facts)),
+                    Err(err) => internal(err.into()),
+                }
+            }
+            // Blocking for seconds on a NAS: it sweeps the disks for Steam libraries.
+            Request::PlaytimeGames => {
+                match tokio::task::spawn_blocking(hoard_agent::library::playtime_games).await {
+                    Ok(Ok(games)) => json_payload(&games, |games| Payload::PlaytimeGames { games }),
+                    Ok(Err(err)) => internal(err),
                     Err(err) => internal(err.into()),
                 }
             }
@@ -704,7 +716,8 @@ where
                 // two would appear in neither the backlog nor the push, which is the
                 // silent gap this design exists to close.
                 let rx = daemon.log.subscribe();
-                let backlog = daemon.log.since(since.unwrap_or(0));
+                let mut backlog = daemon.log.since(since.unwrap_or(0));
+                backlog.entries.retain(|e| e.event.reaches(&hello.caps));
                 let cursor = backlog.cursor;
                 if backlog.gap {
                     tracing::info!(
@@ -726,6 +739,7 @@ where
                     out.clone(),
                     cursor,
                     daemon.log.clone(),
+                    hello.caps.clone(),
                 ))) {
                     // Re-subscribing replaces the previous subscription; two pushers
                     // per connection would double every event.
@@ -831,6 +845,7 @@ async fn push_loop(
     out: mpsc::Sender<ServerFrame>,
     mut cursor: u64,
     log: Arc<EventLog>,
+    caps: Vec<String>,
 ) {
     let mut notes_open = true;
     loop {
@@ -849,6 +864,9 @@ async fn push_loop(
                         continue;
                     }
                     cursor = entry.seq;
+                    if !entry.event.reaches(&caps) {
+                        continue;
+                    }
                     if out.send(ServerFrame::Event(entry)).await.is_err() {
                         return;
                     }

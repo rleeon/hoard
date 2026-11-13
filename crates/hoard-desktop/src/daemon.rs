@@ -57,7 +57,7 @@ use hoard_agent::supervisor::{self, Finished};
 use hoard_core::ipc::{
     AdoptedSession, AgentSlotStatus, CloudToken, DaemonStatus, EngineDownReason, IpcError,
     KeyringFault, NotificationSwitch, NotificationSwitches, Payload, Request, ScanNote,
-    ServerSession, UpdateState, CAP_DETECTION, CAP_NOTICES,
+    ServerSession, UpdateState, CAP_DETECTION, CAP_NOTICES, CAP_SYNC_SETTLED,
 };
 use hoardd::client::{Client, Push};
 use hoardd::endpoint::Endpoint;
@@ -75,8 +75,9 @@ fn client_name(role: &str) -> String {
 /// What this desktop tells the service it can do beyond protocol 1: leave
 /// detection, automatic mode and the catalogue to it (ADR 0021, Slice 8), and paint
 /// the notices it is handed. Every connection says so, or the service would take
-/// that one for an older desktop and stand aside.
-const CAPS: &[&str] = &[CAP_DETECTION, CAP_NOTICES];
+/// that one for an older desktop and stand aside. And it reads the two events that
+/// close a sync with nothing to move (`BackupUnchanged`, `SaveSynced`).
+const CAPS: &[&str] = &[CAP_DETECTION, CAP_NOTICES, CAP_SYNC_SETTLED];
 
 /// Who runs detection, as the last welcome said (see [`DaemonLink::owns_detection`]).
 const DETECTION_UNKNOWN: u8 = 0;
@@ -961,6 +962,8 @@ fn emit_event(app: &AppHandle, ev: &AgentEvent) {
         AgentEvent::RestoreDeferred { .. } => "agent://restore-deferred",
         AgentEvent::SaveAutoRestoreStuck { .. } => "agent://save-auto-restore-stuck",
         AgentEvent::SaveAutoRestoreRecovered { .. } => "agent://save-auto-restore-recovered",
+        AgentEvent::BackupUnchanged { .. } => "agent://backup-unchanged",
+        AgentEvent::SaveSynced { .. } => "agent://save-synced",
     };
     let _ = app.emit(topic, ev);
 

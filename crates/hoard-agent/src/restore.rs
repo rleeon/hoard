@@ -201,6 +201,23 @@ fn concurrency_override() -> Option<usize> {
         .filter(|n| (1..=64).contains(n))
 }
 
+/// The files of a version the gate kept off this machine, as one line at the level
+/// a report carries: the per-file lines are debug. A Deck that never received four
+/// files of a desktop's RetroArch folder sent a log with nothing about it (Nov 2026).
+fn log_withheld(mut withheld: Vec<&str>) {
+    if withheld.is_empty() {
+        return;
+    }
+    withheld.sort_unstable();
+    let count = withheld.len();
+    withheld.truncate(8);
+    tracing::info!(
+        count,
+        sample = ?withheld,
+        "restore: files of this version not written here (settings or this machine's own data)"
+    );
+}
+
 /// Slack factor over the manifest-declared expanded size: enough room for
 /// unlisted sidecar files while still bounding a bomb to ~2× the real payload.
 const RESTORE_SIZE_SLACK: u64 = 2;
@@ -581,6 +598,15 @@ where
     ensure_single_file_shape(dest, &names)?;
     let single_file = extraction_root(dest, &names) != dest;
     ensure_may_write(dest, single_file, options.force)?;
+    if !single_file {
+        log_withheld(
+            expected
+                .keys()
+                .map(String::as_str)
+                .filter(|k| !options.gate.allows(k))
+                .collect(),
+        );
+    }
 
     // What has to arrive: every file of the version, minus the ones the gate
     // keeps off this machine. The server builds the tar from the same rows it
@@ -1127,6 +1153,16 @@ where
             })
             .collect()
     };
+    if !single_file {
+        log_withheld(
+            manifest
+                .files
+                .iter()
+                .map(|f| f.relative_path.as_str())
+                .filter(|p| !options.gate.allows(p))
+                .collect(),
+        );
+    }
 
     let total: u64 = kept.iter().map(|f| f.size_bytes.max(0) as u64).sum();
 
@@ -1684,6 +1720,7 @@ where
     let mut files_extracted = 0usize;
     let mut bytes_extracted = 0u64;
     let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut withheld: Vec<String> = Vec::new();
     let mut clash = CaseClash::new(dest);
 
     while let Some(entry) = entries.next().await {
@@ -1720,6 +1757,7 @@ where
                 .allows(&safe_rel.to_string_lossy().replace('\\', "/"))
         {
             tracing::debug!(path = %safe_rel.display(), "restore: skipping device-local file");
+            withheld.push(safe_rel.to_string_lossy().replace('\\', "/"));
             continue;
         }
         clash.check(&safe_rel.to_string_lossy())?;
@@ -1749,6 +1787,7 @@ where
         bytes_extracted += written;
         files_extracted += 1;
     }
+    log_withheld(withheld.iter().map(String::as_str).collect());
 
     Ok(RestoreOutcome {
         files_extracted,
@@ -2303,7 +2342,7 @@ fn discard_kept(kept: &[PathBuf]) {
 /// `fsync` through `file`. A filesystem that cannot (some FUSE and network
 /// mounts answer "not supported") is let through: it never could, and
 /// refusing would make restoring there impossible.
-fn sync_handle(file: &std::fs::File) -> std::io::Result<()> {
+pub(crate) fn sync_handle(file: &std::fs::File) -> std::io::Result<()> {
     match file.sync_all() {
         Err(e)
             if matches!(
@@ -2400,7 +2439,7 @@ fn replace_with(from: &Path, target: &Path, perms: Option<std::fs::Permissions>)
 /// every restore of one failed with "access denied". The mark is lifted for the
 /// swap and, if the swap still fails, put back. The new file's mode is the
 /// caller's to set, as for any other.
-fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
+pub(crate) fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
     let first = std::fs::rename(from, target);
     #[cfg(windows)]
     if let Err(e) = &first {
@@ -2427,7 +2466,7 @@ fn rename_over(from: &Path, target: &Path) -> std::io::Result<()> {
 
 /// `.<name>.<pid>-<seq>.hoard.tmp` next to `target`. The `.tmp` extension is
 /// junk to the backup walk, so one left behind by a crash is never uploaded.
-fn temp_beside(target: &Path) -> PathBuf {
+pub(crate) fn temp_beside(target: &Path) -> PathBuf {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let name = target
         .file_name()

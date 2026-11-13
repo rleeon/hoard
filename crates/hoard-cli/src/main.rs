@@ -356,8 +356,8 @@ async fn dispatch(cli: Cli) -> Result<()> {
         return Err(output::err(
             "json_unsupported",
             "this command has no --json output yet. The ones that do: saves, \
-             doctor, status, devices, whoami, scan, restore, save list, \
-             save show, save untrack, snapshots list.",
+             doctor, status, devices, notifications, whoami, scan, restore, \
+             save list, save show, save untrack, snapshots list.",
         ));
     }
 
@@ -401,7 +401,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Devices => commands::devices::run().await,
         Commands::Doctor => commands::doctor::run().await,
         Commands::Notifications { command } => commands::notifications::run(command).await,
-        Commands::Config { action } => commands::config::run(action),
+        Commands::Config { action } => commands::config::run(action).await,
         Commands::Login {
             token,
             server,
