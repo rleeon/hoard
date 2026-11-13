@@ -1,0 +1,5 @@
+# Neither install script has ever run here (the old pnpm skipped them all) and
+# the site builds without them.
+allowBuilds:
+  esbuild: false
+  es5-ext: false

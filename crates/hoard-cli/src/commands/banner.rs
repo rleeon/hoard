@@ -15,8 +15,8 @@ use anyhow::Result;
 use hoard_agent::api::ApiClient;
 use hoard_agent::config::CliConfig;
 
-/// Block "H" logo (8 rows, 10 columns). Fixed width so the right-hand info
-/// column lines up.
+/// Block "H" logo, 8 rows of 12 columns. Every row is the same width so the
+/// right-hand info column lines up.
 const LOGO: [&str; 8] = [
     "███      ███",
     "███      ███",
@@ -27,7 +27,6 @@ const LOGO: [&str; 8] = [
     "███      ███",
     "███      ███",
 ];
-const LOGO_WIDTH: usize = 10;
 
 /// Emerald-500 (#10b981) in truecolor. Disabled when not a tty or when the user
 /// sets `NO_COLOR`.
@@ -335,10 +334,12 @@ pub async fn show(full: bool) -> Result<()> {
 
     println!();
     let rows = LOGO.len().max(info.len());
+    // Rows past the logo pad to its measured width, so the info column stays put.
+    let logo_width = LOGO[0].chars().count();
     for i in 0..rows {
         let left = match LOGO.get(i) {
             Some(row) => emerald(row, color),
-            None => " ".repeat(LOGO_WIDTH),
+            None => " ".repeat(logo_width),
         };
         let text = info.get(i).map(String::as_str).unwrap_or("");
         println!("  {left}   {text}");

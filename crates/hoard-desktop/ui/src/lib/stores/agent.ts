@@ -192,7 +192,9 @@ export const trayState = derived<
   if (states.some((s) => s === "failed")) return "error";
   if (states.some((s) => s === "uploading")) return "uploading";
   if (states.some((s) => s === "scheduled")) return "uploading";
-  if (states.some((s) => s === "running")) return "running";
+  // By the session, not the state: a failed or partial copy taken mid-game
+  // takes the state over, and the game is no less open for it.
+  if (Object.values($activity).some((a) => a.running_since != null)) return "running";
   // "partial" still means the last sync succeeded, the tray stays green so we
   // don't cry wolf; the plan-limit warning lives on the save row + toast.
   if (states.some((s) => s === "ok" || s === "partial")) return "ok";
@@ -242,6 +244,14 @@ function patch(save_id: string, partial: Partial<SaveActivity>) {
   });
 }
 
+/** Where a save rests once an upload is over: on the game, if it is still open.
+ *  A backup taken mid-session used to leave the card on "Synced" and drop the
+ *  game from the Eye panel until the next launch (issue #68), while the engine
+ *  went on treating it as running. */
+function settledState(save_id: string, otherwise: SaveActivity["state"]): SaveActivity["state"] {
+  return get(activity)[save_id]?.running_since != null ? "running" : otherwise;
+}
+
 /** Apply one event. `at` is when it actually happened (epoch ms), it defaults
  *  to "now" for live events and carries the journal's timestamp when we're
  *  replaying, so a session that started two hours ago reads as two hours and
@@ -284,7 +294,7 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         return rest;
       });
       patch(ev.save_id, {
-        state: "ok",
+        state: settledState(ev.save_id, "ok"),
         last_version: ev.version_num,
         // With `already_landed` not one byte travelled (the content was already up
         // there), so painting 0 B would erase the size of the last real backup. The
@@ -474,9 +484,27 @@ function applyEvent(ev: AgentEvent, at: number = Date.now()) {
         wrongPathSuspected.update((m) => ({ ...m, [ev.save_id]: true }));
       }
       patch(ev.save_id, {
-        state: "idle",
+        state: settledState(ev.save_id, "idle"),
         error: undefined,
         will_retry: undefined,
+      });
+      break;
+    }
+    case "backup_unchanged": {
+      // Only a countdown or an upload is closed here: a failure or a finished
+      // backup that arrived in between already says more.
+      const prev = get(activity)[ev.save_id];
+      if (prev?.state !== "scheduled" && prev?.state !== "uploading") break;
+      patch(ev.save_id, {
+        state: settledState(ev.save_id, "idle"),
+        next_backup_at: undefined,
+      });
+      break;
+    }
+    case "save_synced": {
+      const prev = get(activity)[ev.save_id]?.last_version;
+      patch(ev.save_id, {
+        last_version: Math.max(prev ?? ev.version_num, ev.version_num),
       });
       break;
     }
@@ -535,6 +563,8 @@ export async function subscribeAgent() {
     "agent://save-auto-restore-stuck",
     "agent://save-auto-restore-recovered",
     "agent://backup-skipped-empty",
+    "agent://backup-unchanged",
+    "agent://save-synced",
   ];
   unlisteners = await Promise.all(
     topics.map((t) =>
