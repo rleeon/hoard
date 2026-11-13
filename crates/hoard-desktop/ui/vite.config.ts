@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import tailwindcss from "@tailwindcss/vite";
@@ -43,5 +44,12 @@ export default defineConfig(async () => ({
       // Don't watch the Rust src or generated files.
       ignored: ["**/src-tauri/**", "**/target/**"],
     },
+  },
+  // `pnpm test`. The suites cover plain TypeScript (formatters, error mapping),
+  // so they run in Node: no DOM to fake, and nothing calls into Tauri. Nothing
+  // imports a `*.test.ts`, so none of it reaches the bundle.
+  test: {
+    include: ["src/**/*.test.ts"],
+    environment: "node",
   },
 }));
