@@ -17,6 +17,7 @@ pub mod events;
 pub mod games;
 pub mod health;
 pub mod logs;
+pub mod oidc;
 pub mod overview;
 pub mod panel;
 pub mod playtime;

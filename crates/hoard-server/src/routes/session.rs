@@ -1,4 +1,5 @@
-//! Password login for the browser panel.
+//! Password login for the browser panel, and the header login that stands in
+//! for it behind an authenticating reverse proxy ([`proxy_login`]).
 //!
 //! Until now `users.password_hash` was written by `hoard-admin user create`
 //! and read by nobody: the only way in was a `hoard_v1_…` token, which is the
@@ -20,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use axum::{
     extract::{ConnectInfo, Extension, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderName, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -74,7 +75,7 @@ fn fail(status: StatusCode, code: &str) -> (StatusCode, Json<serde_json::Value>)
     (status, Json(serde_json::json!({ "error": code })))
 }
 
-type ApiError = (StatusCode, Json<serde_json::Value>);
+pub(crate) type ApiError = (StatusCode, Json<serde_json::Value>);
 
 /// `POST /v1/auth/login`: exchange username and password for a session cookie.
 pub async fn login(
@@ -83,6 +84,11 @@ pub async fn login(
     headers: HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Result<Response, ApiError> {
+    // The route is not mounted when this is off; refusing here as well keeps
+    // the guarantee from depending on how the router was put together.
+    if !state.config.panel.password_login {
+        return Err(fail(StatusCode::NOT_FOUND, "not_enabled"));
+    }
     let username = body.username.trim().to_string();
     let origin = crate::clientip::client_ip(&headers, peer, &state.trusted_proxies);
     // Bucketed, not the bare address: an IPv6 client owns a /64 and would
@@ -115,7 +121,7 @@ pub async fn login(
             .into_response());
     }
 
-    let user = lookup_user(&state.pool, &username)
+    let user = lookup_user(&state.pool, &username, true)
         .await
         .map_err(|e| internal(e, "panel login lookup"))?;
 
@@ -123,9 +129,10 @@ pub async fn login(
     // the same thing, or the login form doubles as a "does this account exist"
     // oracle. The dummy hash below is a real argon2 verify against a hash of
     // random bytes, so the timing matches too.
+    // An account with no password answers exactly like one that doesn't exist.
     let (user_id, real_username, is_admin, hash) = match user {
-        Some(u) => u,
-        None => {
+        Some(u) if u.3 != NO_PASSWORD => u,
+        _ => {
             let _ = hoard_core::hashing::verify_password(&body.password, dummy_hash());
             record_failure(&throttle_key, MAX_FAILURES, window);
             record_failure(&origin_key, MAX_FAILURES_PER_ORIGIN, window);
@@ -152,7 +159,7 @@ pub async fn login(
     // budget between guesses at everyone else's.
     clear_failures(&throttle_key);
 
-    let ttl_secs = (state.config.panel.session_days.max(1) * 86_400) as i64;
+    let ttl_secs = state.config.panel.session_secs();
     let token = mint_session(&state.pool, &user_id, ttl_secs)
         .await
         .map_err(|e| internal(e, "panel session mint"))?;
@@ -193,7 +200,7 @@ pub async fn exchange_token(
     Extension(user): Extension<AuthUser>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let ttl_secs = (state.config.panel.session_days.max(1) * 86_400) as i64;
+    let ttl_secs = state.config.panel.session_secs();
     let token = mint_session(&state.pool, &user.user_id.to_string(), ttl_secs)
         .await
         .map_err(|e| internal(e, "panel token exchange"))?;
@@ -211,6 +218,293 @@ pub async fn exchange_token(
         }),
     )
         .into_response())
+}
+
+/// Can header login run with this header name and this trust list? Checked at
+/// boot, where an `Err` keeps `/panel/auth/proxy` unmounted and is logged, and
+/// again by [`proxy_login`] itself, so the handler is safe wherever it is
+/// mounted.
+pub fn proxy_login_header(
+    raw: &str,
+    trusted: &crate::clientip::TrustedProxies,
+) -> Result<HeaderName, &'static str> {
+    // `from_bytes` lowercases, which is what `HeaderMap` keys on anyway.
+    let name =
+        HeaderName::from_bytes(raw.trim().as_bytes()).map_err(|_| "not a valid header name")?;
+    if trusted.trusts_everyone() {
+        return Err(
+            "server.trusted_proxies trusts every peer, so any client could \
+             write the header and sign in as anyone",
+        );
+    }
+    if trusted.is_empty() {
+        return Err("server.trusted_proxies is empty, so the header would never be believed");
+    }
+    Ok(name)
+}
+
+fn header_login_name(state: &ServerState) -> Option<HeaderName> {
+    state
+        .config
+        .panel
+        .trusted_header()
+        .and_then(|raw| proxy_login_header(raw, &state.trusted_proxies).ok())
+}
+
+/// What the gate needs before anyone has signed in: which ways in are open and
+/// where "Sign out" leads. The header's name stays out of it on purpose; it is
+/// the one detail useful only to someone trying to forge it.
+#[derive(Serialize)]
+pub struct AuthConfig {
+    pub password_login: bool,
+    pub header_login: bool,
+    /// The OIDC button's label, when there is one.
+    pub oidc: Option<String>,
+    pub logout_url: Option<String>,
+}
+
+/// `GET /panel/auth/config`
+pub async fn auth_config(State(state): State<Arc<ServerState>>) -> Json<AuthConfig> {
+    Json(AuthConfig {
+        password_login: state.config.panel.password_login,
+        header_login: header_login_name(&state).is_some(),
+        oidc: state
+            .config
+            .panel
+            .oidc
+            .enabled()
+            .and_then(|_| state.config.panel.oidc.label()),
+        logout_url: state.config.panel.logout_url().map(str::to_string),
+    })
+}
+
+enum HeaderValueCount<'a> {
+    Missing,
+    One(&'a str),
+    Repeated(usize),
+}
+
+/// A proxy that appends instead of overwriting forwards the client's copy
+/// first, and the first one is what a plain lookup would read. More than one
+/// value is never guessed at.
+fn single_value<'a>(headers: &'a HeaderMap, name: &HeaderName) -> HeaderValueCount<'a> {
+    let values: Vec<_> = headers.get_all(name).iter().collect();
+    match values.as_slice() {
+        [] => HeaderValueCount::Missing,
+        // UTF-8 rather than `to_str`, which takes visible ASCII only: a name
+        // with an accent would otherwise read as no name at all, and the gate
+        // would say nothing about why.
+        [one] => match std::str::from_utf8(one.as_bytes()).map(str::trim) {
+            Ok(v) if !v.is_empty() => HeaderValueCount::One(v),
+            _ => HeaderValueCount::Missing,
+        },
+        many => HeaderValueCount::Repeated(many.len()),
+    }
+}
+
+/// Groups as the common proxies send them: Authelia and oauth2-proxy separate
+/// with commas, Authentik with `|`.
+pub(crate) fn split_groups(raw: &str) -> impl Iterator<Item = &str> {
+    raw.split([',', '|'])
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+}
+
+/// `POST /panel/auth/proxy`: sign in as the account an authenticating reverse
+/// proxy names in `panel.trusted_header`.
+///
+/// It lives under `/panel` rather than `/v1/auth` so that the one proxy rule
+/// guarding the pages guards this too, and `/v1/` can stay outside the
+/// proxy's authentication, where device tokens need it.
+///
+/// What stands between the header and a session:
+///
+/// * Header login must be configured, with a trust list that names someone
+///   and is not `any` ([`proxy_login_header`]). Otherwise 404.
+/// * The connection must come from `server.trusted_proxies`. Anybody else can
+///   write any header they like. 403.
+/// * The header must arrive exactly once ([`single_value`]). 400.
+/// * It must name an account that exists, matched exactly unless
+///   `trusted_header_ignore_case` says otherwise. With
+///   `trusted_header_create_accounts` a new name gets an account without a
+///   password instead of a 403.
+///
+/// No password is checked, so there is no throttle to spend: the per-IP rate
+/// limit in front of every route is enough. What it mints is the same session
+/// the password login mints, so it lists, expires and revokes the same way,
+/// lasting `trusted_header_session_minutes` when that is set.
+pub async fn proxy_login(
+    State(state): State<Arc<ServerState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let Some(name) = header_login_name(&state) else {
+        return Err(fail(StatusCode::NOT_FOUND, "not_enabled"));
+    };
+    let panel = &state.config.panel;
+
+    let value = single_value(&headers, &name);
+    if !state.trusted_proxies.contains(peer.ip()) {
+        // Only worth a warning when the header is there. Without it this is
+        // just the panel trying header login on a direct visit.
+        if !matches!(value, HeaderValueCount::Missing) {
+            tracing::warn!(
+                %peer,
+                header = %name,
+                "panel: header login from a peer outside server.trusted_proxies, refused"
+            );
+        }
+        return Err(fail(StatusCode::FORBIDDEN, "untrusted_proxy"));
+    }
+
+    let username = match value {
+        HeaderValueCount::One(v) => v,
+        HeaderValueCount::Missing => return Err(fail(StatusCode::UNAUTHORIZED, "no_identity")),
+        HeaderValueCount::Repeated(count) => {
+            tracing::warn!(
+                %peer,
+                header = %name,
+                count,
+                "panel: header login with the header repeated, refused; \
+                 the proxy must overwrite it, not append to it"
+            );
+            return Err(fail(StatusCode::BAD_REQUEST, "ambiguous_identity"));
+        }
+    };
+
+    let found = lookup_user(&state.pool, username, panel.trusted_header_ignore_case)
+        .await
+        .map_err(|e| internal(e, "panel header login lookup"))?;
+    let (user_id, real_username, mut is_admin) = match found {
+        Some((id, name, admin, _)) => (id, name, admin),
+        None if panel.trusted_header_create_accounts => {
+            create_passwordless_account(&state.pool, username).await?
+        }
+        None => {
+            tracing::warn!(%username, "panel: header login names no account here, refused");
+            // The name goes back so the gate can say whose account is missing:
+            // the proxy vouched for it, and the person reading it is the one the
+            // proxy says it is.
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({ "error": "unknown_user", "username": username })),
+            ));
+        }
+    };
+
+    if let Some((groups_header, admin_group)) = panel.trusted_admin_group() {
+        let groups = HeaderName::from_bytes(groups_header.as_bytes())
+            .map(|h| single_value(&headers, &h))
+            .unwrap_or(HeaderValueCount::Missing);
+        match groups {
+            // An identity provider that forgot to send groups is not saying
+            // "demote everyone": leave the account as it is.
+            HeaderValueCount::Missing => tracing::warn!(
+                username = %real_username,
+                header = groups_header,
+                "panel: header login without the groups header; admin rights left as they were"
+            ),
+            HeaderValueCount::Repeated(_) => {
+                return Err(fail(StatusCode::BAD_REQUEST, "ambiguous_identity"));
+            }
+            HeaderValueCount::One(raw) => {
+                let wanted = split_groups(raw).any(|g| g == admin_group);
+                if wanted != is_admin {
+                    is_admin = sync_admin(&state.pool, &user_id, &real_username, wanted).await?;
+                }
+            }
+        }
+    }
+
+    let ttl_secs = panel.header_session_secs();
+    let token = mint_session(&state.pool, &user_id, ttl_secs)
+        .await
+        .map_err(|e| internal(e, "panel header session mint"))?;
+
+    let origin = crate::clientip::client_ip(&headers, peer, &state.trusted_proxies);
+    tracing::info!(username = %real_username, %origin, header = %name, "panel: login via proxy header");
+
+    let cookie = session_cookie(&token, ttl_secs, is_secure(&headers));
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie)],
+        Json(LoginOk {
+            username: real_username,
+            is_admin,
+            expires_in_secs: ttl_secs,
+        }),
+    )
+        .into_response())
+}
+
+/// First sign-in of someone the server has never seen, through the header or
+/// OIDC: an account with no password and no admin rights. Two tabs racing on
+/// that first sign-in both try the insert; the loser finds the winner's row.
+pub(crate) async fn create_passwordless_account(
+    pool: &sqlx::SqlitePool,
+    username: &str,
+) -> Result<(String, String, bool), ApiError> {
+    if !crate::routes::admin::valid_username(username) {
+        tracing::warn!(%username, "panel: sign-in names an account that can't be created");
+        return Err(fail(StatusCode::BAD_REQUEST, "bad_username"));
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let inserted =
+        sqlx::query("INSERT INTO users (id, username, password_hash, is_admin) VALUES (?,?,?,0)")
+            .bind(&id)
+            .bind(username)
+            .bind(NO_PASSWORD)
+            .execute(pool)
+            .await;
+    match inserted {
+        Ok(_) => {
+            tracing::info!(%username, "panel: account created at first sign-in");
+            Ok((id, username.to_string(), false))
+        }
+        Err(e) if crate::routes::admin::is_unique_violation(&e) => {
+            match lookup_user(pool, username, false).await {
+                Ok(Some((id, name, admin, _))) => Ok((id, name, admin)),
+                Ok(None) => Err(internal(e.into(), "header account create")),
+                Err(e) => Err(internal(e, "header account create lookup")),
+            }
+        }
+        Err(e) => Err(internal(e.into(), "header account create")),
+    }
+}
+
+/// Bring the admin bit in line with the identity provider's groups. Demoting
+/// the last admin is refused in the same statement that would do it, the
+/// rule the users tab follows: a server with no admins can't promote anyone
+/// back without a shell on the box. Returns the bit as it now stands.
+pub(crate) async fn sync_admin(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    username: &str,
+    make_admin: bool,
+) -> Result<bool, ApiError> {
+    let changed = if make_admin {
+        sqlx::query("UPDATE users SET is_admin = 1 WHERE id = ?")
+            .bind(user_id)
+            .execute(pool)
+            .await
+    } else {
+        sqlx::query(
+            "UPDATE users SET is_admin = 0 WHERE id = ? \
+             AND (SELECT COUNT(*) FROM users WHERE is_admin <> 0) > 1",
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await
+    }
+    .map_err(|e| internal(e.into(), "header admin sync"))?
+    .rows_affected();
+
+    if changed == 0 && !make_admin {
+        tracing::warn!(%username, "panel: identity provider dropped the last admin; kept as admin");
+        return Ok(true);
+    }
+    tracing::info!(%username, admin = make_admin, "panel: admin rights follow the identity provider");
+    Ok(make_admin)
 }
 
 /// `POST /v1/auth/logout`: revoke the session this request arrived with.
@@ -308,7 +602,7 @@ pub async fn change_password(
 /// device, so it is a value, not a label: changing it orphans existing rows.
 pub const SESSION_DEVICE_NAME: &str = "web panel";
 
-async fn mint_session(
+pub(crate) async fn mint_session(
     pool: &sqlx::SqlitePool,
     user_id: &str,
     ttl_secs: i64,
@@ -334,13 +628,20 @@ async fn mint_session(
     Ok(token)
 }
 
+/// `users.password_hash` of an account that signs in only through the
+/// identity provider or with a token. Not an argon2 string, so no password can
+/// ever verify against it, and `hoard-admin user passwd` turns the account into
+/// an ordinary one.
+pub const NO_PASSWORD: &str = "!";
+
 /// Exact match first; a case-insensitive match only counts when it is the only
 /// one. `users.username` is UNIQUE but case-sensitively so, meaning `Ana` and
 /// `ana` can both exist. Rare, but if they do, "whichever `COLLATE NOCASE`
 /// returns first" would be a coin flip deciding whose account you enter.
-async fn lookup_user(
+pub(crate) async fn lookup_user(
     pool: &sqlx::SqlitePool,
     username: &str,
+    ignore_case: bool,
 ) -> anyhow::Result<Option<(String, String, bool, String)>> {
     let exact: Option<(String, String, i64, String)> = sqlx::query_as(
         "SELECT id, username, is_admin, password_hash FROM users WHERE username = ?",
@@ -350,6 +651,9 @@ async fn lookup_user(
     .await?;
     if let Some(r) = exact {
         return Ok(Some((r.0, r.1, r.2 != 0, r.3)));
+    }
+    if !ignore_case {
+        return Ok(None);
     }
 
     let loose: Vec<(String, String, i64, String)> = sqlx::query_as(
@@ -366,7 +670,7 @@ async fn lookup_user(
     Ok(None)
 }
 
-fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
+pub(crate) fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
     let mut c =
         format!("{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ttl_secs}");
     if secure {
@@ -379,7 +683,7 @@ fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
 /// instance on plain `http://192.168.1.x:12421` is the common self-hosted
 /// shape, and a `Secure` cookie there is one the browser accepts and never
 /// sends back: a login that silently does nothing.
-fn is_secure(headers: &HeaderMap) -> bool {
+pub(crate) fn is_secure(headers: &HeaderMap) -> bool {
     headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
@@ -393,7 +697,7 @@ fn is_secure(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
-fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+pub(crate) fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
     raw.split(';')
         .filter_map(|p| p.split_once('='))
@@ -401,7 +705,7 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|(_, v)| v.trim().to_string())
 }
 
-fn internal(e: anyhow::Error, what: &str) -> ApiError {
+pub(crate) fn internal(e: anyhow::Error, what: &str) -> ApiError {
     tracing::error!(error = %e, "{what} failed");
     fail(StatusCode::INTERNAL_SERVER_ERROR, "internal")
 }
@@ -623,5 +927,40 @@ mod tests {
         }
         assert!(throttled_for(origin, MAX_FAILURES_PER_ORIGIN, W).is_some());
         clear_failures(origin);
+    }
+
+    fn trusting(entries: &[&str]) -> crate::clientip::TrustedProxies {
+        let list: Vec<String> = entries.iter().map(|s| s.to_string()).collect();
+        crate::clientip::TrustedProxies::parse(&list).0
+    }
+
+    #[test]
+    fn header_login_takes_a_header_name_in_any_case() {
+        let name = proxy_login_header(" Remote-User ", &trusting(&["loopback"])).unwrap();
+        assert_eq!(name.as_str(), "remote-user");
+    }
+
+    /// With `any`, the header is whatever the caller says it is. That is a
+    /// rate-limit bucket picked badly; for a login it is every account open to
+    /// everyone, so header login does not start.
+    #[test]
+    fn header_login_refuses_a_trust_list_that_believes_everyone() {
+        assert!(proxy_login_header("remote-user", &trusting(&["loopback", "any"])).is_err());
+    }
+
+    #[test]
+    fn header_login_refuses_a_trust_list_that_believes_nobody() {
+        assert!(proxy_login_header("remote-user", &trusting(&[])).is_err());
+    }
+
+    #[test]
+    fn groups_split_on_commas_and_pipes() {
+        let groups: Vec<_> = split_groups(" users, hoard-admins|family ,,").collect();
+        assert_eq!(groups, ["users", "hoard-admins", "family"]);
+    }
+
+    #[test]
+    fn header_login_refuses_a_name_that_is_not_a_header() {
+        assert!(proxy_login_header("remote user", &trusting(&["loopback"])).is_err());
     }
 }

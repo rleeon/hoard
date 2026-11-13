@@ -38,6 +38,9 @@
     <h1 class="gate-title">Hoard</h1>
     <p class="gate-sub" data-i18n="gate.subtitle"></p>
 
+    <button id="oidc-btn" class="primary" type="button" hidden></button>
+    <p id="oidc-or" class="gate-or" data-i18n="gate.or" hidden></p>
+
     <form id="login-form" autocomplete="on">
       <label class="field">
         <span data-i18n="gate.username"></span>
@@ -182,6 +185,7 @@
           <div>
             <h2 data-i18n="users.title"></h2>
             <p class="caption" data-i18n="users.caption"></p>
+            <p id="users-signin" class="caption" hidden></p>
           </div>
           <button id="btn-new-user" class="ghost" type="button" data-i18n="users.new"></button>
         </div>

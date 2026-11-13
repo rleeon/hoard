@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use crate::auth::AuthUser;
 use crate::routes::health::ServerState;
-use crate::routes::session::SESSION_DEVICE_NAME;
+use crate::routes::session::{NO_PASSWORD, SESSION_DEVICE_NAME};
 
 /// Filename of the upgrade marker, dropped in the server's writable
 /// `data_dir`. A root systemd path-unit (`hoard-upgrade.path`) watches for
@@ -345,19 +345,20 @@ pub const MIN_PASSWORD_LEN: usize = 8;
 const MAX_USERNAME_LEN: usize = 64;
 
 /// A username has to survive being typed into `hoard-admin token create <name>`
-/// and into a URL, so it is deliberately narrow: letters, digits, and the three
-/// separators that do not need quoting in a shell.
-fn valid_username(name: &str) -> bool {
+/// and into a URL, so it is deliberately narrow: letters, digits, and the
+/// separators that do not need quoting in a shell. `@` and `+` are there so an
+/// identity provider that names people by email can map them onto accounts.
+pub(crate) fn valid_username(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= MAX_USERNAME_LEN
         && name
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '@' | '+'))
 }
 
 /// True when the error is SQLite's UNIQUE violation, which for every statement
 /// here means the username is taken.
-fn is_unique_violation(e: &sqlx::Error) -> bool {
+pub(crate) fn is_unique_violation(e: &sqlx::Error) -> bool {
     matches!(e, sqlx::Error::Database(d) if d.code().as_deref() == Some("2067") || d.is_unique_violation())
 }
 
@@ -521,17 +522,27 @@ pub async fn create_user(
     if !valid_username(&username) {
         return Err(err(StatusCode::BAD_REQUEST, "bad_username"));
     }
-    if body.password.len() < MIN_PASSWORD_LEN {
+    // A blank password makes an account that only the identity provider (or a
+    // token) gets into. Only offered when there is one, through the header or
+    // OIDC: anywhere else a blank field is a forgotten one.
+    let idp = state.config.panel.trusted_header().is_some()
+        || state.config.panel.oidc.enabled().is_some();
+    let passwordless = body.password.is_empty() && idp;
+    if !passwordless && body.password.len() < MIN_PASSWORD_LEN {
         return Err(err(StatusCode::BAD_REQUEST, "password_too_short"));
     }
     if body.storage_quota_bytes.is_some_and(|q| q < 0) {
         return Err(err(StatusCode::BAD_REQUEST, "bad_quota"));
     }
 
-    let hash = hoard_core::hashing::hash_password(&body.password).map_err(|e| {
-        tracing::error!(error = %e, "admin password hash failed");
-        err(StatusCode::INTERNAL_SERVER_ERROR, "internal")
-    })?;
+    let hash = if passwordless {
+        NO_PASSWORD.to_string()
+    } else {
+        hoard_core::hashing::hash_password(&body.password).map_err(|e| {
+            tracing::error!(error = %e, "admin password hash failed");
+            err(StatusCode::INTERNAL_SERVER_ERROR, "internal")
+        })?
+    };
     let id = uuid::Uuid::new_v4().to_string();
 
     sqlx::query("INSERT INTO users (id, username, password_hash, is_admin) VALUES (?,?,?,?)")

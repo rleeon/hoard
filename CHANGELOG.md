@@ -8,6 +8,28 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
 
 ## [Unreleased]
 
+### Added
+- **Sign in to the panel through your identity provider.** Behind Authelia,
+  Authentik, oauth2-proxy or another authenticating reverse proxy, set
+  `panel.trusted_header` (for example `"Remote-User"`) and the panel opens
+  without a password: `POST /panel/auth/proxy` trades the header for an
+  ordinary browser session. The header counts only from a peer in
+  `server.trusted_proxies` (header login refuses to start if that list is
+  `any` or empty) and only when it arrives once. Everything else is opt-in:
+  matching names without minding case, creating accounts on first sign-in,
+  admin rights that follow a group, short sessions that renew through the
+  proxy, turning the password form off, and a logout page to send people to.
+  Accounts can now be created without a password (`hoard-admin user create
+  --no-password`, or a blank password in the users tab while header login is
+  set up), and usernames may contain `@` and `+`.
+- **Sign in to the panel with OpenID Connect.** No proxy needed: set
+  `[panel.oidc]` with your provider's issuer and a client id, and the sign-in
+  page gets a "Sign in with ..." button for Authelia, Authentik, Keycloak,
+  Google or any other OpenID Connect provider. The authorization code flow
+  with PKCE, ID tokens checked against the provider's published keys, and the
+  same opt-in account options as the header login: matching without minding
+  case, accounts created on first sign-in, admin rights from a groups claim.
+
 ### Changed
 - **The per-IP rate limit only believes `X-Forwarded-For` from a trusted
   proxy.** Without `server.rate_limit.client_ip_header` it took the leftmost

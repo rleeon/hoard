@@ -26,12 +26,17 @@ const LOCALES = [
 ];
 
 const LOCALE_KEY = "hoard.panel.locale";
+// Set by an explicit sign-out, read once by the boot that follows it. See boot().
+const SIGNED_OUT_KEY = "hoard.panel.signed_out";
 
 let S = {};            // active locale strings
 let locale = "en";
 let me = null;         // { username, is_admin } once past the gate
 let overview = null;   // last /v1/me/overview payload
 let adminData = null;  // last /v1/admin/overview payload
+// Which ways in this server offers, from /panel/auth/config. The defaults are
+// what a server without that route does.
+let authCfg = { password_login: true, header_login: false, oidc: null, logout_url: null };
 
 // ---------------------------------------------------------------------------
 // tiny DOM builder
@@ -200,7 +205,7 @@ class ApiError extends Error {
   }
 }
 
-async function api(path, opts = {}) {
+async function api(path, opts = {}, renewed = false) {
   const res = await fetch(path, {
     ...opts,
     headers: { ...(opts.body ? { "content-type": "application/json" } : {}), ...(opts.headers || {}) },
@@ -217,10 +222,43 @@ async function api(path, opts = {}) {
   // treating that as a dead session threw the user out to the login screen
   // over a typo. The server distinguishes them by code; trust it.
   if (res.status === 401 && code !== "invalid_credentials" && me) {
+    // A header session can be short on purpose. The proxy hands out the next
+    // one for as long as the identity provider still vouches for this person,
+    // which is the whole point of keeping it short.
+    if (!renewed && authCfg.header_login && await renewSession()) return api(path, opts, true);
     me = null;
     showGate(t("error.session_expired"));
   }
   throw new ApiError(res.status, code, body);
+}
+
+let renewing = null;
+// One renewal for every request that hit the same expired cookie at once.
+function renewSession() {
+  renewing ??= fetch("/panel/auth/proxy", { method: "POST" })
+    .then((r) => r.ok)
+    .catch(() => false)
+    .finally(() => { renewing = null; });
+  return renewing;
+}
+
+// Where the OIDC callback leaves its reason when a sign-in did not work. Read
+// once, then taken out of the address bar so a reload doesn't repeat it.
+function takeLoginError() {
+  const q = new URLSearchParams(location.search);
+  const code = q.get("login_error");
+  if (!code) return null;
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (code === "oidc_unknown_user") return t("error.oidc_unknown_user", { user: q.get("user") || "" });
+  if (code === "oidc_expired" || code === "oidc_no_name" || code === "bad_username") return t("error." + code);
+  return t("error.oidc_failed");
+}
+
+async function loadAuthConfig() {
+  try {
+    const res = await fetch("/panel/auth/config");
+    if (res.ok) authCfg = { ...authCfg, ...(await res.json()) };
+  } catch { /* keep the defaults */ }
 }
 
 function errorText(e) {
@@ -262,6 +300,14 @@ function confirmDialog(title, body, okLabel) {
 function showGate(message) {
   $("app").hidden = true;
   $("gate").hidden = false;
+  // With the password login off, the token form is all that is left.
+  if (!authCfg.password_login) {
+    $("login-form").hidden = true;
+    $("token-form").hidden = false;
+    $("toggle-mode").hidden = true;
+  }
+  $("oidc-btn").hidden = $("oidc-or").hidden = !authCfg.oidc;
+  if (authCfg.oidc) $("oidc-btn").textContent = t("gate.oidc", { name: authCfg.oidc });
   const err = $("gate-error");
   err.textContent = message || "";
   err.hidden = !message;
@@ -273,6 +319,8 @@ async function enter(payload) {
   $("app").hidden = false;
   $("who-name").textContent = me.username;
   $("who-admin").hidden = !me.is_admin;
+  // A password nobody can sign in with is not worth changing.
+  $("btn-password").hidden = !authCfg.password_login;
   for (const el of document.querySelectorAll(".admin-only")) el.hidden = !me.is_admin;
   applyStatic();
   await refresh();
@@ -335,8 +383,32 @@ function toggleMode() {
 
 async function logout() {
   try { await api("/v1/auth/logout", { method: "POST" }); } catch { /* leaving anyway */ }
+  // Without storage the worst case is a proxy signing you straight back in.
+  try { sessionStorage.setItem(SIGNED_OUT_KEY, "1"); } catch { /* storage off */ }
   me = null;
-  location.reload();
+  // Typically the identity provider's own logout, so signing out here signs
+  // out there too. Only http(s): the value comes from config, but a
+  // `javascript:` URL would run on this page.
+  const out = authCfg.logout_url;
+  if (out && /^https?:/i.test(out)) location.href = out;
+  else location.reload();
+}
+
+/** Header login, tried only when the server says it is on. Only a missing
+ *  account is worth saying out loud; anything else (a direct visit that
+ *  skipped the proxy, a proxy that sent no name) is a plain gate, where the
+ *  password and the token still work. True when the gate is handled. */
+async function proxyLogin() {
+  try {
+    await enter(await api("/panel/auth/proxy", { method: "POST" }));
+    return true;
+  } catch (e) {
+    if (e instanceof ApiError && e.code === "unknown_user") {
+      showGate(t("error.unknown_user", { user: e.body.username ?? "" }));
+      return true;
+    }
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -744,6 +816,19 @@ function uptime(secs) {
 
 async function renderUsers() {
   const a = await loadAdmin();
+  // Said only when it differs from the plain password login everyone starts
+  // with: an admin looking for why a password is refused finds it here.
+  const ways = [];
+  if (authCfg.header_login) ways.push(t("users.signin_proxy"));
+  if (authCfg.oidc) ways.push(authCfg.oidc);
+  if (authCfg.password_login) ways.push(t("users.signin_password"));
+  ways.push(t("users.signin_token"));
+  const plain = authCfg.password_login && !authCfg.header_login && !authCfg.oidc;
+  $("users-signin").hidden = plain;
+  let list;
+  try { list = new Intl.ListFormat(locale, { type: "disjunction" }).format(ways); }
+  catch { list = ways.join(", "); }
+  $("users-signin").textContent = plain ? "" : t("users.signin", { ways: list });
   const head = ["col.user", "col.used", "col.quota", "col.saves", "col.versions",
                 "col.devices", "col.last_seen"];
   clear($("users-list"), h("div", { class: "scroll" },
@@ -840,9 +925,13 @@ async function formDialog(title, fields, okLabel) {
 }
 
 async function newUser() {
+  // With header login on, a blank password is an account that only the
+  // identity provider gets into; the server takes it as that.
+  const idp = authCfg.header_login || authCfg.oidc;
+  const hint = idp ? t("users.password_hint_header") : t("users.password_hint");
   const vals = await formDialog(t("users.new_title"), [
     { label: t("users.username_label"), placeholder: "player-two" },
-    { label: t("users.password_label"), type: "password", hint: t("users.password_hint") },
+    { label: t("users.password_label"), type: "password", hint },
   ], t("users.create"));
   if (!vals) return;
   const [username, password] = vals;
@@ -1316,6 +1405,7 @@ function wire() {
   $("btn-limits").addEventListener("click", applyLimits);
   $("btn-logs").addEventListener("click", () => renderLogs().catch((e) => toast(errorText(e), true)));
   $("btn-new-user").addEventListener("click", () => newUser());
+  $("oidc-btn").addEventListener("click", () => { location.href = "/panel/auth/oidc/start"; });
   $("btn-new-token").addEventListener("click", () => newToken());
   $("f-log-search").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); renderLogs().catch(() => {}); }
@@ -1364,11 +1454,22 @@ async function boot() {
   // A live cookie means no login screen at all. Anything else, expired,
   // revoked, never had one, lands on the gate without an error message: a
   // first visit is not a failure.
+  await loadAuthConfig();
+  const loginError = takeLoginError();
   try {
     const who = await api("/v1/auth/whoami");
     await enter({ username: who.username, is_admin: who.is_admin });
   } catch {
-    showGate(null);
+    // Behind a proxy that signs you in, signing out would undo itself on the
+    // reload that follows it. Skip header login once after an explicit
+    // sign-out; the next visit tries again.
+    let signedOut = false;
+    try {
+      signedOut = sessionStorage.getItem(SIGNED_OUT_KEY) === "1";
+      sessionStorage.removeItem(SIGNED_OUT_KEY);
+    } catch { /* storage off */ }
+    if (loginError) showGate(loginError);
+    else if (signedOut || !authCfg.header_login || !(await proxyLogin())) showGate(null);
   }
 }
 

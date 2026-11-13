@@ -254,6 +254,154 @@ pub struct PanelConfig {
     /// slow door buys it time.
     #[serde(default = "default_panel_login_throttle_secs")]
     pub login_throttle_secs: u64,
+    /// A header naming the signed-in user, set by an authenticating reverse
+    /// proxy (Authelia or Authentik in forward-auth mode, oauth2-proxy):
+    /// `Remote-User`, `X-Forwarded-User` and the like. Unset, the default, is
+    /// off. Read through [`PanelConfig::trusted_header`], which treats a blank
+    /// value as unset.
+    ///
+    /// When set, `POST /panel/auth/proxy` trades it for an ordinary browser
+    /// session, so the panel opens without a second password. It is believed
+    /// only from a peer in `server.trusted_proxies`, and only when it names an
+    /// account that already exists, unless [`Self::trusted_header_create_accounts`]
+    /// is on. The endpoint sits under `/panel` so that the proxy rule guarding
+    /// the pages guards it too, while `/v1/` stays free for device tokens.
+    ///
+    /// Anyone who reaches the server through a trusted proxy *without* passing
+    /// its authentication can write this header, so the proxy has to set it on
+    /// `/panel` and strip it everywhere else. See
+    /// [`crate::routes::session::proxy_login`] for the refusals.
+    #[serde(default)]
+    pub trusted_header: Option<String>,
+    /// Off: the header has to match the account name exactly. On, `ROOT` also
+    /// finds `root` when no other account matches. Off by default because an
+    /// identity provider that tells `Root` and `root` apart and lets people
+    /// register would otherwise hand the second one this server's admin.
+    #[serde(default)]
+    pub trusted_header_ignore_case: bool,
+    /// Create the account the first time the proxy names someone this server
+    /// has never seen, without a password and without admin rights (unless
+    /// [`Self::trusted_admin_group`] says otherwise). Off: who may use the
+    /// server stays a decision made here, not one made by whoever the identity
+    /// provider lets through.
+    #[serde(default)]
+    pub trusted_header_create_accounts: bool,
+    /// A header listing the signed-in user's groups (`Remote-Groups`,
+    /// `X-authentik-groups`, `X-Forwarded-Groups`). Only read together with
+    /// [`Self::trusted_admin_group`].
+    #[serde(default)]
+    pub trusted_groups_header: Option<String>,
+    /// With both this and the groups header set, being in this group is what
+    /// makes someone an admin here: each header login promotes or demotes to
+    /// match. A login that arrives without the groups header changes nothing,
+    /// and the last admin is never demoted, the same as in the users tab.
+    #[serde(default)]
+    pub trusted_admin_group: Option<String>,
+    /// Lifetime of a session that came from the header, in minutes. Unset, it
+    /// lasts `session_days` like any other. Set, the panel renews it through
+    /// the proxy whenever it runs out, so removing someone from the identity
+    /// provider locks them out within this many minutes instead of days.
+    #[serde(default)]
+    pub trusted_header_session_minutes: Option<u64>,
+    /// Off: the user and password form is gone (`/v1/auth/login` is not
+    /// mounted), so the identity provider and pasted tokens are the only ways
+    /// into the panel. Device tokens are not affected.
+    #[serde(default = "default_panel_password_login")]
+    pub password_login: bool,
+    /// Where "Sign out" sends the browser after closing the panel session,
+    /// typically the identity provider's own logout page. Unset, it just
+    /// reloads the panel.
+    #[serde(default)]
+    pub logout_url: Option<String>,
+    /// Sign in with an OpenID Connect provider directly, no proxy in front.
+    #[serde(default)]
+    pub oidc: OidcConfig,
+}
+
+/// `[panel.oidc]`: the panel's "Sign in with ..." button. Off until both
+/// `issuer` and `client_id` are set. The redirect URI to register with the
+/// provider is `server.public_url` + `/panel/auth/oidc/callback`.
+///
+/// The account options mirror the header login's, and mean the same things.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct OidcConfig {
+    /// The provider's issuer URL, exactly as its discovery document states it.
+    #[serde(default)]
+    pub issuer: Option<String>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// Unset for a public client, which PKCE alone protects. Never serialized:
+    /// a dumped config must not carry it.
+    #[serde(default, skip_serializing)]
+    pub client_secret: Option<String>,
+    /// What the button says after "Sign in with". Defaults to the issuer's host.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Scopes to ask for. `openid` is always added. Unset: `openid profile
+    /// email`, and `groups` has to be added here for providers that gate the
+    /// claim behind it (Authelia, Authentik).
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// The claim that names the account. `preferred_username` by default;
+    /// `email` for providers that only know people by address.
+    #[serde(default)]
+    pub username_claim: Option<String>,
+    #[serde(default)]
+    pub ignore_case: bool,
+    #[serde(default)]
+    pub create_accounts: bool,
+    /// With both set, membership of `admin_group` in this claim decides admin
+    /// rights at each sign-in, as `trusted_admin_group` does for the header.
+    #[serde(default)]
+    pub groups_claim: Option<String>,
+    #[serde(default)]
+    pub admin_group: Option<String>,
+}
+
+impl OidcConfig {
+    /// Issuer and client id, when this is switched on at all.
+    pub fn enabled(&self) -> Option<(&str, &str)> {
+        Some((non_blank(&self.issuer)?, non_blank(&self.client_id)?))
+    }
+
+    pub fn client_secret(&self) -> Option<&str> {
+        non_blank(&self.client_secret)
+    }
+
+    pub fn username_claim(&self) -> &str {
+        non_blank(&self.username_claim).unwrap_or("preferred_username")
+    }
+
+    pub fn admin_group(&self) -> Option<(&str, &str)> {
+        Some((
+            non_blank(&self.groups_claim)?,
+            non_blank(&self.admin_group)?,
+        ))
+    }
+
+    pub fn scopes(&self) -> String {
+        let mut scopes: Vec<&str> = vec!["openid"];
+        let asked: Vec<&str> = if self.scopes.is_empty() {
+            vec!["profile", "email"]
+        } else {
+            self.scopes.iter().map(|s| s.trim()).collect()
+        };
+        for s in asked {
+            if !s.is_empty() && !scopes.contains(&s) {
+                scopes.push(s);
+            }
+        }
+        scopes.join(" ")
+    }
+
+    pub fn label(&self) -> Option<String> {
+        if let Some(l) = non_blank(&self.label) {
+            return Some(l.to_string());
+        }
+        let issuer = non_blank(&self.issuer)?;
+        let host = issuer.split("://").nth(1).unwrap_or(issuer);
+        Some(host.split(['/', ':']).next().unwrap_or(host).to_string())
+    }
 }
 
 /// Floor on [`PanelConfig::login_throttle_secs`]. There is no "off": with no
@@ -276,6 +424,43 @@ impl PanelConfig {
     pub fn login_throttle_was_raised(&self) -> bool {
         self.login_throttle_secs < MIN_LOGIN_THROTTLE_SECS
     }
+
+    /// The configured header name, or `None` when header login is off. A blank
+    /// value counts as off: `trusted_header = ""` is how a templated config
+    /// says "not this one", not a request for a header with no name.
+    pub fn trusted_header(&self) -> Option<&str> {
+        non_blank(&self.trusted_header)
+    }
+
+    /// Groups header and admin group, only when both are set.
+    pub fn trusted_admin_group(&self) -> Option<(&str, &str)> {
+        Some((
+            non_blank(&self.trusted_groups_header)?,
+            non_blank(&self.trusted_admin_group)?,
+        ))
+    }
+
+    /// Seconds a header session lasts. Five minutes at least: each renewal is
+    /// a round trip through the proxy, and a lifetime shorter than a page load
+    /// would spend more time renewing than working.
+    pub fn header_session_secs(&self) -> i64 {
+        match self.trusted_header_session_minutes {
+            Some(m) => (m.max(5) * 60) as i64,
+            None => self.session_secs(),
+        }
+    }
+
+    pub fn session_secs(&self) -> i64 {
+        (self.session_days.max(1) * 86_400) as i64
+    }
+
+    pub fn logout_url(&self) -> Option<&str> {
+        non_blank(&self.logout_url)
+    }
+}
+
+fn non_blank(v: &Option<String>) -> Option<&str> {
+    v.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
 
 impl Default for PanelConfig {
@@ -284,11 +469,23 @@ impl Default for PanelConfig {
             enabled: default_panel_enabled(),
             session_days: default_panel_session_days(),
             login_throttle_secs: default_panel_login_throttle_secs(),
+            trusted_header: None,
+            trusted_header_ignore_case: false,
+            trusted_header_create_accounts: false,
+            trusted_groups_header: None,
+            trusted_admin_group: None,
+            trusted_header_session_minutes: None,
+            password_login: default_panel_password_login(),
+            logout_url: None,
+            oidc: OidcConfig::default(),
         }
     }
 }
 
 fn default_panel_enabled() -> bool {
+    true
+}
+fn default_panel_password_login() -> bool {
     true
 }
 fn default_panel_session_days() -> u64 {
