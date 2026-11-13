@@ -3876,7 +3876,7 @@ dependencies = [
  "futures",
  "governor",
  "hex",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "hoard-core",
  "hoard-deflate",
  "jsonwebtoken",
