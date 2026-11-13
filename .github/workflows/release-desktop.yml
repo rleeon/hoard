@@ -35,6 +35,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: "true"
+  # Pinned. Rust 1.100 always lays the build dir out as build/<package>/<hash>,
+  # and tauri-build 2.6.3 still looks for the target dir three levels above
+  # OUT_DIR. That now lands in target/debug/build, where `hoardd` is a package's
+  # folder, so copying the sidecar over it panics with "Is a directory" (every
+  # Linux job from 2026-11-09 on). Back to stable once tauri-build follows the
+  # new layout.
+  RUST_TOOLCHAIN: "1.99.1"
 
 permissions:
   contents: write
@@ -112,7 +119,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          toolchain: stable
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
