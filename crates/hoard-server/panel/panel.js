@@ -36,7 +36,7 @@ let overview = null;   // last /v1/me/overview payload
 let adminData = null;  // last /v1/admin/overview payload
 // Which ways in this server offers, from /panel/auth/config. The defaults are
 // what a server without that route does.
-let authCfg = { password_login: true, header_login: false, logout_url: null };
+let authCfg = { password_login: true, header_login: false, oidc: null, logout_url: null };
 
 // ---------------------------------------------------------------------------
 // tiny DOM builder
@@ -242,6 +242,18 @@ function renewSession() {
   return renewing;
 }
 
+// Where the OIDC callback leaves its reason when a sign-in did not work. Read
+// once, then taken out of the address bar so a reload doesn't repeat it.
+function takeLoginError() {
+  const q = new URLSearchParams(location.search);
+  const code = q.get("login_error");
+  if (!code) return null;
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (code === "oidc_unknown_user") return t("error.oidc_unknown_user", { user: q.get("user") || "" });
+  if (code === "oidc_expired" || code === "oidc_no_name" || code === "bad_username") return t("error." + code);
+  return t("error.oidc_failed");
+}
+
 async function loadAuthConfig() {
   try {
     const res = await fetch("/panel/auth/config");
@@ -294,6 +306,8 @@ function showGate(message) {
     $("token-form").hidden = false;
     $("toggle-mode").hidden = true;
   }
+  $("oidc-btn").hidden = $("oidc-or").hidden = !authCfg.oidc;
+  if (authCfg.oidc) $("oidc-btn").textContent = t("gate.oidc", { name: authCfg.oidc });
   const err = $("gate-error");
   err.textContent = message || "";
   err.hidden = !message;
@@ -804,11 +818,17 @@ async function renderUsers() {
   const a = await loadAdmin();
   // Said only when it differs from the plain password login everyone starts
   // with: an admin looking for why a password is refused finds it here.
-  const signin = authCfg.header_login
-    ? (authCfg.password_login ? "users.signin_both" : "users.signin_header")
-    : (authCfg.password_login ? null : "users.signin_token");
-  $("users-signin").hidden = !signin;
-  $("users-signin").textContent = signin ? t(signin) : "";
+  const ways = [];
+  if (authCfg.header_login) ways.push(t("users.signin_proxy"));
+  if (authCfg.oidc) ways.push(authCfg.oidc);
+  if (authCfg.password_login) ways.push(t("users.signin_password"));
+  ways.push(t("users.signin_token"));
+  const plain = authCfg.password_login && !authCfg.header_login && !authCfg.oidc;
+  $("users-signin").hidden = plain;
+  let list;
+  try { list = new Intl.ListFormat(locale, { type: "disjunction" }).format(ways); }
+  catch { list = ways.join(", "); }
+  $("users-signin").textContent = plain ? "" : t("users.signin", { ways: list });
   const head = ["col.user", "col.used", "col.quota", "col.saves", "col.versions",
                 "col.devices", "col.last_seen"];
   clear($("users-list"), h("div", { class: "scroll" },
@@ -907,7 +927,8 @@ async function formDialog(title, fields, okLabel) {
 async function newUser() {
   // With header login on, a blank password is an account that only the
   // identity provider gets into; the server takes it as that.
-  const hint = authCfg.header_login ? t("users.password_hint_header") : t("users.password_hint");
+  const idp = authCfg.header_login || authCfg.oidc;
+  const hint = idp ? t("users.password_hint_header") : t("users.password_hint");
   const vals = await formDialog(t("users.new_title"), [
     { label: t("users.username_label"), placeholder: "player-two" },
     { label: t("users.password_label"), type: "password", hint },
@@ -1384,6 +1405,7 @@ function wire() {
   $("btn-limits").addEventListener("click", applyLimits);
   $("btn-logs").addEventListener("click", () => renderLogs().catch((e) => toast(errorText(e), true)));
   $("btn-new-user").addEventListener("click", () => newUser());
+  $("oidc-btn").addEventListener("click", () => { location.href = "/panel/auth/oidc/start"; });
   $("btn-new-token").addEventListener("click", () => newToken());
   $("f-log-search").addEventListener("keydown", (e) => {
     if (e.key === "Enter") { e.preventDefault(); renderLogs().catch(() => {}); }
@@ -1433,6 +1455,7 @@ async function boot() {
   // revoked, never had one, lands on the gate without an error message: a
   // first visit is not a failure.
   await loadAuthConfig();
+  const loginError = takeLoginError();
   try {
     const who = await api("/v1/auth/whoami");
     await enter({ username: who.username, is_admin: who.is_admin });
@@ -1445,7 +1468,8 @@ async function boot() {
       signedOut = sessionStorage.getItem(SIGNED_OUT_KEY) === "1";
       sessionStorage.removeItem(SIGNED_OUT_KEY);
     } catch { /* storage off */ }
-    if (signedOut || !authCfg.header_login || !(await proxyLogin())) showGate(null);
+    if (loginError) showGate(loginError);
+    else if (signedOut || !authCfg.header_login || !(await proxyLogin())) showGate(null);
   }
 }
 

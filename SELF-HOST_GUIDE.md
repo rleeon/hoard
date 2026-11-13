@@ -524,6 +524,41 @@ A `location` with its own `proxy_set_header` lines drops the ones it would
 have inherited from `server`, so repeat your `X-Forwarded-For` and
 `X-Forwarded-Proto` lines in both.
 
+#### Signing in with OpenID Connect
+
+Without a proxy in front, the panel can talk to your identity provider itself
+over OpenID Connect: Authelia, Authentik, Keycloak, Zitadel, Pocket ID, Google
+and anything else that speaks it. Register Hoard there as a client with the
+redirect URI `https://<your server>/panel/auth/oidc/callback` (that is
+`server.public_url` plus the path; the server prints it at startup), then:
+
+```toml
+[panel.oidc]
+issuer = "https://auth.example.com"
+client_id = "hoard"
+client_secret = "..."      # leave out for a public client
+label = "Authelia"         # the button reads "Sign in with Authelia"
+```
+
+The gate grows a **Sign in with ...** button. It runs the authorization code
+flow with PKCE, checks the ID token against the provider's published keys,
+and opens the same browser session a password would. The rest is optional:
+
+| Setting (under `[panel.oidc]`) | Default | What it does |
+|---|---|---|
+| `scopes` | `["profile", "email"]` | Scopes to ask for besides `openid`. Add `"groups"` where the provider gates the groups claim behind it (Authelia, Authentik). |
+| `username_claim` | `"preferred_username"` | The claim that names the account. `"email"` for providers that only know people by address. |
+| `ignore_case` | `false` | As `trusted_header_ignore_case` above. |
+| `create_accounts` | `false` | As `trusted_header_create_accounts` above. |
+| `groups_claim` and `admin_group` | unset | Admin rights follow membership of `admin_group` in this claim (usually `"groups"`), at each sign-in. |
+
+The secret can also come from the environment
+(`HOARD__PANEL__OIDC__CLIENT_SECRET`) instead of the file. Claims the ID token
+leaves out are read from the provider's userinfo endpoint, which is where
+Authelia keeps groups by default. `password_login = false` and `logout_url`
+under `[panel]` work the same as with the header; point `logout_url` at the
+provider's logout page and **Sign out** ends both sessions.
+
 ## External storage (S3-compatible)
 
 By default the server keeps every blob on local disk under `data_dir`. You can

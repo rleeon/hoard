@@ -15,6 +15,8 @@
   "gate.token_hint": "アプリや CLI と同じトークンです。セッションと交換され、このブラウザには保存されません。",
   "gate.use_token": "トークンでサインイン",
   "gate.use_password": "パスワードでサインイン",
+  "gate.oidc": "{name} でサインイン",
+  "gate.or": "または",
   "common.admin": "管理者",
   "common.apply": "適用",
   "common.cancel": "キャンセル",
@@ -149,9 +151,10 @@
   "server.max_upload_sub": "これを超えるセーブは拒否されます",
   "users.title": "ユーザー",
   "users.caption": "アカウント、容量、権限。hoard-admin でできることを、サーバーのシェルなしで。",
-  "users.signin_both": "サインイン方法: IDプロバイダー、パスワード、トークン。",
-  "users.signin_header": "サインイン方法: IDプロバイダーまたはトークン。パスワードはオフです。",
-  "users.signin_token": "サインイン方法: トークンのみ。パスワードはオフで、IDプロバイダーも設定されていません。",
+  "users.signin": "サインイン方法: {ways}。",
+  "users.signin_proxy": "IDプロバイダー（プロキシ）",
+  "users.signin_password": "パスワード",
+  "users.signin_token": "トークン",
   "users.since": "{date} から",
   "users.quota": "上限",
   "users.quota_title": "{user} の上限",
@@ -240,5 +243,9 @@
   "error.bad_quota": "0 以上の上限を入力してください。",
   "error.unauthorized": "セッションが終了しました。",
   "error.session_expired": "セッションが終了しました。もう一度サインインしてください。",
-  "error.unknown_user": "プロキシは {user} としてサインインさせましたが、このサーバーにはその名前のアカウントがありません。管理者に作成を依頼してください。"
+  "error.unknown_user": "プロキシは {user} としてサインインさせましたが、このサーバーにはその名前のアカウントがありません。管理者に作成を依頼してください。",
+  "error.oidc_unknown_user": "{user} として IDプロバイダーでサインインしましたが、このサーバーにはその名前のアカウントがありません。管理者に作成を依頼してください。",
+  "error.oidc_failed": "IDプロバイダーでのサインインに失敗しました。理由はサーバーのログにあります。",
+  "error.oidc_expired": "このサインインは時間がかかりすぎたか、別のブラウザーで開始されました。もう一度お試しください。",
+  "error.oidc_no_name": "IDプロバイダーがあなたが誰かを伝えませんでした。管理者が panel.oidc.username_claim を確認する必要があります。"
 }

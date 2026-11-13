@@ -15,6 +15,8 @@
   "gate.token_hint": "O mesmo token que a aplicação e a CLI usam. É trocado por uma sessão e nunca fica guardado neste navegador.",
   "gate.use_token": "Entrar com um token",
   "gate.use_password": "Entrar com palavra-passe",
+  "gate.oidc": "Entrar com {name}",
+  "gate.or": "ou",
   "common.admin": "admin",
   "common.apply": "Aplicar",
   "common.cancel": "Cancelar",
@@ -149,9 +151,10 @@
   "server.max_upload_sub": "Um guardado acima disto é recusado",
   "users.title": "Utilizadores",
   "users.caption": "Contas, quotas e funções. Tudo o que o hoard-admin faz, sem shell no servidor.",
-  "users.signin_both": "Início de sessão: o teu fornecedor de identidade, uma palavra-passe ou um token.",
-  "users.signin_header": "Início de sessão: o teu fornecedor de identidade ou um token. As palavras-passe estão desligadas.",
-  "users.signin_token": "Início de sessão: só tokens. As palavras-passe estão desligadas e não há fornecedor de identidade configurado.",
+  "users.signin": "Início de sessão: {ways}.",
+  "users.signin_proxy": "fornecedor de identidade (proxy)",
+  "users.signin_password": "palavra-passe",
+  "users.signin_token": "token",
   "users.since": "desde {date}",
   "users.quota": "Quota",
   "users.quota_title": "Quota de {user}",
@@ -240,5 +243,9 @@
   "error.bad_quota": "Põe uma quota de zero ou mais.",
   "error.unauthorized": "A tua sessão terminou.",
   "error.session_expired": "A tua sessão terminou. Entra outra vez.",
-  "error.unknown_user": "O teu proxy identifica-te como {user}, mas este servidor não tem nenhuma conta com esse nome. Pede a um admin que a crie."
+  "error.unknown_user": "O teu proxy identifica-te como {user}, mas este servidor não tem nenhuma conta com esse nome. Pede a um admin que a crie.",
+  "error.oidc_unknown_user": "{user} entrou com o teu fornecedor de identidade, mas este servidor não tem nenhuma conta com esse nome. Pede a um admin que a crie.",
+  "error.oidc_failed": "Não foi possível entrar com o teu fornecedor de identidade. O registo do servidor diz porquê.",
+  "error.oidc_expired": "Este início de sessão demorou demasiado ou começou noutro navegador. Tenta outra vez.",
+  "error.oidc_no_name": "O teu fornecedor de identidade não disse quem és. Um admin tem de rever panel.oidc.username_claim."
 }

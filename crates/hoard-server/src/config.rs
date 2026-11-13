@@ -313,6 +313,95 @@ pub struct PanelConfig {
     /// reloads the panel.
     #[serde(default)]
     pub logout_url: Option<String>,
+    /// Sign in with an OpenID Connect provider directly, no proxy in front.
+    #[serde(default)]
+    pub oidc: OidcConfig,
+}
+
+/// `[panel.oidc]`: the panel's "Sign in with ..." button. Off until both
+/// `issuer` and `client_id` are set. The redirect URI to register with the
+/// provider is `server.public_url` + `/panel/auth/oidc/callback`.
+///
+/// The account options mirror the header login's, and mean the same things.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct OidcConfig {
+    /// The provider's issuer URL, exactly as its discovery document states it.
+    #[serde(default)]
+    pub issuer: Option<String>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    /// Unset for a public client, which PKCE alone protects. Never serialized:
+    /// a dumped config must not carry it.
+    #[serde(default, skip_serializing)]
+    pub client_secret: Option<String>,
+    /// What the button says after "Sign in with". Defaults to the issuer's host.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Scopes to ask for. `openid` is always added. Unset: `openid profile
+    /// email`, and `groups` has to be added here for providers that gate the
+    /// claim behind it (Authelia, Authentik).
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// The claim that names the account. `preferred_username` by default;
+    /// `email` for providers that only know people by address.
+    #[serde(default)]
+    pub username_claim: Option<String>,
+    #[serde(default)]
+    pub ignore_case: bool,
+    #[serde(default)]
+    pub create_accounts: bool,
+    /// With both set, membership of `admin_group` in this claim decides admin
+    /// rights at each sign-in, as `trusted_admin_group` does for the header.
+    #[serde(default)]
+    pub groups_claim: Option<String>,
+    #[serde(default)]
+    pub admin_group: Option<String>,
+}
+
+impl OidcConfig {
+    /// Issuer and client id, when this is switched on at all.
+    pub fn enabled(&self) -> Option<(&str, &str)> {
+        Some((non_blank(&self.issuer)?, non_blank(&self.client_id)?))
+    }
+
+    pub fn client_secret(&self) -> Option<&str> {
+        non_blank(&self.client_secret)
+    }
+
+    pub fn username_claim(&self) -> &str {
+        non_blank(&self.username_claim).unwrap_or("preferred_username")
+    }
+
+    pub fn admin_group(&self) -> Option<(&str, &str)> {
+        Some((
+            non_blank(&self.groups_claim)?,
+            non_blank(&self.admin_group)?,
+        ))
+    }
+
+    pub fn scopes(&self) -> String {
+        let mut scopes: Vec<&str> = vec!["openid"];
+        let asked: Vec<&str> = if self.scopes.is_empty() {
+            vec!["profile", "email"]
+        } else {
+            self.scopes.iter().map(|s| s.trim()).collect()
+        };
+        for s in asked {
+            if !s.is_empty() && !scopes.contains(&s) {
+                scopes.push(s);
+            }
+        }
+        scopes.join(" ")
+    }
+
+    pub fn label(&self) -> Option<String> {
+        if let Some(l) = non_blank(&self.label) {
+            return Some(l.to_string());
+        }
+        let issuer = non_blank(&self.issuer)?;
+        let host = issuer.split("://").nth(1).unwrap_or(issuer);
+        Some(host.split(['/', ':']).next().unwrap_or(host).to_string())
+    }
 }
 
 /// Floor on [`PanelConfig::login_throttle_secs`]. There is no "off": with no
@@ -388,6 +477,7 @@ impl Default for PanelConfig {
             trusted_header_session_minutes: None,
             password_login: default_panel_password_login(),
             logout_url: None,
+            oidc: OidcConfig::default(),
         }
     }
 }

@@ -158,6 +158,20 @@ login_throttle_secs = 10
 # password_login = true                  # false removes the password form
 # logout_url = "https://auth.example.com/logout"
 
+# Sign in with OpenID Connect, no proxy needed. Register the redirect URI
+# public_url + /panel/auth/oidc/callback with your provider. Off until issuer
+# and client_id are set; SELF-HOST_GUIDE.md has the rest of the options.
+# [panel.oidc]
+# issuer = "https://auth.example.com"
+# client_id = "hoard"
+# client_secret = "..."
+# label = "Authelia"
+# scopes = ["profile", "email", "groups"]
+# username_claim = "preferred_username"
+# create_accounts = false
+# groups_claim = "groups"
+# admin_group = "hoard-admins"
+
 [retention]
 # Days to keep soft-deleted snapshots in trash before permanent deletion.
 trash_retention_days = 30

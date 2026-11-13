@@ -16,7 +16,8 @@ pub enum UserCommand {
         #[arg(long, conflicts_with = "no_password")]
         password: Option<String>,
         /// No password at all: the account signs in to the panel only through
-        /// the identity provider (`panel.trusted_header`) or with a token.
+        /// the identity provider (`panel.trusted_header` or `[panel.oidc]`) or
+        /// with a token.
         /// `user passwd` gives it one later.
         #[arg(long)]
         no_password: bool,

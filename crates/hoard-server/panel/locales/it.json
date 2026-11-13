@@ -15,6 +15,8 @@
   "gate.token_hint": "Lo stesso token che usano l'app e la CLI. Viene scambiato con una sessione e non resta mai in questo browser.",
   "gate.use_token": "Accedi con un token",
   "gate.use_password": "Accedi con la password",
+  "gate.oidc": "Accedi con {name}",
+  "gate.or": "oppure",
   "common.admin": "admin",
   "common.apply": "Applica",
   "common.cancel": "Annulla",
@@ -149,9 +151,10 @@
   "server.max_upload_sub": "Un salvataggio oltre questa soglia viene rifiutato",
   "users.title": "Utenti",
   "users.caption": "Account, quote e ruoli. Tutto quello che fa hoard-admin, senza una shell sul server.",
-  "users.signin_both": "Accesso: il tuo provider di identità, una password o un token.",
-  "users.signin_header": "Accesso: il tuo provider di identità o un token. Le password sono disattivate.",
-  "users.signin_token": "Accesso: solo token. Le password sono disattivate e non c'è un provider di identità configurato.",
+  "users.signin": "Accesso: {ways}.",
+  "users.signin_proxy": "provider di identità (proxy)",
+  "users.signin_password": "password",
+  "users.signin_token": "token",
   "users.since": "dal {date}",
   "users.quota": "Quota",
   "users.quota_title": "Quota di {user}",
@@ -240,5 +243,9 @@
   "error.bad_quota": "Metti una quota di zero o più.",
   "error.unauthorized": "La tua sessione è finita.",
   "error.session_expired": "La tua sessione è finita. Accedi di nuovo.",
-  "error.unknown_user": "Il tuo proxy ti identifica come {user}, ma questo server non ha un account con quel nome. Chiedi a un admin di crearlo."
+  "error.unknown_user": "Il tuo proxy ti identifica come {user}, ma questo server non ha un account con quel nome. Chiedi a un admin di crearlo.",
+  "error.oidc_unknown_user": "{user} ha effettuato l'accesso con il tuo provider di identità, ma questo server non ha un account con quel nome. Chiedi a un admin di crearlo.",
+  "error.oidc_failed": "L'accesso con il tuo provider di identità non è riuscito. Il log del server dice perché.",
+  "error.oidc_expired": "Questo accesso ha richiesto troppo tempo o è iniziato in un altro browser. Riprova.",
+  "error.oidc_no_name": "Il tuo provider di identità non ha detto chi sei. Un admin deve controllare panel.oidc.username_claim."
 }

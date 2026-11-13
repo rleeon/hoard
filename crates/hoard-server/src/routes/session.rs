@@ -75,7 +75,7 @@ fn fail(status: StatusCode, code: &str) -> (StatusCode, Json<serde_json::Value>)
     (status, Json(serde_json::json!({ "error": code })))
 }
 
-type ApiError = (StatusCode, Json<serde_json::Value>);
+pub(crate) type ApiError = (StatusCode, Json<serde_json::Value>);
 
 /// `POST /v1/auth/login`: exchange username and password for a session cookie.
 pub async fn login(
@@ -258,6 +258,8 @@ fn header_login_name(state: &ServerState) -> Option<HeaderName> {
 pub struct AuthConfig {
     pub password_login: bool,
     pub header_login: bool,
+    /// The OIDC button's label, when there is one.
+    pub oidc: Option<String>,
     pub logout_url: Option<String>,
 }
 
@@ -266,6 +268,12 @@ pub async fn auth_config(State(state): State<Arc<ServerState>>) -> Json<AuthConf
     Json(AuthConfig {
         password_login: state.config.panel.password_login,
         header_login: header_login_name(&state).is_some(),
+        oidc: state
+            .config
+            .panel
+            .oidc
+            .enabled()
+            .and_then(|_| state.config.panel.oidc.label()),
         logout_url: state.config.panel.logout_url().map(str::to_string),
     })
 }
@@ -296,7 +304,7 @@ fn single_value<'a>(headers: &'a HeaderMap, name: &HeaderName) -> HeaderValueCou
 
 /// Groups as the common proxies send them: Authelia and oauth2-proxy separate
 /// with commas, Authentik with `|`.
-fn split_groups(raw: &str) -> impl Iterator<Item = &str> {
+pub(crate) fn split_groups(raw: &str) -> impl Iterator<Item = &str> {
     raw.split([',', '|'])
         .map(str::trim)
         .filter(|g| !g.is_empty())
@@ -370,7 +378,7 @@ pub async fn proxy_login(
     let (user_id, real_username, mut is_admin) = match found {
         Some((id, name, admin, _)) => (id, name, admin),
         None if panel.trusted_header_create_accounts => {
-            create_header_account(&state.pool, username).await?
+            create_passwordless_account(&state.pool, username).await?
         }
         None => {
             tracing::warn!(%username, "panel: header login names no account here, refused");
@@ -429,15 +437,15 @@ pub async fn proxy_login(
         .into_response())
 }
 
-/// First header login of someone the server has never seen: an account with no
-/// password and no admin rights. Two tabs racing on that first login both try
-/// the insert; the loser finds the winner's row.
-async fn create_header_account(
+/// First sign-in of someone the server has never seen, through the header or
+/// OIDC: an account with no password and no admin rights. Two tabs racing on
+/// that first sign-in both try the insert; the loser finds the winner's row.
+pub(crate) async fn create_passwordless_account(
     pool: &sqlx::SqlitePool,
     username: &str,
 ) -> Result<(String, String, bool), ApiError> {
     if !crate::routes::admin::valid_username(username) {
-        tracing::warn!(%username, "panel: header login names an account that can't be created");
+        tracing::warn!(%username, "panel: sign-in names an account that can't be created");
         return Err(fail(StatusCode::BAD_REQUEST, "bad_username"));
     }
     let id = uuid::Uuid::new_v4().to_string();
@@ -450,7 +458,7 @@ async fn create_header_account(
             .await;
     match inserted {
         Ok(_) => {
-            tracing::info!(%username, "panel: account created by header login");
+            tracing::info!(%username, "panel: account created at first sign-in");
             Ok((id, username.to_string(), false))
         }
         Err(e) if crate::routes::admin::is_unique_violation(&e) => {
@@ -468,7 +476,7 @@ async fn create_header_account(
 /// the last admin is refused in the same statement that would do it, the
 /// rule the users tab follows: a server with no admins can't promote anyone
 /// back without a shell on the box. Returns the bit as it now stands.
-async fn sync_admin(
+pub(crate) async fn sync_admin(
     pool: &sqlx::SqlitePool,
     user_id: &str,
     username: &str,
@@ -594,7 +602,7 @@ pub async fn change_password(
 /// device, so it is a value, not a label: changing it orphans existing rows.
 pub const SESSION_DEVICE_NAME: &str = "web panel";
 
-async fn mint_session(
+pub(crate) async fn mint_session(
     pool: &sqlx::SqlitePool,
     user_id: &str,
     ttl_secs: i64,
@@ -630,7 +638,7 @@ pub const NO_PASSWORD: &str = "!";
 /// one. `users.username` is UNIQUE but case-sensitively so, meaning `Ana` and
 /// `ana` can both exist. Rare, but if they do, "whichever `COLLATE NOCASE`
 /// returns first" would be a coin flip deciding whose account you enter.
-async fn lookup_user(
+pub(crate) async fn lookup_user(
     pool: &sqlx::SqlitePool,
     username: &str,
     ignore_case: bool,
@@ -662,7 +670,7 @@ async fn lookup_user(
     Ok(None)
 }
 
-fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
+pub(crate) fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
     let mut c =
         format!("{SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={ttl_secs}");
     if secure {
@@ -675,7 +683,7 @@ fn session_cookie(token: &str, ttl_secs: i64, secure: bool) -> String {
 /// instance on plain `http://192.168.1.x:12421` is the common self-hosted
 /// shape, and a `Secure` cookie there is one the browser accepts and never
 /// sends back: a login that silently does nothing.
-fn is_secure(headers: &HeaderMap) -> bool {
+pub(crate) fn is_secure(headers: &HeaderMap) -> bool {
     headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
@@ -689,7 +697,7 @@ fn is_secure(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
-fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+pub(crate) fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
     let raw = headers.get(header::COOKIE)?.to_str().ok()?;
     raw.split(';')
         .filter_map(|p| p.split_once('='))
@@ -697,7 +705,7 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|(_, v)| v.trim().to_string())
 }
 
-fn internal(e: anyhow::Error, what: &str) -> ApiError {
+pub(crate) fn internal(e: anyhow::Error, what: &str) -> ApiError {
     tracing::error!(error = %e, "{what} failed");
     fail(StatusCode::INTERNAL_SERVER_ERROR, "internal")
 }

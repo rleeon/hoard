@@ -15,6 +15,8 @@
   "gate.token_hint": "与桌面应用和命令行使用的是同一个令牌。它会换成一个会话，不会存在这个浏览器里。",
   "gate.use_token": "用令牌登录",
   "gate.use_password": "用密码登录",
+  "gate.oidc": "使用 {name} 登录",
+  "gate.or": "或",
   "common.admin": "管理员",
   "common.apply": "应用",
   "common.cancel": "取消",
@@ -149,9 +151,10 @@
   "server.max_upload_sub": "超过这个大小的存档会被拒绝",
   "users.title": "用户",
   "users.caption": "账号、配额和角色。hoard-admin 能做的事，不用登服务器就能做。",
-  "users.signin_both": "登录方式：你的身份提供商、密码或令牌。",
-  "users.signin_header": "登录方式：你的身份提供商或令牌。密码登录已关闭。",
-  "users.signin_token": "登录方式：仅令牌。密码登录已关闭，且未配置身份提供商。",
+  "users.signin": "登录方式：{ways}。",
+  "users.signin_proxy": "身份提供商（代理）",
+  "users.signin_password": "密码",
+  "users.signin_token": "令牌",
   "users.since": "自 {date}",
   "users.quota": "配额",
   "users.quota_title": "{user} 的配额",
@@ -240,5 +243,9 @@
   "error.bad_quota": "请填 0 或更大的配额。",
   "error.unauthorized": "会话已结束。",
   "error.session_expired": "会话已结束，请重新登录。",
-  "error.unknown_user": "代理已将你识别为 {user}，但此服务器上没有该名称的账户。请让管理员创建。"
+  "error.unknown_user": "代理已将你识别为 {user}，但此服务器上没有该名称的账户。请让管理员创建。",
+  "error.oidc_unknown_user": "{user} 已通过你的身份提供商登录，但此服务器上没有该名称的账户。请让管理员创建。",
+  "error.oidc_failed": "通过身份提供商登录失败。原因见服务器日志。",
+  "error.oidc_expired": "此次登录耗时过长，或是在另一个浏览器中开始的。请重试。",
+  "error.oidc_no_name": "你的身份提供商没有说明你是谁。管理员需要检查 panel.oidc.username_claim。"
 }

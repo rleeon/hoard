@@ -15,6 +15,8 @@
   "gate.token_hint": "Dasselbe Token, das App und CLI benutzen. Es wird gegen eine Sitzung getauscht und nie in diesem Browser gespeichert.",
   "gate.use_token": "Mit Token anmelden",
   "gate.use_password": "Mit Passwort anmelden",
+  "gate.oidc": "Mit {name} anmelden",
+  "gate.or": "oder",
   "common.admin": "admin",
   "common.apply": "Anwenden",
   "common.cancel": "Abbrechen",
@@ -149,9 +151,10 @@
   "server.max_upload_sub": "Ein Spielstand darüber wird abgelehnt",
   "users.title": "Benutzer",
   "users.caption": "Konten, Kontingente und Rollen. Alles, was hoard-admin kann, ohne Shell auf dem Server.",
-  "users.signin_both": "Anmeldung: dein Identitätsanbieter, ein Passwort oder ein Token.",
-  "users.signin_header": "Anmeldung: dein Identitätsanbieter oder ein Token. Passwörter sind aus.",
-  "users.signin_token": "Anmeldung: nur Tokens. Passwörter sind aus und kein Identitätsanbieter ist eingerichtet.",
+  "users.signin": "Anmeldung: {ways}.",
+  "users.signin_proxy": "Identitätsanbieter (Proxy)",
+  "users.signin_password": "Passwort",
+  "users.signin_token": "Token",
   "users.since": "seit {date}",
   "users.quota": "Kontingent",
   "users.quota_title": "Kontingent von {user}",
@@ -240,5 +243,9 @@
   "error.bad_quota": "Gib ein Kontingent von null oder mehr an.",
   "error.unauthorized": "Deine Sitzung ist beendet.",
   "error.session_expired": "Deine Sitzung ist beendet. Melde dich neu an.",
-  "error.unknown_user": "Dein Proxy meldet dich als {user} an, aber dieser Server hat kein Konto mit diesem Namen. Bitte einen Admin, es anzulegen."
+  "error.unknown_user": "Dein Proxy meldet dich als {user} an, aber dieser Server hat kein Konto mit diesem Namen. Bitte einen Admin, es anzulegen.",
+  "error.oidc_unknown_user": "{user} hat sich bei deinem Identitätsanbieter angemeldet, aber dieser Server hat kein Konto mit diesem Namen. Bitte einen Admin, es anzulegen.",
+  "error.oidc_failed": "Die Anmeldung über deinen Identitätsanbieter hat nicht geklappt. Das Server-Log sagt, warum.",
+  "error.oidc_expired": "Diese Anmeldung hat zu lange gedauert oder wurde in einem anderen Browser begonnen. Versuch es noch einmal.",
+  "error.oidc_no_name": "Dein Identitätsanbieter hat nicht gesagt, wer du bist. Ein Admin muss panel.oidc.username_claim prüfen."
 }

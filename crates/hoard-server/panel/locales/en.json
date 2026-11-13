@@ -15,6 +15,8 @@
   "gate.token_hint": "The same token the app and the CLI use. It is exchanged for a session and never stored in this browser.",
   "gate.use_token": "Sign in with a token",
   "gate.use_password": "Sign in with a password",
+  "gate.oidc": "Sign in with {name}",
+  "gate.or": "or",
   "common.admin": "admin",
   "common.apply": "Apply",
   "common.cancel": "Cancel",
@@ -149,9 +151,10 @@
   "server.max_upload_sub": "A save over this is refused",
   "users.title": "Users",
   "users.caption": "Accounts, quotas and roles. Everything hoard-admin does, without a shell on the server.",
-  "users.signin_both": "Sign-in: your identity provider, a password or a token.",
-  "users.signin_header": "Sign-in: your identity provider or a token. Passwords are off.",
-  "users.signin_token": "Sign-in: tokens only. Passwords are off and no identity provider is set up.",
+  "users.signin": "Sign-in: {ways}.",
+  "users.signin_proxy": "identity provider (proxy)",
+  "users.signin_password": "password",
+  "users.signin_token": "token",
   "users.since": "since {date}",
   "users.quota": "Quota",
   "users.quota_title": "Quota for {user}",
@@ -240,5 +243,9 @@
   "error.bad_quota": "Enter a quota of zero or more.",
   "error.unauthorized": "Your session has ended.",
   "error.session_expired": "Your session has ended. Sign in again.",
-  "error.unknown_user": "Your proxy signed you in as {user}, but this server has no account by that name. Ask an admin to create it."
+  "error.unknown_user": "Your proxy signed you in as {user}, but this server has no account by that name. Ask an admin to create it.",
+  "error.oidc_unknown_user": "{user} signed in with your identity provider, but this server has no account by that name. Ask an admin to create it.",
+  "error.oidc_failed": "Signing in with your identity provider did not work. The server log says why.",
+  "error.oidc_expired": "That sign-in took too long or was started in another browser. Try again.",
+  "error.oidc_no_name": "Your identity provider did not say who you are. An admin has to check panel.oidc.username_claim."
 }

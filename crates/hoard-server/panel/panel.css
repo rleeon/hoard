@@ -80,6 +80,21 @@ a { color: var(--accent); }
   font-size: 13px;
 }
 
+.gate-or {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0;
+  color: var(--dim);
+  font-size: 12px;
+}
+.gate-or::before,
+.gate-or::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--line);
+}
+
 .gate-foot {
   margin-top: 22px;
   padding-top: 16px;

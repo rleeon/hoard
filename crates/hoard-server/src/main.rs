@@ -523,8 +523,31 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
         if cfg.panel.trusted_groups_header.is_some() != cfg.panel.trusted_admin_group.is_some() {
             warn!("panel: trusted_groups_header and trusted_admin_group only work together; ignoring the one that is set");
         }
-        if !cfg.panel.password_login && !header_login {
-            warn!("panel: password_login is off and header login is not on; only a pasted token opens the panel");
+        let oidc = cfg.panel.oidc.enabled().is_some();
+        if let Some((issuer, _)) = cfg.panel.oidc.enabled() {
+            info!(
+                issuer,
+                redirect_uri = %format!(
+                    "{}{}",
+                    cfg.server.public_url.trim_end_matches('/'),
+                    hoard_server::routes::oidc::CALLBACK_PATH
+                ),
+                create_accounts = cfg.panel.oidc.create_accounts,
+                admin_group = cfg.panel.oidc.admin_group().map(|(_, g)| g),
+                "panel: OIDC sign-in enabled"
+            );
+            public = public
+                .route(
+                    hoard_server::routes::oidc::START_PATH,
+                    get(hoard_server::routes::oidc::start),
+                )
+                .route(
+                    hoard_server::routes::oidc::CALLBACK_PATH,
+                    get(hoard_server::routes::oidc::callback),
+                );
+        }
+        if !cfg.panel.password_login && !header_login && !oidc {
+            warn!("panel: password_login is off and no identity provider is set up; only a pasted token opens the panel");
         }
     }
 

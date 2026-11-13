@@ -523,9 +523,11 @@ pub async fn create_user(
         return Err(err(StatusCode::BAD_REQUEST, "bad_username"));
     }
     // A blank password makes an account that only the identity provider (or a
-    // token) gets into. Only offered when header login is configured: anywhere
-    // else a blank field is a forgotten one.
-    let passwordless = body.password.is_empty() && state.config.panel.trusted_header().is_some();
+    // token) gets into. Only offered when there is one, through the header or
+    // OIDC: anywhere else a blank field is a forgotten one.
+    let idp = state.config.panel.trusted_header().is_some()
+        || state.config.panel.oidc.enabled().is_some();
+    let passwordless = body.password.is_empty() && idp;
     if !passwordless && body.password.len() < MIN_PASSWORD_LEN {
         return Err(err(StatusCode::BAD_REQUEST, "password_too_short"));
     }
