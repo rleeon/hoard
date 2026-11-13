@@ -19,6 +19,13 @@ describe("formatBytes", () => {
     expect(formatBytes(1.5 * 1024 ** 3, 2)).toBe("1.50 GB");
   });
 
+  it("stays in B below one byte", () => {
+    expect(formatBytes(0.5)).toBe("1 B");
+    expect(formatBytes(0.4)).toBe("0 B");
+    expect(formatBytes(0.001)).toBe("0 B");
+  });
+
+
   it("stays on PB past the last unit", () => {
     expect(formatBytes(1024 ** 6)).toBe("1024.0 PB");
   });
