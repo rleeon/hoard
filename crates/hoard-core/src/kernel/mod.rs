@@ -197,7 +197,9 @@ pub struct State {
     pub min_backup_interval_secs: u64,
     /// The user wants this save backed up once the game closes, not each time
     /// it saves. Only as good as [`Self::is_running`]: a game Hoard cannot see
-    /// running is backed up as it saves.
+    /// running is backed up as it saves, one seen through correlation alone too
+    /// (the shell leaves this off for it), and one it believes open for hours
+    /// holds a change no longer than [`reconcile::BACKUP_ON_CLOSE_MAX_WAIT_SECS`].
     pub backup_on_close: bool,
 
     // ---- live session status, durable across ticks
@@ -207,6 +209,8 @@ pub struct State {
     pub is_running: bool,
     /// Last time the process was seen alive; the anchor for that stickiness.
     pub last_running_seen: Option<OffsetDateTime>,
+    /// When the session in progress started; `None` with the game closed.
+    pub running_since: Option<OffsetDateTime>,
     pub has_pending: bool,
     pub last_fs_event_at: Option<OffsetDateTime>,
     /// Last time *this* device restored into the folder. Its own touch, which

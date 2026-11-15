@@ -780,6 +780,9 @@ struct SaveSlot {
     /// every few seconds. We keep the slot "running" until this is older than
     /// the grace. `None` until first seen running.
     last_running_seen: Option<TokioInstant>,
+    /// The reducer stamps it ([`kernel::State::running_since`]); the shell only
+    /// carries it from one tick to the next.
+    running_since: Option<OffsetDateTime>,
     /// Has the save folder changed since the last successful backup?
     /// Drives the v0.3 "final-flush-only-if-pending" rule on `GameStopped`
     /// so there is no point re-uploading an unchanged save just because the user
@@ -1063,11 +1066,15 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
             .policy
             .min_snapshot_interval_secs
             .unwrap_or(config.min_snapshot_interval_secs),
-        backup_on_close: backs_up_on_close(slot, config),
+        // Not on a session seen through correlation alone: that process may be
+        // anything that touched the folder, and the user's saves are not held
+        // back on a guess. A strong signal corroborating it later turns it on.
+        backup_on_close: backs_up_on_close(slot, config) && !slot.weak_session,
         is_running: slot.is_running,
         // Passthrough: `process_alive` equals `is_running` in the observation, so
         // the kernel's grace never extends beyond the shell's sticky.
         last_running_seen: if slot.is_running { Some(now) } else { None },
+        running_since: slot.running_since,
         has_pending: slot.has_pending,
         last_fs_event_at: slot.last_fs_event_at,
         last_restore_at: slot.last_restore_at,
@@ -1098,6 +1105,7 @@ fn apply_state_to_slot(slot: &mut SaveSlot, next: kernel::State) {
     slot.known_version = next.known_version;
     slot.synced_fingerprint = next.synced_fingerprint;
     slot.last_backup_at = next.last_backup_at;
+    slot.running_since = next.running_since;
     slot.burst_since = next.burst_since;
     slot.burst_backups = next.burst_backups;
     slot.in_flight = next.in_flight;
@@ -2534,9 +2542,9 @@ async fn run_agent(
                         .is_some_and(|s| s.next_scheduled_backup_at.is_some());
                     // A save that backs up on close says nothing while its game is
                     // open: a countdown would end in a hold and stay on screen.
-                    let waits_for_close = slots
-                        .get(&save_id)
-                        .is_some_and(|s| s.is_running && backs_up_on_close(s, &config));
+                    let waits_for_close = slots.get(&save_id).is_some_and(|s| {
+                        kernel::reconcile::waits_for_close(&state_from_slot(s, &config, now), now)
+                    });
                     if let Some(slot) = slots.get_mut(&save_id) {
                         // Watcher hints (ADR 0021 C.1): they mark pending and focus the
                         // save for L1 sampling, since an in-place rewrite in a
@@ -2849,6 +2857,7 @@ fn handle_add(
         is_running: false,
         weak_session: false,
         last_running_seen: None,
+        running_since: None,
         has_pending: false,
         last_fs_event_at: None,
         last_restore_at: None,
@@ -6736,6 +6745,7 @@ mod tests {
             is_running: false,
             weak_session: false,
             last_running_seen: None,
+            running_since: None,
             has_pending: false,
             last_fs_event_at: None,
             last_restore_at: None,
@@ -6804,6 +6814,24 @@ mod tests {
             OffsetDateTime::UNIX_EPOCH + Duration::from_secs(1),
         );
         heads
+    }
+
+    /// A session seen only through correlation may be a background process, so
+    /// "back up when the game closes" does not hold the save for it.
+    #[test]
+    fn a_correlation_only_session_does_not_hold_the_backup() {
+        let config = AgentConfig {
+            backup_on_close: true,
+            ..AgentConfig::default()
+        };
+        let now = OffsetDateTime::now_utc();
+        let mut slot = test_slot(tracked("s1", "factorio", "main"));
+        slot.is_running = true;
+        slot.weak_session = true;
+        assert!(!state_from_slot(&slot, &config, now).backup_on_close);
+
+        slot.weak_session = false;
+        assert!(state_from_slot(&slot, &config, now).backup_on_close);
     }
 
     /// A save whose local id the cloud has never seen must still read its own

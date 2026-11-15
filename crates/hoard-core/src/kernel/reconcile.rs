@@ -371,7 +371,7 @@ fn decide_backup(
     // whole session anyway, so nothing can land on top of what is held here, and
     // the first quiet tick after the game closes uploads it. Not even an urgent
     // flush skips it, since the pull it would unblock waits for the close too.
-    if next.backup_on_close && next.is_running && !obs.backup_requested {
+    if waits_for_close(next, now) && !obs.backup_requested {
         return Some(hold(HOLD_BACKUP_UNTIL_CLOSE));
     }
     // The game is writing the save right now, so uploading would capture a
@@ -417,6 +417,28 @@ pub const HOLD_BACKUP_BURST: &str = "backup autosave burst";
 /// The save backs up when the game closes and the game is open. Not a wait with
 /// a time on it: the shell drops the countdown instead of showing it.
 pub const HOLD_BACKUP_UNTIL_CLOSE: &str = "backup waits for the game to close";
+
+/// The longest a change waits for its game to close.
+pub const BACKUP_ON_CLOSE_MAX_WAIT_SECS: i64 = 4 * 60 * 60;
+
+/// Does a change to this save wait for the game to close, right now?
+///
+/// Hoard does not always see a game close. Under Proton the .exe of a game that
+/// had quit lingered defunct, every strong matcher went on matching it and the
+/// save stayed "running" until the next reboot; with this setting on, nothing
+/// would have reached the cloud for as long. So the wait has a ceiling, counted
+/// from the later of the session's start and the last backup: a phantom
+/// session costs one version every four hours instead of all of them, and a
+/// real marathon gets a safety copy at the same pace.
+pub fn waits_for_close(state: &State, now: OffsetDateTime) -> bool {
+    if !(state.backup_on_close && state.is_running) {
+        return false;
+    }
+    match state.running_since.max(state.last_backup_at) {
+        Some(anchor) => (now - anchor).whole_seconds() < BACKUP_ON_CLOSE_MAX_WAIT_SECS,
+        None => true,
+    }
+}
 
 /// Is this reason a wait with a time on it that the UI should be able to show?
 pub fn hold_is_paced_backup(reason: &str) -> bool {
@@ -596,6 +618,7 @@ fn apply_running_stickiness(next: &mut State, obs: &Observation, now: OffsetDate
     if obs.process_alive {
         next.is_running = true;
         next.last_running_seen = Some(now);
+        next.running_since.get_or_insert(now);
     } else if next.is_running {
         let expired = next
             .last_running_seen
@@ -603,6 +626,9 @@ fn apply_running_stickiness(next: &mut State, obs: &Observation, now: OffsetDate
         if expired {
             next.is_running = false;
         }
+    }
+    if !next.is_running {
+        next.running_since = None;
     }
 }
 
@@ -1686,6 +1712,71 @@ mod tests {
         };
         let (_n, ds) = reconcile(&playing, &obs, world(1));
         assert!(acts(&ds).contains(&&Action::Backup), "{ds:?}");
+    }
+
+    /// A session Hoard never sees end (a phantom) cannot hold the save forever:
+    /// past the ceiling the change goes up with the game still "open", and the
+    /// next one waits again, counted from that backup.
+    #[test]
+    fn backup_on_close_gives_up_waiting_after_the_ceiling() {
+        let max = BACKUP_ON_CLOSE_MAX_WAIT_SECS;
+        let playing = State {
+            backup_on_close: true,
+            is_running: true,
+            last_running_seen: Some(at(0)),
+            running_since: Some(at(0)),
+            has_pending: true,
+            synced_fingerprint: Some(1),
+            known_version: Some(4),
+            ..base_state()
+        };
+        let obs = Observation {
+            process_alive: true,
+            local_fingerprint: Some(2),
+            cloud_version: Some(4),
+            ..quiet_obs()
+        };
+        let (held, ds) = reconcile(&playing, &obs, world(max - 1));
+        assert!(!acts(&ds).contains(&&Action::Backup), "{ds:?}");
+        assert_eq!(held.running_since, Some(at(0)), "the start stays put");
+
+        let (_n, ds) = reconcile(&held, &obs, world(max));
+        assert!(acts(&ds).contains(&&Action::Backup), "{ds:?}");
+
+        // A backup landed an hour ago: the next change waits from there.
+        let after_backup = State {
+            last_backup_at: Some(at(max + 3_600)),
+            ..held
+        };
+        let (_n, ds) = reconcile(&after_backup, &obs, world(max + 7_200));
+        assert!(
+            ds.contains(&Decision::Hold {
+                reason: HOLD_BACKUP_UNTIL_CLOSE
+            }),
+            "{ds:?}"
+        );
+    }
+
+    /// The reducer stamps the session's start itself and forgets it on close,
+    /// so the ceiling never counts from a session that already ended.
+    #[test]
+    fn the_session_start_is_stamped_and_cleared() {
+        let obs = Observation {
+            process_alive: true,
+            ..quiet_obs()
+        };
+        let (playing, _) = reconcile(&base_state(), &obs, world(5));
+        assert_eq!(playing.running_since, Some(at(5)));
+        let (still, _) = reconcile(&playing, &obs, world(50));
+        assert_eq!(still.running_since, Some(at(5)));
+
+        let closed = Observation {
+            process_alive: false,
+            ..obs
+        };
+        let (gone, _) = reconcile(&still, &closed, world(50 + RUNNING_STICKY_GRACE_SECS));
+        assert!(!gone.is_running);
+        assert_eq!(gone.running_since, None);
     }
 
     /// The default is unchanged: a save written mid-game goes up mid-game.
@@ -2838,12 +2929,15 @@ mod tests {
             conflicts in arb_conflicts(),
             failure_lane in any::<bool>(),
             backup_on_close in any::<bool>(),
+            // Wide enough to cross the close-wait ceiling both ways.
+            running_since in prop::option::of(-20_000i64..100),
         ) -> State {
             State {
                 track_only,
                 restore_enabled,
                 is_running,
                 last_running_seen: running_seen.map(at),
+                running_since: running_since.map(at),
                 has_pending,
                 last_fs_event_at: fs_at.map(at),
                 last_restore_at: restore_at.map(at),
@@ -2996,21 +3090,24 @@ mod tests {
         /// by hand.
         ///
         /// The exceptions are a save whose drive is not connected (there is no
-        /// folder to read) and a save that gave up (`needs_attention`), where
-        /// not emitting the upload is the decision rather than an oversight. That
-        /// is the difference between the two ways of being stopped: stalled with
-        /// nothing saying so (the bug), and stopped, said out loud, with three
-        /// ways out (a manual copy, a successful copy, a new cloud head).
+        /// folder to read), a save that gave up (`needs_attention`) and one
+        /// waiting for its game to close (the user asked for that, and the wait
+        /// has a ceiling), where not emitting the upload is the decision rather
+        /// than an oversight. That is the difference between the two ways of
+        /// being stopped: stalled with nothing saying so (the bug), and
+        /// stopped, said out loud, with three ways out (a manual copy, a
+        /// successful copy, a new cloud head).
         #[test]
         fn inv_pending_local_changes_always_get_a_backup(
             state in arb_state(), obs in arb_obs(false), w in arb_world()
         ) {
-            let (_n, ds) = reconcile(&state, &obs, w);
+            let (n, ds) = reconcile(&state, &obs, w);
             let eligible = !state.track_only
                 && state.in_flight.is_none()
                 && obs.op_result.is_none()
                 && !state.backup_conflict.needs_attention
                 && !obs.volume_offline
+                && (obs.backup_requested || !waits_for_close(&n, w.now))
                 && (state.has_pending || obs.fs_event)
                 && local_diverged(&state, &obs)
                 && state.next_backup_at.is_none_or(|t| w.now >= t)
