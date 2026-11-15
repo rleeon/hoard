@@ -8,7 +8,7 @@
    * Its move is `bump`: the hop a block makes when it is hit from below
    * (`app.css`).
    */
-  import type { IconProps } from "@lucide/svelte";
+  import type { LucideProps } from "@lucide/svelte";
 
   let {
     size = 24,
@@ -16,7 +16,7 @@
     strokeWidth: _strokeWidth,
     class: klass = "",
     ...rest
-  }: IconProps = $props();
+  }: LucideProps = $props();
 </script>
 
 <svg

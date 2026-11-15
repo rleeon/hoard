@@ -54,7 +54,7 @@ tempfile = { workspace = true }
 # there is no need to drag codecs in (deflate, zstd, bzip2 and the rest). Its only
 # consumer is `scoring::archive_looks_like_save`, so it stays out of
 # `[workspace.dependencies]`.
-zip = { version = "2", default-features = false }
+zip = { version = "9", default-features = false }
 
 # OS-native credential storage. Linux uses libsecret via sync-secret-service
 # (no async runtime in the way), Windows uses Credential Manager, macOS uses

@@ -9,7 +9,7 @@
    * it drops in where the house was (`icon: typeof Home`) and keeps the nav's
    * hover pop: `data-anim` and the rest land on the `<svg>`.
    */
-  import type { IconProps } from "@lucide/svelte";
+  import type { LucideProps } from "@lucide/svelte";
 
   let {
     size = 24,
@@ -17,7 +17,7 @@
     strokeWidth: _strokeWidth,
     class: klass = "",
     ...rest
-  }: IconProps = $props();
+  }: LucideProps = $props();
 </script>
 
 <svg

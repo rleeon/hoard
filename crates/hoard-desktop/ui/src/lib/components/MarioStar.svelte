@@ -9,7 +9,7 @@
    * Centred in the 24-unit box; lucide's prop type so it drops in where the
    * sparkles were. Its move is `hop` (a little jump, then a small pop).
    */
-  import type { IconProps } from "@lucide/svelte";
+  import type { LucideProps } from "@lucide/svelte";
 
   let {
     size = 24,
@@ -17,7 +17,7 @@
     strokeWidth: _strokeWidth,
     class: klass = "",
     ...rest
-  }: IconProps = $props();
+  }: LucideProps = $props();
 </script>
 
 <svg
