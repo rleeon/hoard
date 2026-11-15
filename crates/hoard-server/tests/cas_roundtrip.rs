@@ -538,6 +538,135 @@ async fn a_diverged_head_is_refused_before_and_after_the_upload() {
     assert_eq!(err.1["save_id"], SAVE);
 }
 
+/// A second PC plays the game for the first time and pushes its fresh folder
+/// with no base. Against a save with history that is a non-fast-forward at both
+/// ends, not version N+1: the PC that made the history would pull it as newer.
+#[tokio::test]
+async fn a_push_with_no_base_is_refused_against_a_save_with_history() {
+    let h = harness().await;
+    let months = b"months of progress".to_vec();
+    backup(&h, &[("save", &months)], Some(0)).await;
+
+    let fresh = b"a brand new game".to_vec();
+    let m = manifest(&[("save", &fresh)]);
+    let err = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: None,
+            files: m.clone(),
+            bases: Vec::new(),
+        }),
+    )
+    .await
+    .expect_err("no base against a head of 1");
+    assert_eq!(err.0, StatusCode::CONFLICT);
+    assert_eq!(err.1["code"], "non_fast_forward");
+    assert_eq!(err.1["head_version"], 1);
+    assert_eq!(err.1["base_version"], 0);
+
+    // The commit holds the same line on its own, for a client whose init
+    // carried a base and whose commit does not.
+    let init = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(1),
+            files: m.clone(),
+            bases: Vec::new(),
+        }),
+    )
+    .await
+    .expect("init")
+    .0;
+    assert_eq!(init.missing.len(), 1);
+    let code = cas::upload_blob(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path((init.upload_id.clone(), sha_of(&fresh))),
+        axum::http::HeaderMap::new(),
+        Body::from(fresh.clone()),
+    )
+    .await
+    .expect("blob upload");
+    assert_eq!(code, StatusCode::NO_CONTENT);
+    let err = cas::commit(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasCommit {
+            upload_id: init.upload_id,
+            base_version: None,
+            device_name: None,
+            notes: None,
+            files: m,
+        }),
+    )
+    .await
+    .expect_err("no base at the commit either");
+    assert_eq!(err.0, StatusCode::CONFLICT);
+    assert_eq!(err.1["head_version"], 1);
+}
+
+/// Every version deleted leaves the head at its old number with nothing behind
+/// it. Refusing there has no way out, since the 409 sends the client to pull a
+/// head that is in the trash, so the push starts the history again.
+#[tokio::test]
+async fn a_save_with_every_version_deleted_takes_any_base() {
+    let h = harness().await;
+    let old = b"deleted on purpose".to_vec();
+    backup(&h, &[("save", &old)], Some(0)).await;
+    sqlx::query(
+        "UPDATE snapshots SET deleted_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE save_id=?",
+    )
+    .bind(SAVE)
+    .execute(&h.state.pool)
+    .await
+    .unwrap();
+
+    let new = b"started over".to_vec();
+    let (v, _, _) = backup(&h, &[("save", &new)], None).await;
+    assert_eq!(v, 2);
+
+    let err = cas::init(
+        State(h.state.clone()),
+        Extension(h.user.clone()),
+        Path(SAVE.to_string()),
+        Json(CasInit {
+            base_version: Some(1),
+            files: manifest(&[("save", &old)]),
+            bases: Vec::new(),
+        }),
+    )
+    .await
+    .expect_err("a live version again closes the door to stale bases");
+    assert_eq!(err.1["head_version"], 2);
+}
+
+/// A divergent base whose manifest holds the whole head was let through by the
+/// init; the commit has to agree, or the push dies after uploading everything.
+/// No base counts the same: a new machine whose folder already holds the head.
+#[tokio::test]
+async fn a_push_that_carries_the_whole_head_commits_with_any_base() {
+    let h = harness().await;
+    let old = b"contenido".to_vec();
+    backup(&h, &[("save", &old)], Some(0)).await;
+
+    let extra = b"nuevo".to_vec();
+    let (v, _, _) = backup(&h, &[("save", &old), ("otro", &extra)], Some(0)).await;
+    assert_eq!(v, 2);
+    let more = b"mas".to_vec();
+    let (v, _, _) = backup(
+        &h,
+        &[("save", &old), ("otro", &extra), ("mas", &more)],
+        None,
+    )
+    .await;
+    assert_eq!(v, 3);
+}
+
 /// The per-version cap is measured on the save's logical size, and it is now known
 /// **before** anything is transmitted. The multipart could only abort mid-upload,
 /// which is what left the user with a 413 and no number.
