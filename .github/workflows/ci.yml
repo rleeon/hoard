@@ -4,12 +4,15 @@ on:
   # Full CI runs only on a version tag (the release gate) and on demand, never
   # on routine branch pushes, so editing a single .md no longer spends Actions
   # minutes. Validate locally before pushing with `cargo check --workspace` +
-  # `pnpm --dir crates/hoard-desktop/ui check` (see CLAUDE.md). PRs still get
-  # checked if you ever open one.
+  # `pnpm --dir crates/hoard-desktop/ui check` (see CLAUDE.md). A PR (Dependabot,
+  # a fork) spends nothing until the `run-ci` label is put on it by hand; from
+  # then on it is checked on every push, until the label comes off. Any other
+  # label being added does not start a run.
   push:
     tags:
       - "v*.*.*"
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 env:
@@ -27,6 +30,7 @@ env:
 jobs:
   fmt:
     name: cargo fmt
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -38,7 +42,7 @@ jobs:
 
   trailers:
     name: no AI co-author trailers
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +65,7 @@ jobs:
 
   clippy:
     name: cargo clippy
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,6 +128,7 @@ jobs:
   # tag, with nothing left to fix it before the assets go out.
   build-test:
     name: build + test (${{ matrix.os }})
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci'))
     strategy:
       fail-fast: false
       matrix:
@@ -192,6 +198,7 @@ jobs:
   # `--check` mode against the migrations under crates/hoard-server.
   sqlx-check:
     name: sqlx offline cache
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -250,6 +257,7 @@ jobs:
   # workspace dep tree. Config lives in deny.toml at the repo root.
   cargo-deny:
     name: cargo deny
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -261,6 +269,7 @@ jobs:
   # cargo, just parses the manifests, so it's cheap.
   cargo-machete:
     name: cargo machete
+    if: github.event_name != 'pull_request' || (contains(github.event.pull_request.labels.*.name, 'run-ci') && (github.event.action != 'labeled' || github.event.label.name == 'run-ci'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
