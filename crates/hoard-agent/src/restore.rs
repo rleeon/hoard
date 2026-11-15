@@ -1862,7 +1862,9 @@ pub async fn list_cloud_version_files(
             Some(p) => p.to_string_lossy().into_owned(),
             None => continue,
         };
-        let size = entry.header().size().unwrap_or(0) as i64;
+        // The header's own size field ignores a PAX `size` override, and that
+        // mismatch is exactly what the old tokio-tar smuggled entries through.
+        let size = entry.effective_size() as i64;
         files.push(SnapshotFile {
             relative_path: rel,
             size_bytes: size,

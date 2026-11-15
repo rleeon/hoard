@@ -88,7 +88,7 @@ tracing-appender = "0.2"
 
 # Error handling
 anyhow = "1"
-thiserror = "1"
+thiserror = "2"
 
 # Crypto
 argon2 = "0.5"
@@ -103,7 +103,10 @@ rpassword = "7"
 
 # Compression
 async-compression = { version = "0.4", features = ["tokio", "zstd", "gzip"] }
-tokio-tar = "0.3"
+# `tokio-tar` is abandoned at 0.3.1, which lets a PAX size header smuggle
+# extra entries into an archive (GHSA-j5gw-2vrg-8fgx). The astral fork has
+# the fix; renamed so the code keeps saying `tokio_tar`.
+tokio-tar = { package = "astral-tokio-tar", version = "0.7" }
 # Synchronous zstd for the embedded Ludusavi catalog. Already in the tree as
 # a transitive dep of async-compression, so this costs no extra build.
 zstd = "0.13"
@@ -159,7 +162,7 @@ proptest = "1"
 # ZIP writer for cloud account exports (server, `cloud` feature). No default
 # features: game saves are already compressed, so export entries are `Stored`
 # (no re-deflate): we only need the archive container, not compression.
-zip = { version = "2", default-features = false }
+zip = { version = "9", default-features = false }
 
 # Smaller, slightly faster release binaries (desktop bundle, server, sidecar).
 # Thin LTO + one codegen unit trade release-build time for output quality;

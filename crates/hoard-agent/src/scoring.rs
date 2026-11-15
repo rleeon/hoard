@@ -143,7 +143,10 @@ fn archive_looks_like_save(path: &Path) -> bool {
         let Ok(entry) = zip.by_index_raw(i) else {
             continue;
         };
-        let name = entry.name().to_ascii_lowercase();
+        let Ok(name) = entry.name() else {
+            continue;
+        };
+        let name = name.to_ascii_lowercase();
         let leaf = name.rsplit(['/', '\\']).next().unwrap_or(name.as_str());
         if ARCHIVE_SAVE_MARKERS.contains(&leaf) {
             return true;

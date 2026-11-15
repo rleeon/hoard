@@ -16,4 +16,4 @@ anyhow = { workspace = true }
 # whatever build restores it, so zlib's output can never change under it.
 # `static` builds the bundled source everywhere (macOS ships its own zlib).
 # The golden test in `lib.rs` fails if a bump changes the output.
-libz-sys = { version = "=1.1.31", default-features = false, features = ["static"] }
+libz-sys = { version = "=1.1.33", default-features = false, features = ["static"] }

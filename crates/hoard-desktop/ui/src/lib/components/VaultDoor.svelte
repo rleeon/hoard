@@ -22,7 +22,7 @@
    * `icon: typeof Home`, the tour's steps).
    */
   import { onMount } from "svelte";
-  import type { IconProps } from "@lucide/svelte";
+  import type { LucideProps } from "@lucide/svelte";
 
   let {
     size = 24,
@@ -30,7 +30,7 @@
     strokeWidth: _strokeWidth,
     class: klass = "",
     ...rest
-  }: IconProps = $props();
+  }: LucideProps = $props();
 
   const HOLD_MS = 2000;
 

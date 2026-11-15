@@ -10,7 +10,7 @@
    * Lucide's prop type, so it drops in where the house was (`icon: typeof Home`)
    * and keeps the nav's hover pop.
    */
-  import type { IconProps } from "@lucide/svelte";
+  import type { LucideProps } from "@lucide/svelte";
 
   let {
     size = 24,
@@ -18,7 +18,7 @@
     strokeWidth: _strokeWidth,
     class: klass = "",
     ...rest
-  }: IconProps = $props();
+  }: LucideProps = $props();
 
   // The icon renders more than once (the nav and the tour), and a mask is
   // looked up by id document-wide.
