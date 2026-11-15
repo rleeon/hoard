@@ -250,26 +250,33 @@ pub async fn init(
         .fetch_one(&state.pool)
         .await
         .map_err(|e| internal_logged("reading the save's latest version", e))?;
-    if let Some(base) = body.base_version {
-        // A base that does not match the head is rejected so a push cannot bury
-        // a version it never saw. But a manifest that brings that version
-        // *entirely* cannot bury it: its content is still there, file by file, in
-        // the one about to be written. It is the same judgement the agent makes
-        // when it reconciles and finds its folder already contains the head, made
-        // here with the manifest already in the request, for clients that cannot
-        // do it themselves. Reading the head out of a 409 body is from aug-2026,
-        // and before that a rejection left them knowing they had diverged but not
-        // from what.
-        if base != head && !manifest_covers_head(&state.pool, &save_id, head, &body.files).await? {
-            return Err(non_fast_forward(&save_id, head, base));
-        }
-        if base != head {
-            tracing::warn!(
+
+    // No base means the client holds no cursor for this save: a machine that has
+    // never synced it, or one whose state was rebuilt. Against a save with
+    // history that is the least trustworthy upload there is, and skipping the
+    // check for it was the hole: in nov-2026 a second PC played a game for the
+    // first time, its fresh folder went up as version N+1 over months of another
+    // PC's history, and that PC then pulled it as "newer" and parked its real
+    // progress in `conflicts/` (issue #97). So it reads as base 0: fine on a first
+    // upload, a non-fast-forward against anything else, which the client answers
+    // by reconciling and keeping both. The cloud has done this since aug-2026.
+    let base = body.base_version.unwrap_or(0);
+    if base != head {
+        let mut conn = state
+            .pool
+            .acquire()
+            .await
+            .map_err(|e| internal_logged("opening a database connection", e))?;
+        match harmless_divergence(&mut conn, &save_id, head, &body.files).await? {
+            Some(why) => warn!(
                 %save_id,
                 head_version = head,
                 base_version = base,
-                "cas init: la base diverge pero el manifiesto trae la cabeza entera — se deja pasar"
-            );
+                had_base = body.base_version.is_some(),
+                why,
+                "cas init: base diverges from the head, let through"
+            ),
+            None => return Err(non_fast_forward(&save_id, head, base)),
         }
     }
 
@@ -358,7 +365,59 @@ pub async fn init(
     }))
 }
 
+/// Whether a push whose base is not the head can go through anyway, and why.
+///
+/// A mismatched base is refused so a push cannot bury a version it never saw.
+/// Two cases have nothing to bury: a save with no live version left, and a
+/// manifest that already holds the whole head.
+async fn harmless_divergence(
+    conn: &mut sqlx::SqliteConnection,
+    save_id: &str,
+    head: i64,
+    files: &[CasFile],
+) -> Result<Option<&'static str>, ApiError> {
+    if save_has_no_history(&mut *conn, save_id)
+        .await
+        .map_err(|e| internal_logged("counting the save's live versions", e))?
+    {
+        return Ok(Some(
+            "no live version left, the push starts the history again",
+        ));
+    }
+    if manifest_covers_head(&mut *conn, save_id, head, files).await? {
+        return Ok(Some("the manifest holds the whole head"));
+    }
+    Ok(None)
+}
+
+/// Is there no live version left of this save?
+///
+/// `latest_version_num` never goes back down here: deleting a version only sets
+/// its `deleted_at`, so a save whose versions were all deleted still has a head
+/// of N with nothing behind it. Refusing a push against that head is a trap with
+/// no exit. The client answers a 409 by pulling the head, the head is in the
+/// trash, the pull finds nothing, and the next push gets the same 409. There is
+/// no content left to protect, so the push goes through and becomes N+1. The
+/// cloud asks the same question of an empty row; there the head does drop.
+pub(crate) async fn save_has_no_history(
+    conn: &mut sqlx::SqliteConnection,
+    save_id: &str,
+) -> Result<bool, sqlx::Error> {
+    let live: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM snapshots WHERE save_id=? AND deleted_at IS NULL")
+            .bind(save_id)
+            .fetch_one(conn)
+            .await?;
+    Ok(live == 0)
+}
+
 /// Does this push bring everything the head has?
+///
+/// It is the same judgement the agent makes when it reconciles and finds its
+/// folder already contains the head, made here from the manifest already in the
+/// request, for clients that cannot make it themselves. Reading the head out of
+/// a 409 body is from aug-2026; before that a rejection left a client knowing it
+/// had diverged but not from what.
 ///
 /// A *strict* superset: it has to bring the whole head *and* something of its own.
 /// Dropping a file the head has is precisely the burial the 409 exists to prevent,
@@ -369,7 +428,7 @@ pub async fn init(
 /// half-built version, or one from before content-addressing) concedes nothing
 /// either: there is nothing to compare against.
 async fn manifest_covers_head(
-    pool: &sqlx::SqlitePool,
+    conn: &mut sqlx::SqliteConnection,
     save_id: &str,
     head: i64,
     files: &[CasFile],
@@ -385,7 +444,7 @@ async fn manifest_covers_head(
     )
     .bind(save_id)
     .bind(head)
-    .fetch_all(pool)
+    .fetch_all(conn)
     .await
     .map_err(|e| internal_logged("reading the head's manifest", e))?;
     if head_files.is_empty() {
@@ -1109,12 +1168,31 @@ pub async fn commit(
             internal_logged("reading the save's latest version", e)
         })?;
     // The init already looked, but minutes can pass between init and commit and
-    // another machine may have pushed. This is the check that counts.
-    if let Some(base) = body.base_version {
-        if base != head {
-            rollback(&placed);
-            cleanup_staging();
-            return Err(non_fast_forward(&save_id, head, base));
+    // another machine may have pushed. This is the check that counts, so it has
+    // the init's rules: no base reads as 0, and the same two divergences pass.
+    // Fewer rules here would let the init pass a push that then dies at the end
+    // with every blob already uploaded.
+    let base = body.base_version.unwrap_or(0);
+    if base != head {
+        match harmless_divergence(&mut tx, &save_id, head, &body.files).await {
+            Ok(Some(why)) => warn!(
+                %save_id,
+                head_version = head,
+                base_version = base,
+                had_base = body.base_version.is_some(),
+                why,
+                "cas commit: base diverges from the head, let through"
+            ),
+            Ok(None) => {
+                rollback(&placed);
+                cleanup_staging();
+                return Err(non_fast_forward(&save_id, head, base));
+            }
+            Err(e) => {
+                rollback(&placed);
+                cleanup_staging();
+                return Err(e);
+            }
         }
     }
     let new_version = head + 1;

@@ -20,7 +20,7 @@ use crate::auth::AuthUser;
 use crate::routes::health::ServerState;
 use crate::routes::repair_ts;
 
-// ─── Response types ─────────────────────────────────────────────────────────
+// ---- response types
 //
 // The shapes live in `hoard_core::wire` (ADR 0021 C.6), shared with the client:
 // `Snapshot`, `SnapshotDetail` and `SnapshotFile`.
@@ -39,7 +39,7 @@ fn default_limit() -> i64 {
     50
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ---- helpers
 
 pub(crate) fn err(status: StatusCode, msg: &str) -> (StatusCode, Json<serde_json::Value>) {
     (status, Json(serde_json::json!({ "error": msg })))
@@ -206,7 +206,7 @@ pub(crate) async fn ownership_check(
     Ok(row.map(|r| (r.game_slug, r.label)))
 }
 
-// ─── POST /v1/saves/:save_id/snapshots ──────────────────────────────────────
+// ---- POST /v1/saves/:save_id/snapshots
 
 pub async fn create(
     State(state): State<Arc<ServerState>>,
@@ -258,8 +258,9 @@ pub async fn create(
     let mut device_name: Option<String> = None;
     let mut notes: Option<String> = None;
     // The version the client based this snapshot on (its last-synced version
-    // for this save). When present and it no longer matches the server's head,
-    // another device advanced the save → non-fast-forward, rejected below.
+    // for this save). When it no longer matches the server's head, another
+    // device advanced the save: non-fast-forward, rejected below. Absent reads
+    // as 0.
     let mut base_version: Option<i64> = None;
     let mut files: Vec<(String, i64, String)> = Vec::new(); // (rel_path, size, sha256)
     let mut total_size: i64 = 0;
@@ -687,8 +688,30 @@ pub async fn create(
     // base version which is no longer the head has diverged: another device
     // pushed since it last synced. Reject so the client can pull + merge
     // (keep-both) instead of silently overwriting the other line.
-    if let Some(base) = base_version {
-        if base != head {
+    //
+    // No base reads as base 0, and a save with no live version left lets any
+    // base through; `cas::init` has the incident and `save_has_no_history` the
+    // trap. Unlike the CAS routes there is no manifest-covers-head pass here,
+    // the same as the cloud's archive upload.
+    let base = base_version.unwrap_or(0);
+    if base != head {
+        let no_history = match crate::routes::cas::save_has_no_history(&mut tx, &save_id).await {
+            Ok(empty) => empty,
+            Err(e) => {
+                rollback_blobs(&created_blobs);
+                cleanup_tmp();
+                return Err(internal_logged("counting the save's live versions", e));
+            }
+        };
+        if no_history {
+            warn!(
+                %save_id,
+                head_version = head,
+                base_version = base,
+                had_base = base_version.is_some(),
+                "snapshot upload: no live version left, the push starts the history again"
+            );
+        } else {
             rollback_blobs(&created_blobs);
             cleanup_tmp();
             return Err((
@@ -982,7 +1005,7 @@ pub async fn create(
     ))
 }
 
-// ─── GET /v1/saves/:save_id/snapshots ───────────────────────────────────────
+// ---- GET /v1/saves/:save_id/snapshots
 
 pub async fn list(
     State(state): State<Arc<ServerState>>,
@@ -1067,7 +1090,7 @@ pub async fn list(
     Ok(Json(rows))
 }
 
-// ─── GET /v1/saves/:save_id/snapshots/:version ──────────────────────────────
+// ---- GET /v1/saves/:save_id/snapshots/:version
 
 pub async fn detail(
     State(state): State<Arc<ServerState>>,
@@ -1147,7 +1170,7 @@ pub async fn detail(
     }))
 }
 
-// ─── GET /v1/saves/:save_id/snapshots/:version/download ─────────────────────
+// ---- GET /v1/saves/:save_id/snapshots/:version/download
 
 pub async fn download(
     State(state): State<Arc<ServerState>>,
@@ -1472,7 +1495,7 @@ pub async fn download(
     Ok((StatusCode::OK, headers, body).into_response())
 }
 
-// ─── DELETE /v1/saves/:save_id/snapshots/:version (soft delete) ────────────
+// ---- DELETE /v1/saves/:save_id/snapshots/:version (soft delete)
 
 pub async fn soft_delete(
     State(state): State<Arc<ServerState>>,
@@ -1537,7 +1560,7 @@ pub async fn soft_delete(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ─── POST /v1/saves/:save_id/snapshots/:version/restore ─────────────────────
+// ---- POST /v1/saves/:save_id/snapshots/:version/restore
 
 pub async fn restore(
     State(state): State<Arc<ServerState>>,
