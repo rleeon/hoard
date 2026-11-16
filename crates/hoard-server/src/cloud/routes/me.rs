@@ -182,7 +182,9 @@ pub async fn get_me(
     // we report are the live ones.
     quota::apply_due_downgrade(&state.pool, user.user_id).await?;
     // Purge snapshots if new limit is below current usage (e.g., downgrade from Pro to Free).
-    let _ = crate::cloud::purge::maybe_purge(&state, user.user_id).await;
+    // Only the check is awaited: the purge itself can outlast the 30 s the app
+    // gives this route, so the usage below is the one from before it.
+    let _ = crate::cloud::purge::maybe_purge_detached(&state, user.user_id).await;
 
     let row: (
         String,

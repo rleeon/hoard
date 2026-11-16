@@ -164,10 +164,76 @@ fn nothing_to_free() -> std::sync::MutexGuard<'static, HashMap<Uuid, Instant>> {
     NOTHING_TO_FREE.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Accounts with a purge running. A second one for the same account would load
+/// the same candidates and then queue behind the first one's deletes, so it is
+/// turned away instead.
+static IN_FLIGHT: LazyLock<Mutex<HashSet<Uuid>>> = LazyLock::new(Default::default);
+
+struct Flight(Uuid);
+
+impl Flight {
+    fn begin(user_id: Uuid) -> Option<Self> {
+        // Not `then_some`: that builds the guard either way, and dropping it
+        // on a refusal would release the account the running purge holds.
+        let fresh = in_flight().insert(user_id);
+        fresh.then(|| Self(user_id))
+    }
+}
+
+impl Drop for Flight {
+    fn drop(&mut self) {
+        in_flight().remove(&self.0);
+    }
+}
+
+fn in_flight() -> std::sync::MutexGuard<'static, HashSet<Uuid>> {
+    IN_FLIGHT.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// An account over its threshold, as [`pressure`] found it.
+struct Pressure {
+    plan: Plan,
+    used: i64,
+    limit: i64,
+    target: i64,
+}
+
 /// Run a purge for `user_id` if their footprint is over the plan threshold.
 /// Returns the number of versions deleted. Best-effort and idempotent: safe to
-/// call after every commit.
+/// call after every commit, from a task of its own. A request handler wants
+/// [`maybe_purge_detached`].
 pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, CloudError> {
+    match pressure(state, user_id).await? {
+        Some(p) => reclaim(state, user_id, p).await,
+        None => Ok(0),
+    }
+}
+
+/// [`maybe_purge`] for a request handler: the check runs here and the purge on
+/// a task of its own, so it neither holds the response nor dies with it.
+///
+/// `/v1/me` used to await the whole thing. On 2026-11-15 the candidates query
+/// took 72 s on average for the three accounts over their threshold, the app
+/// gives up on `/v1/me` at 30 s and showed a network error at sign-in, and a
+/// request dropped mid-query never got to record that it had found nothing,
+/// so the next poll started over: 471 runs in five hours, three at a time,
+/// 36 GB of temporary files, and 4.5 s to get a connection for everybody else.
+pub async fn maybe_purge_detached(state: &CloudState, user_id: Uuid) -> Result<(), CloudError> {
+    let Some(p) = pressure(state, user_id).await? else {
+        return Ok(());
+    };
+    let state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = reclaim(&state, user_id, p).await {
+            tracing::warn!(error = ?e, user_id = %user_id, "quota purge failed");
+        }
+    });
+    Ok(())
+}
+
+/// The cheap half, one row of `profiles`: is this account over its threshold
+/// and worth a look right now. Almost every call ends here with `None`.
+async fn pressure(state: &CloudState, user_id: Uuid) -> Result<Option<Pressure>, CloudError> {
     // Promote a downgrade whose grace window has elapsed before we read the
     // limit. Until then the user keeps their larger limit and nothing here
     // purges.
@@ -180,7 +246,7 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
     .fetch_optional(&state.pool)
     .await?;
     let Some((plan_s, used, limit_override, change_at)) = row else {
-        return Ok(0);
+        return Ok(None);
     };
     let plan = Plan::from_str(&plan_s).unwrap_or(Plan::Free);
     // Resolve against the *granted* limit, not the plan's. A user inside a
@@ -202,11 +268,30 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
         // nowhere near full. `notices::rearm_storage` does it once a day
         // instead, over the handful of users who actually have a notice on
         // record. A day late is irrelevant: the condition takes weeks to return.
-        return Ok(0);
+        return Ok(None);
     }
     if found_nothing_recently(&nothing_to_free(), user_id, Instant::now()) {
-        return Ok(0);
+        return Ok(None);
     }
+    Ok(Some(Pressure {
+        plan,
+        used,
+        limit,
+        target,
+    }))
+}
+
+/// The expensive half: load the candidates, plan, delete.
+async fn reclaim(state: &CloudState, user_id: Uuid, p: Pressure) -> Result<usize, CloudError> {
+    let Some(_flight) = Flight::begin(user_id) else {
+        return Ok(0);
+    };
+    let Pressure {
+        plan,
+        used,
+        limit,
+        target,
+    } = p;
 
     let candidates = load_candidates(state, user_id).await?;
     let plan_list = plan_quota_purge(&candidates, floor_per_game(plan), used, target);
@@ -260,41 +345,74 @@ pub async fn maybe_purge(state: &CloudState, user_id: Uuid) -> Result<usize, Clo
 }
 
 /// Load every live, content-addressed version with its reclaimable size.
-async fn load_candidates(
+///
+/// A version frees the blobs nothing else references (refcount == 1), each
+/// counted once however many of its files share it. So the query starts from
+/// those blobs and asks which version names each, instead of walking every
+/// file of every version to find the few that matter.
+///
+/// The two `OFFSET 0` are fences, and they are the point. Through the
+/// `manifest_files` view the planner guessed 41,609 manifest rows for an
+/// account that had 856, and for that many it read all of `file_entries`
+/// (1.04 M rows, 276 MB) into a hash that spilled to disk: 72 s a run on
+/// 2026-11-15, statistics fresh or not. A lateral subquery it cannot flatten
+/// is only ever an index lookup by `save_id` or `entry_id`.
+pub async fn load_candidates(
     state: &CloudState,
     user_id: Uuid,
 ) -> Result<Vec<PurgeCandidate>, CloudError> {
-    // `freeable` sums the size of this version's distinct blobs that nothing
-    // else references (refcount == 1). DISTINCT first so a blob used by several
-    // files in the version isn't counted twice.
     let rows: Vec<(String, i64, i64, bool, bool, i64)> = sqlx::query_as(
         r#"
-        WITH ver_blobs AS (
-            SELECT DISTINCT f.save_id, f.version_num, f.sha256
-            FROM manifest_files f
-            JOIN saves s ON s.id = f.save_id
+        WITH live AS MATERIALIZED (
+            SELECT v.id,
+                   v.save_id,
+                   v.version_num,
+                   EXTRACT(EPOCH FROM v.created_at)::bigint AS created_unix,
+                   v.is_pinned,
+                   (v.version_num = s.latest_version_num) AS is_head
+            FROM saves s
+            JOIN save_versions v ON v.save_id = s.id
             WHERE s.user_id = $1
+              AND v.deleted_at IS NULL
+              AND v.sha256 <> ''
+              AND v.content_addressed = TRUE
+        ),
+        sole AS MATERIALIZED (
+            SELECT e.id, e.sha256, b.size_bytes
+            FROM saves s
+            CROSS JOIN LATERAL (
+                SELECT fe.id, fe.sha256
+                FROM file_entries fe
+                WHERE fe.save_id = s.id
+                OFFSET 0
+            ) e
+            JOIN cloud_blobs b ON b.user_id = $1 AND b.sha256 = e.sha256
+            WHERE s.user_id = $1
+              AND b.refcount = 1
+        ),
+        ver_blobs AS (
+            SELECT DISTINCT x.version_id, sole.sha256, sole.size_bytes
+            FROM sole
+            CROSS JOIN LATERAL (
+                SELECT vf.version_id
+                FROM version_files vf
+                WHERE vf.entry_id = sole.id
+                OFFSET 0
+            ) x
         ),
         freeable AS (
-            SELECT vb.save_id, vb.version_num,
-                   COALESCE(SUM(CASE WHEN b.refcount = 1 THEN b.size_bytes ELSE 0 END), 0)::bigint AS bytes
-            FROM ver_blobs vb
-            JOIN cloud_blobs b ON b.user_id = $1 AND b.sha256 = vb.sha256
-            GROUP BY vb.save_id, vb.version_num
+            SELECT version_id, SUM(size_bytes)::bigint AS bytes
+            FROM ver_blobs
+            GROUP BY version_id
         )
-        SELECT v.save_id,
-               v.version_num,
-               EXTRACT(EPOCH FROM v.created_at)::bigint AS created_unix,
-               v.is_pinned,
-               (v.version_num = s.latest_version_num) AS is_head,
-               COALESCE(fr.bytes, 0) AS freeable
-        FROM save_versions v
-        JOIN saves s ON s.id = v.save_id
-        LEFT JOIN freeable fr ON fr.save_id = v.save_id AND fr.version_num = v.version_num
-        WHERE s.user_id = $1
-          AND v.deleted_at IS NULL
-          AND v.sha256 <> ''
-          AND v.content_addressed = TRUE
+        SELECT live.save_id,
+               live.version_num,
+               live.created_unix,
+               live.is_pinned,
+               live.is_head,
+               COALESCE(fr.bytes, 0)::bigint AS freeable
+        FROM live
+        LEFT JOIN freeable fr ON fr.version_id = live.id
         "#,
     )
     .bind(user_id)
@@ -594,6 +712,19 @@ mod tests {
         let target = used - 500 * MB; // need ~one big deletion
         let plan = plan_quota_purge(&cs, 1, used, target);
         assert_eq!(plan.first().map(|(s, _)| s.as_str()), Some("big"));
+    }
+
+    #[test]
+    fn one_purge_at_a_time_per_account() {
+        let user = Uuid::new_v4();
+        let first = Flight::begin(user).expect("nobody running yet");
+        assert!(Flight::begin(user).is_none(), "second one turned away");
+        assert!(
+            Flight::begin(Uuid::new_v4()).is_some(),
+            "another account's is its own"
+        );
+        drop(first);
+        assert!(Flight::begin(user).is_some(), "free again once it ends");
     }
 
     #[test]

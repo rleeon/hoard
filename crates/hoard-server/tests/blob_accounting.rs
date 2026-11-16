@@ -936,6 +936,78 @@ async fn pruning_to_the_version_cap_keeps_the_books_straight() {
     cleanup(&pool, &[user]).await;
 }
 
+/// What the quota purge believes each version would free: the blobs it alone
+/// holds. A shared one frees nothing, a pending upload is no candidate, and
+/// another account's copy of the same bytes is none of this one's business.
+#[tokio::test]
+async fn purge_candidates_are_sized_by_what_each_version_alone_holds() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool.clone()).await;
+    let user = new_user(&pool).await;
+    let other = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    let b = new_save(&pool, user, "game-b").await;
+    let c = new_save(&pool, other, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 100), (2, 200)], true).await;
+    add_version(&pool, user, &a, 2, &[(1, 100), (3, 300)], true).await;
+    add_version(&pool, user, &a, 3, &[(1, 100)], true).await;
+    add_version(&pool, user, &a, 4, &[(6, 600)], false).await;
+    add_version(&pool, user, &b, 1, &[(1, 100), (5, 500)], true).await;
+    add_version(&pool, other, &c, 1, &[(2, 200), (7, 700)], true).await;
+
+    async fn sized(state: &CloudState, user: Uuid) -> Vec<(String, i64, i64, bool)> {
+        let mut out: Vec<_> = hoard_server::cloud::purge::load_candidates(state, user)
+            .await
+            .expect("candidates")
+            .into_iter()
+            .map(|c| (c.save_id, c.version_num, c.freeable_bytes, c.is_head))
+            .collect();
+        out.sort();
+        out
+    }
+
+    let mut want = vec![
+        (a.clone(), 1, 200, false),
+        (a.clone(), 2, 300, false),
+        (a.clone(), 3, 0, true),
+        (b.clone(), 1, 500, true),
+    ];
+    want.sort();
+    assert_eq!(sized(&state, user).await, want);
+    assert_eq!(sized(&state, other).await, vec![(c.clone(), 1, 900, true)]);
+    cleanup(&pool, &[user, other]).await;
+}
+
+/// The shas reconcile must leave alone: whatever a version names, pending or
+/// committed. An entry no version points at any more names nothing.
+#[tokio::test]
+async fn reconcile_reads_the_named_shas_off_the_catalogue() {
+    let Some(pool) = pool().await else { return };
+    let user = new_user(&pool).await;
+    let other = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    let c = new_save(&pool, other, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 100), (2, 200)], true).await;
+    add_version(&pool, user, &a, 2, &[(3, 300)], false).await;
+    add_version(&pool, other, &c, 1, &[(9, 900)], true).await;
+    sqlx::query(
+        "INSERT INTO file_entries (save_id, relative_path, sha256, size_bytes)
+         VALUES ($1, 'gone.sav', decode($2, 'hex'), 1)",
+    )
+    .bind(&a)
+    .bind(sha(4))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let named = reconcile::named_by_any_version(&pool, user)
+        .await
+        .expect("named");
+    let want: std::collections::HashSet<String> = [sha(1), sha(2), sha(3)].into();
+    assert_eq!(named, want);
+    cleanup(&pool, &[user, other]).await;
+}
+
 // ---- level 6: a commit reusing blobs the GC is after
 
 async fn commit(state: &CloudState, user: Uuid, save_id: &str, v: i64) -> u16 {

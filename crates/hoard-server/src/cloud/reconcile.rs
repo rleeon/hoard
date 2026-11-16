@@ -346,17 +346,26 @@ async fn still_patch_orphans(
 /// Shas any version of this account names, pending or committed. A pending
 /// version's blobs are an upload in flight; a committed one's are live files,
 /// row or no row.
-async fn named_by_any_version(
+///
+/// Read from the catalogue: an entry belongs to the save its versions belong
+/// to, so the entries of this account's saves that any version still points at
+/// are the answer, and each is read once instead of once per version naming it
+/// (8 M references to 1 M entries in Nov 2026). Both `OFFSET 0` are fences, as
+/// in `purge::load_candidates`: joined freely this read all of `file_entries`
+/// for every account, 24.5 s each over the 413 of the 2026-11-15 round.
+pub async fn named_by_any_version(
     pool: &sqlx::PgPool,
     user: Uuid,
 ) -> Result<HashSet<String>, sqlx::Error> {
     Ok(sqlx::query_scalar(
         "SELECT DISTINCT encode(fe.sha256, 'hex')
            FROM saves s
-           JOIN save_versions v ON v.save_id = s.id
-           JOIN version_files vf ON vf.version_id = v.id
-           JOIN file_entries fe ON fe.id = vf.entry_id
-          WHERE s.user_id = $1",
+          CROSS JOIN LATERAL (
+                SELECT e.id, e.sha256 FROM file_entries e
+                 WHERE e.save_id = s.id OFFSET 0) fe
+          WHERE s.user_id = $1
+            AND EXISTS (SELECT 1 FROM version_files vf
+                         WHERE vf.entry_id = fe.id OFFSET 0)",
     )
     .bind(user)
     .fetch_all(pool)
