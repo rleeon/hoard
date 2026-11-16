@@ -32,6 +32,19 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # project's own repository. Bookworm to match the builder's glibc.
 FROM debian:bookworm-slim AS runtime
 
+# Both users exist, with fixed ids, before any package gets to create them. The
+# cluster on the volume belongs to postgres 100:102, the ids apt happened to
+# hand out when the first image was built. A package takes whatever system id
+# is free that day, so a rebuild was free to pick another: on 2026-11-16
+# postgresql-common 295 gave postgres 997, it could not open
+# /data/pg17/PG_VERSION, and the API was down 3 min 20 s until the old image
+# went back. The `test`s closing the next step fail the build, not production,
+# if the ids ever drift again.
+RUN groupadd --system --gid 102 postgres \
+ && useradd --system --uid 100 --gid 102 --home-dir /var/lib/postgresql --shell /bin/bash postgres \
+ && groupadd --system --gid 999 hoard \
+ && useradd --system --uid 10001 --gid 999 --home-dir /nonexistent --shell /usr/sbin/nologin hoard
+
 # postgresql-common creates a cluster on install unless told not to; ours is
 # made on the volume at first boot, never in the image.
 RUN mkdir -p /etc/postgresql-common \
@@ -47,7 +60,8 @@ RUN mkdir -p /etc/postgresql-common \
  && apt-get update && apt-get install -y --no-install-recommends \
         postgresql-17 postgresql-client-17 pgbackrest \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin hoard
+ && test "$(id -u postgres):$(id -g postgres)" = "100:102" \
+ && test "$(id -u hoard):$(id -g hoard)" = "10001:999"
 
 COPY --from=builder /out-server /usr/local/bin/hoard-server
 COPY deploy/config.cloud.toml.example /etc/hoard/config.toml
