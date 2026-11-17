@@ -720,7 +720,7 @@ pub async fn cas_init(
             .entry(f.sha256.clone())
             .or_insert(f.size_bytes.max(0));
     }
-    let all_shas: Vec<String> = unique.keys().cloned().collect();
+    let all_shas: Vec<&str> = unique.keys().map(String::as_str).collect();
     let existing: Vec<(String,)> = sqlx::query_as(
         "SELECT encode(sha256, 'hex') FROM cloud_blobs
               WHERE user_id = $1
@@ -949,9 +949,14 @@ pub async fn cas_init(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Record the manifest in one round-trip via UNNEST.
-    let paths: Vec<String> = body.files.iter().map(|f| f.relative_path.clone()).collect();
-    let shas: Vec<String> = body.files.iter().map(|f| f.sha256.clone()).collect();
+    // Record the manifest in one round-trip via UNNEST. Borrowed, not copied:
+    // on an 81,279-file push each copy was another 7 MB.
+    let paths: Vec<&str> = body
+        .files
+        .iter()
+        .map(|f| f.relative_path.as_str())
+        .collect();
+    let shas: Vec<&str> = body.files.iter().map(|f| f.sha256.as_str()).collect();
     let sizes: Vec<i64> = body.files.iter().map(|f| f.size_bytes.max(0)).collect();
     let mtimes: Vec<Option<i64>> = body.files.iter().map(|f| f.modified_at).collect();
 
@@ -1004,24 +1009,14 @@ pub async fn cas_init(
         collect_abandoned_blobs(&state, user.user_id, &stale_shas, &body.files).await;
     }
 
-    // Mint a presigned PUT for each missing blob.
-    let mut missing = Vec::with_capacity(missing_shas.len());
-    for (sha, size) in missing_shas {
-        let key = r2::key_for_blob(user.user_id, sha);
-        let upload = state
-            .r2
-            .presign_put(&key, None)
-            .await
-            .map_err(CloudError::Internal)?;
-        missing.push(CasMissingBlob {
-            sha256: sha.clone(),
-            size_bytes: *size,
-            r2_key: key,
-            upload,
-            patch: None,
-        });
-    }
-    offer_patches(&state, user.user_id, &body.patch_from, &mut missing).await?;
+    let patches = offer_patches(&state, user.user_id, &body.patch_from, |sha| {
+        unique.contains_key(sha) && !existing.contains(sha)
+    })
+    .await?;
+    let missing: Vec<(String, i64)> = missing_shas
+        .into_iter()
+        .map(|(sha, size)| (sha.clone(), *size))
+        .collect();
 
     tracing::info!(
         save_id = %save_row.0,
@@ -1031,37 +1026,149 @@ pub async fn cas_init(
         "cas_init: accepted — presigned PUTs minted"
     );
 
-    Ok(Json(CasInitOut {
+    let out = CasInitOut {
         save_id: save_row.0,
         version_num: next_version,
-        missing,
+        missing: Vec::new(),
         quota: info,
+    };
+    init_answer(state, user.user_id, out, missing, patches).await
+}
+
+/// Above this many missing blobs the answer to `cas_init` is streamed.
+///
+/// A presigned PUT is about a kilobyte, and building the whole list and then
+/// its JSON holds both at once. On 2026-11-16 a first push of a Project Zomboid
+/// save, 81,279 files and 247 MB (every map chunk is a file of its own), needed
+/// some 150 MB for that on a 256 MB machine: the kernel killed the server nine
+/// times in 80 minutes, once per retry of that one client, and every kill
+/// dropped every request in flight for everybody else. Streamed, the links are
+/// minted a chunk at a time and only the chunk is ever in memory. Below the
+/// line nothing changes: the same JSON, with its length, in one piece.
+const STREAM_MISSING_ABOVE: usize = 1_000;
+
+/// Links minted per chunk of a streamed answer.
+const MINT_CHUNK: usize = 256;
+
+/// The answer to `cas_init`: `out`, whose `missing` comes in empty, with a
+/// presigned PUT per blob in the order given and the patch offered for it, if
+/// any.
+async fn init_answer(
+    state: CloudState,
+    user_id: Uuid,
+    mut out: CasInitOut,
+    missing: Vec<(String, i64)>,
+    mut patches: HashMap<String, PatchUpload>,
+) -> Result<Response, CloudError> {
+    if missing.len() <= STREAM_MISSING_ABOVE {
+        for (sha256, size_bytes) in missing {
+            let patch = patches.remove(&sha256);
+            out.missing.push(
+                mint_missing(&state, user_id, sha256, size_bytes, patch)
+                    .await
+                    .map_err(CloudError::Internal)?,
+            );
+        }
+        return Ok(Json(out).into_response());
+    }
+
+    // The envelope is serialized whole with an empty list and cut where the
+    // list goes, so a field added to `CasInitOut` reaches both paths. The cut
+    // can only land on the key: inside a JSON string every `"` is escaped, so
+    // no value can contain `"missing":[]`.
+    let envelope = serde_json::to_string(&out).map_err(|e| CloudError::Internal(e.into()))?;
+    let Some((open, close)) = envelope.split_once(r#""missing":[]"#) else {
+        return Err(CloudError::Internal(anyhow::anyhow!(
+            "cas_init: no missing list in {envelope}"
+        )));
+    };
+    let open = bytes::Bytes::from(format!(r#"{open}"missing":["#));
+    let close = bytes::Bytes::from(format!("]{close}"));
+
+    let mut rest = missing.into_iter();
+    let chunks = std::iter::from_fn(move || {
+        let chunk: Vec<_> = rest
+            .by_ref()
+            .take(MINT_CHUNK)
+            .map(|(sha, size)| {
+                let patch = patches.remove(&sha);
+                (sha, size, patch)
+            })
+            .collect();
+        (!chunk.is_empty()).then_some(chunk)
+    });
+    let items = futures::stream::iter(chunks.enumerate()).then(move |(n, chunk)| {
+        let state = state.clone();
+        async move {
+            let mut buf = Vec::with_capacity(chunk.len() * 1024);
+            for (i, (sha256, size_bytes, patch)) in chunk.into_iter().enumerate() {
+                let blob = mint_missing(&state, user_id, sha256, size_bytes, patch).await?;
+                if n > 0 || i > 0 {
+                    buf.push(b',');
+                }
+                serde_json::to_writer(&mut buf, &blob)?;
+            }
+            Ok::<_, anyhow::Error>(bytes::Bytes::from(buf))
+        }
+    });
+    // A failure past the first byte can't become an error status any more. The
+    // body is cut short instead, the client fails to parse it and retries, as
+    // it would a dropped connection.
+    let items = items.inspect_err(move |e| {
+        tracing::warn!(error = %e, %user_id, "cas_init: streamed answer cut short");
+    });
+    let body = futures::stream::once(async move { Ok::<_, anyhow::Error>(open) })
+        .chain(items)
+        .chain(futures::stream::once(async move { Ok(close) }));
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        axum::body::Body::from_stream(body),
+    )
+        .into_response())
+}
+
+async fn mint_missing(
+    state: &CloudState,
+    user_id: Uuid,
+    sha256: String,
+    size_bytes: i64,
+    patch: Option<PatchUpload>,
+) -> anyhow::Result<CasMissingBlob> {
+    let r2_key = r2::key_for_blob(user_id, &sha256);
+    let upload = state.r2.presign_put(&r2_key, None).await?;
+    Ok(CasMissingBlob {
+        sha256,
+        size_bytes,
+        r2_key,
+        upload,
+        patch,
     })
-    .into_response())
 }
 
 /// Patch links for the missing blobs the client offered a base for, when the
-/// account may send patches and the base is still held whole. A lookup that
-/// fails costs the patches, never the upload.
+/// account may send patches and the base is still held whole, by the sha of
+/// the blob they stand in for. A lookup that fails costs the patches, never
+/// the upload.
 async fn offer_patches(
     state: &CloudState,
     user_id: Uuid,
     patch_from: &[PatchFrom],
-    missing: &mut [CasMissingBlob],
-) -> Result<(), CloudError> {
+    is_missing: impl Fn(&str) -> bool,
+) -> Result<HashMap<String, PatchUpload>, CloudError> {
+    let mut offers = HashMap::new();
     let wanted: HashMap<&str, &str> = patch_from
         .iter()
         .filter(|p| {
             r2::is_valid_sha256(&p.sha256)
                 && r2::is_valid_sha256(&p.base)
                 && p.base != p.sha256
-                && missing.iter().any(|m| m.sha256 == p.sha256)
+                && is_missing(&p.sha256)
         })
         .take(MAX_PATCH_BASES)
         .map(|p| (p.sha256.as_str(), p.base.as_str()))
         .collect();
     if wanted.is_empty() {
-        return Ok(());
+        return Ok(offers);
     }
     let held = async {
         if !crate::cloud::patches::account_ok(state, user_id).await? {
@@ -1078,14 +1185,14 @@ async fn offer_patches(
         Ok(h) => h,
         Err(e) => {
             tracing::warn!(error = %e, %user_id, "cas_init: patch bases unavailable, uploading whole");
-            return Ok(());
+            return Ok(offers);
         }
     };
-    for m in missing.iter_mut() {
-        let Some(base) = wanted.get(m.sha256.as_str()).filter(|b| held.contains(**b)) else {
+    for (sha, base) in wanted {
+        if !held.contains(base) {
             continue;
-        };
-        let link = |inflated| r2::key_for_patch(user_id, &m.sha256, base, inflated);
+        }
+        let link = |inflated| r2::key_for_patch(user_id, sha, base, inflated);
         let upload = state
             .r2
             .presign_put(&link(false), None)
@@ -1096,13 +1203,16 @@ async fn offer_patches(
             .presign_put(&link(true), None)
             .await
             .map_err(CloudError::Internal)?;
-        m.patch = Some(PatchUpload {
-            base: base.to_string(),
-            upload,
-            inflated_upload,
-        });
+        offers.insert(
+            sha.to_string(),
+            PatchUpload {
+                base: base.to_string(),
+                upload,
+                inflated_upload,
+            },
+        );
     }
-    Ok(())
+    Ok(offers)
 }
 
 /// `POST /v1/cloud/saves/:save_id/versions/:version/cas/commit`: finalize a

@@ -581,6 +581,116 @@ async fn a_commit_interns_each_distinct_content_once() {
     cleanup(&pool, user).await;
 }
 
+/// A push with more missing blobs than `STREAM_MISSING_ABOVE` is answered as
+/// a stream, and the stream has to say exactly what the whole answer said:
+/// every missing blob once, in sha order, its own link, and the patch offers.
+/// The push that brought this in was a Project Zomboid save of 81,279 files.
+#[tokio::test]
+async fn a_large_init_streams_the_same_answer() {
+    use axum::body::HttpBody as _;
+
+    let Some(pool) = pool().await else { return };
+    let mut state = state_for(pool.clone()).await;
+    state
+        .config
+        .cloud
+        .as_mut()
+        .expect("cloud section")
+        .blob_patch = true;
+    let (user, _) = seed(&pool, 1, 1).await;
+    sqlx::query(
+        "INSERT INTO devices (user_id, device_name, fingerprint, last_seen_at, app_version)
+         VALUES ($1, 'pc', 'pc', now(), '1.3.0')",
+    )
+    .bind(user)
+    .execute(&pool)
+    .await
+    .expect("device");
+    let base = sha(0);
+    let big = |n: usize| format!("{:064x}", 0x10_000 + n);
+    let file = |rel: String, s: String| hoard_server::cloud::routes::saves::CasFileEntry {
+        relative_path: rel,
+        sha256: s,
+        size_bytes: 1024,
+        modified_at: None,
+    };
+    let mut files: Vec<_> = (0..1_500)
+        .map(|n| file(format!("map/chunk_{n}.bin"), big(n)))
+        .collect();
+    // The same bytes under two names, and a file the account already holds.
+    files.push(file("map/copy_of_7.bin".into(), big(7)));
+    files.push(file("held.bin".into(), base.clone()));
+    let from = |s: String, b: &str| hoard_server::cloud::routes::saves::PatchFrom {
+        sha256: s,
+        base: b.into(),
+    };
+    let body = hoard_server::cloud::routes::saves::CasInit {
+        save_id: Uuid::new_v4().to_string(),
+        game_slug: "big-game".into(),
+        label: Some("default".into()),
+        device_name: None,
+        notes: None,
+        backup_only: false,
+        base_version: None,
+        files,
+        patch_from: vec![from(big(3), &base), from(big(4), &sha(99))],
+    };
+    let ctx = hoard_server::cloud::auth::CloudUser {
+        user_id: user,
+        email: format!("{user}@test.invalid"),
+        role: "authenticated".into(),
+        avatar_url: None,
+        display_name: None,
+    };
+    let resp = hoard_server::cloud::routes::saves::cas_init(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx),
+        axum::Json(body),
+    )
+    .await
+    .expect("cas_init runs");
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.body().size_hint().exact(), None, "streamed, no length");
+    let bytes = axum::body::to_bytes(resp.into_body(), 64 << 20)
+        .await
+        .expect("body");
+    let json: serde_json::Value = serde_json::from_slice(&bytes).expect("one JSON document");
+
+    assert!(json["save_id"].is_string());
+    assert_eq!(json["version_num"], 1);
+    assert!(json["quota"].is_object());
+    let missing = json["missing"].as_array().expect("missing");
+    let shas: Vec<&str> = missing
+        .iter()
+        .map(|m| m["sha256"].as_str().expect("sha"))
+        .collect();
+    let mut want: Vec<String> = (0..1_500).map(big).collect();
+    want.sort();
+    assert_eq!(shas, want, "each new blob once, in sha order, nothing held");
+    for m in missing {
+        let sha = m["sha256"].as_str().unwrap();
+        let url = m["upload"]["url"].as_str().expect("url");
+        assert!(url.contains(sha) && !url.contains(".zp"), "{url}");
+        assert_eq!(m["upload"]["method"], "PUT");
+        assert_eq!(m["size_bytes"], 1024);
+        assert!(m["r2_key"].as_str().unwrap().ends_with(sha));
+    }
+    let by_sha = |s: String| missing.iter().find(|m| m["sha256"] == s.as_str()).unwrap();
+    let patched = by_sha(big(3));
+    assert_eq!(patched["patch"]["base"], base.as_str());
+    let link = patched["patch"]["upload"]["url"].as_str().unwrap();
+    assert!(link.contains(&format!("{}.zp.{base}", big(3))), "{link}");
+    assert!(
+        by_sha(big(4)).get("patch").is_none(),
+        "no row for that base"
+    );
+    assert_eq!(
+        missing.iter().filter(|m| m.get("patch").is_some()).count(),
+        1
+    );
+    cleanup(&pool, user).await;
+}
+
 /// Where a compressed blob's bytes come from is a routing decision, and it is
 /// the client that decides it: one that can decode zstd is sent straight to
 /// storage, one that cannot keeps the server's decompressing proxy.
