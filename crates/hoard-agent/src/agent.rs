@@ -6180,6 +6180,20 @@ fn process_poll(
                     continue;
                 }
             }
+            // Where the exe lives is where the game is installed, which no launcher
+            // may know (copied into `C:\Games`, unpacked, a repack). Noted before
+            // the scan is asked for, because that scan reads it.
+            if let Some(exe) = proc.exe().filter(|_| emulator.is_none()) {
+                if hoard_manifest::ludusavi::find_by_exe(&exe.to_string_lossy()).is_some()
+                    && corr_store.record_launch(exe)
+                {
+                    if let Some(p) = corr_path {
+                        if let Err(e) = corr_store.save(p) {
+                            tracing::debug!(error = %e, "agent: failed to persist correlation store (launch)");
+                        }
+                    }
+                }
+            }
             tracing::info!(
                 process = %name,
                 title = %title.as_deref().unwrap_or("-"),

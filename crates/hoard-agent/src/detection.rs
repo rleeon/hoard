@@ -473,8 +473,10 @@ where
     let mut store_roots = steam::detect_steam_libraries(os);
     store_roots.extend(roots::other_store_roots(os));
     let install_index = install_dir_index(os, &steam_apps);
+    let found_installs = found_install_dirs(catalog, &corr_store, os);
     tracing::info!(
         install_dirs = install_index.len(),
+        found_installs = found_installs.len(),
         store_roots = store_roots.len(),
         "install-dir index built (resolves <base>)"
     );
@@ -494,6 +496,10 @@ where
             by_slug
                 .get(&entry.slug)
                 .and_then(|g| g.install_dir.as_deref()),
+            found_installs
+                .get(&entry.slug)
+                .map(Vec::as_slice)
+                .unwrap_or_default(),
         );
         let permit = semaphore.clone().acquire_owned().await?;
         tasks.push(tokio::task::spawn_blocking(move || {
@@ -920,6 +926,15 @@ where
     //     already attached to the row in the launcher cross-reference
     //     block above; the walker reads it from `g.install_dir`, no
     //     separate map needed.
+    // A game found by its saves but by no launcher gets the install folder found
+    // above, so the walk below can look inside it like it does for a launcher's.
+    for (slug, dirs) in &found_installs {
+        if let Some(g) = by_slug.get_mut(slug) {
+            if g.install_dir.is_none() {
+                g.install_dir = dirs.first().cloned();
+            }
+        }
+    }
     let prefix_root_by_slug = build_prefix_root_by_slug(os);
     let unresolved_slugs: Vec<String> = by_slug
         .iter()
@@ -1420,12 +1435,14 @@ fn install_dir_index(os: Os, steam_apps: &[SteamApp]) -> HashMap<String, PathBuf
     out
 }
 
-/// The `<base>` / `<root>` candidates for one catalog entry.
+/// The `<base>` / `<root>` candidates for one catalog entry. `found` are the
+/// install folders [`found_install_dirs`] turned up for it.
 fn scope_for(
     entry: &LudusaviEntry,
     index: &HashMap<String, PathBuf>,
     store_roots: &[PathBuf],
     steam_install: Option<&Path>,
+    found: &[PathBuf],
 ) -> pathexpand::PathScope {
     let mut install_dirs: Vec<PathBuf> = Vec::new();
     // The game's own Steam install dir is the most reliable answer.
@@ -1439,10 +1456,182 @@ fn scope_for(
             }
         }
     }
+    for p in found {
+        if !install_dirs.contains(p) {
+            install_dirs.push(p.clone());
+        }
+    }
     pathexpand::PathScope {
         install_dirs,
         store_roots: store_roots.to_vec(),
     }
+}
+
+/// How far above its executable an install folder can sit: `<base>/x64/Hades.exe`
+/// is one level, `<base>/Binaries/Win64/Game.exe` two.
+const EXE_DEPTH_IN_INSTALL: usize = 4;
+
+/// Bounds on looking inside a games folder for a game's executable.
+const EXE_PROBE_DEPTH: usize = 4;
+const EXE_PROBE_MAX_ENTRIES: usize = 5_000;
+
+/// Install folders of games no launcher knows about, by catalogue slug. They are
+/// what resolves `<base>` for a game copied into `C:\Games`, unpacked from an
+/// archive or run off another disk, so the saves it keeps inside its own folder
+/// get found. Two sources: the executables seen running
+/// ([`CorrelationStore::launched_exes`]) and the folders in the usual games
+/// folders ([`roots::game_install_roots`]).
+fn found_install_dirs(
+    catalog: &[LudusaviEntry],
+    corr_store: &CorrelationStore,
+    os: Os,
+) -> HashMap<String, Vec<PathBuf>> {
+    let mut out: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    for exe in corr_store.launched_exes() {
+        let Some(entry) = ludusavi::find_by_exe(&exe.to_string_lossy()) else {
+            continue;
+        };
+        if !exe.exists() {
+            continue;
+        }
+        if let Some(dir) = install_root_from_exe(entry, exe, os) {
+            out.entry(entry.slug.clone()).or_default().push(dir);
+        }
+    }
+    for (slug, dir) in install_dirs_in_games_folders(catalog, &roots::game_install_roots(os), os) {
+        let dirs = out.entry(slug).or_default();
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    out
+}
+
+/// The install folder of a catalogue game, read off the path of its executable.
+///
+/// A folder named as the catalogue says (`installDir`) wins. Failing that, the
+/// first folder going up where one of the game's `<base>` saves already exists:
+/// a repack unpacked into `Hades-v1.38` is named nothing like `Hades`, but its
+/// saves sit right there once the game has saved. Neither, and there is no
+/// answer: guessing a level would point `<base>` at the wrong folder.
+///
+/// The climb stops at a games folder, the home folder or a drive: those hold many
+/// games, never one.
+fn install_root_from_exe(entry: &LudusaviEntry, exe: &Path, os: Os) -> Option<PathBuf> {
+    let climb: Vec<&Path> = exe
+        .ancestors()
+        .skip(1)
+        .take(EXE_DEPTH_IN_INSTALL)
+        .take_while(|dir| {
+            !roots::is_games_collection(dir) && junkdirs::dangerous_sync_root(dir).is_none()
+        })
+        .collect();
+    let named = climb.iter().find(|dir| {
+        dir.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| entry.install_dirs.iter().any(|d| d.eq_ignore_ascii_case(n)))
+    });
+    if let Some(dir) = named {
+        return Some(dir.to_path_buf());
+    }
+    let templates: Vec<String> = paths_for_os(entry, os)
+        .into_iter()
+        .filter(|t| t.starts_with("<base>"))
+        .collect();
+    climb
+        .into_iter()
+        .find(|dir| {
+            let scope = pathexpand::PathScope {
+                install_dirs: vec![dir.to_path_buf()],
+                store_roots: Vec::new(),
+            };
+            templates
+                .iter()
+                .any(|t| expand_path_scoped(t, os, &scope).iter().any(|c| c.exists()))
+        })
+        .map(Path::to_path_buf)
+}
+
+/// Games folders' children that are a catalogue game's install folder. A child
+/// counts when it is named as the game's `installDir` AND one of the game's
+/// executables is inside: a games folder holds whatever its owner put there, and
+/// a name alone (`Data`, `Tools`) is too thin to point `<base>` at it.
+fn install_dirs_in_games_folders(
+    catalog: &[LudusaviEntry],
+    roots: &[PathBuf],
+    os: Os,
+) -> Vec<(String, PathBuf)> {
+    let mut by_name: HashMap<String, PathBuf> = HashMap::new();
+    for root in roots {
+        let Ok(read) = std::fs::read_dir(root) else {
+            continue;
+        };
+        for child in read.flatten() {
+            if !child.file_type().is_ok_and(|t| t.is_dir()) {
+                continue;
+            }
+            if let Some(name) = child.file_name().to_str() {
+                by_name
+                    .entry(name.to_lowercase())
+                    .or_insert_with(|| child.path());
+            }
+        }
+    }
+    if by_name.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for entry in catalog {
+        let Some(dir) = entry
+            .install_dirs
+            .iter()
+            .find_map(|name| by_name.get(&name.to_lowercase()))
+        else {
+            continue;
+        };
+        let uses_base = paths_for_os(entry, os)
+            .iter()
+            .any(|t| t.starts_with("<base>"));
+        if uses_base && holds_launch_exe(dir, entry) {
+            out.push((entry.slug.clone(), dir.clone()));
+        }
+    }
+    out
+}
+
+/// Whether `dir` holds one of the game's executables a few levels down. A game
+/// the catalogue gives no executable for has to show some `.exe`.
+fn holds_launch_exe(dir: &Path, entry: &LudusaviEntry) -> bool {
+    let wanted = |name: &str| {
+        let name = name.to_lowercase();
+        if entry.launch_exes.is_empty() {
+            name.ends_with(".exe")
+        } else {
+            entry.launch_exes.contains(&name)
+        }
+    };
+    let mut stack = vec![(dir.to_path_buf(), 0usize)];
+    let mut listed = 0usize;
+    while let Some((here, depth)) = stack.pop() {
+        let Ok(read) = std::fs::read_dir(&here) else {
+            continue;
+        };
+        for child in read.flatten() {
+            listed += 1;
+            if listed > EXE_PROBE_MAX_ENTRIES {
+                return false;
+            }
+            let Ok(ft) = child.file_type() else { continue };
+            if ft.is_dir() {
+                if depth + 1 < EXE_PROBE_DEPTH {
+                    stack.push((child.path(), depth + 1));
+                }
+            } else if child.file_name().to_str().is_some_and(wanted) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Pull the list of save-path template strings that apply to the requested
@@ -2385,6 +2574,23 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
     }
     attempts.push(launcher_step);
 
+    // ---- step 4b: found_install
+    // Install folders of games no launcher knows: an exe seen running, or a
+    // folder in a games folder.
+    let found = found_install_dirs(std::slice::from_ref(entry), &corr_store, os)
+        .remove(&entry.slug)
+        .unwrap_or_default();
+    if install_dir_hint.is_none() {
+        install_dir_hint = found.first().cloned();
+    }
+    attempts.push(TraceStep {
+        kind: "found_install".into(),
+        template: None,
+        expanded: Vec::new(),
+        kept: found.iter().map(|p| p.display().to_string()).collect(),
+        dropped: Vec::new(),
+    });
+
     // ---- Step 5: filesystem -----------------------------------------
     // One step per save-path template that applies to the current OS.
     // Collects raw hits to feed into the refinement step below.
@@ -2397,6 +2603,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
         &install_dir_index(os, &steam_apps),
         &steam::detect_steam_libraries(os),
         install_dir_hint.as_deref(),
+        &found,
     );
     let mut raw_hits: Vec<PathBuf> = Vec::new();
     let mut seen: HashSet<PathBuf> = HashSet::new();
@@ -7762,5 +7969,126 @@ mod tests {
         let state = tracked_state("factorio", "main", &real);
         let warnings = detect_tracked_mirrors(&state, &[]);
         assert!(warnings.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod found_install_tests {
+    use super::*;
+    use hoard_manifest::ludusavi::{LudusaviPaths, LudusaviSavePath};
+
+    fn game(
+        slug: &str,
+        install_dir: &str,
+        exe: &str,
+        base_template: Option<&str>,
+    ) -> LudusaviEntry {
+        LudusaviEntry {
+            slug: slug.into(),
+            display_name: slug.into(),
+            steam_app_id: None,
+            paths: LudusaviPaths {
+                linux: base_template
+                    .map(|t| LudusaviSavePath {
+                        path: t.into(),
+                        constraints: Vec::new(),
+                        tags: Vec::new(),
+                    })
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
+            registry: Vec::new(),
+            install_dirs: vec![install_dir.into()],
+            launch_exes: vec![exe.into()],
+            steam_extra_ids: Vec::new(),
+            lutris_slug: None,
+            cloud_steam: false,
+        }
+    }
+
+    fn touch(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"x").unwrap();
+    }
+
+    #[test]
+    fn the_folder_the_catalogue_names_is_the_install() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hades = game("hades", "Hades", "hades.exe", Some("<base>/Saves"));
+        let exe = tmp.path().join("Games/Hades/x64/Hades.exe");
+
+        assert_eq!(
+            install_root_from_exe(&hades, &exe, Os::Linux),
+            Some(tmp.path().join("Games/Hades"))
+        );
+    }
+
+    #[test]
+    fn a_repack_folder_is_found_by_the_saves_inside_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hades = game("hades", "Hades", "hades.exe", Some("<base>/Saves"));
+        let install = tmp.path().join("Games/Hades-v1.38");
+        let exe = install.join("x64/Hades.exe");
+        assert_eq!(
+            install_root_from_exe(&hades, &exe, Os::Linux),
+            None,
+            "no saves yet"
+        );
+
+        std::fs::create_dir_all(install.join("Saves")).unwrap();
+        assert_eq!(
+            install_root_from_exe(&hades, &exe, Os::Linux),
+            Some(install)
+        );
+    }
+
+    #[test]
+    fn the_climb_stops_at_the_games_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let hades = game("hades", "Games", "hades.exe", Some("<base>/Saves"));
+        std::fs::create_dir_all(tmp.path().join("Games/Saves")).unwrap();
+        let exe = tmp.path().join("Games/Hades.exe");
+
+        assert_eq!(install_root_from_exe(&hades, &exe, Os::Linux), None);
+    }
+
+    #[test]
+    fn a_games_folder_child_needs_the_name_and_the_exe() {
+        let tmp = tempfile::tempdir().unwrap();
+        let games = tmp.path().join("Games");
+        touch(&games.join("Hades/x64/Hades.exe"));
+        std::fs::create_dir_all(games.join("Data")).unwrap();
+        touch(&games.join("Celeste/Celeste.exe"));
+        let catalog = vec![
+            game("hades", "Hades", "hades.exe", Some("<base>/Saves")),
+            game("data-game", "Data", "datagame.exe", Some("<base>/Saves")),
+            // Saves outside its folder: knowing the install changes nothing.
+            game(
+                "celeste",
+                "Celeste",
+                "celeste.exe",
+                Some("<home>/.local/share/Celeste"),
+            ),
+        ];
+
+        let found =
+            install_dirs_in_games_folders(&catalog, std::slice::from_ref(&games), Os::Linux);
+
+        assert_eq!(found, vec![("hades".to_string(), games.join("Hades"))]);
+    }
+
+    #[test]
+    fn found_folders_follow_the_launchers_in_the_scope() {
+        let hades = game("hades", "Hades", "hades.exe", Some("<base>/Saves"));
+        let steam = PathBuf::from("/steam/common/Hades");
+        let found = vec![PathBuf::from("/games/Hades"), steam.clone()];
+
+        let scope = scope_for(&hades, &HashMap::new(), &[], Some(&steam), &found);
+
+        assert_eq!(
+            scope.install_dirs,
+            vec![steam, PathBuf::from("/games/Hades")]
+        );
     }
 }

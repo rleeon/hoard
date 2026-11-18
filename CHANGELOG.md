@@ -29,6 +29,14 @@ Entries are reviewed line by line by the [maintainer](https://github.com/rleeon)
   with PKCE, ID tokens checked against the provider's published keys, and the
   same opt-in account options as the header login: matching without minding
   case, accounts created on first sign-in, admin rights from a groups claim.
+- **Saves kept inside a game's own folder are found for games no launcher
+  installed.** A game copied into `D:\Games`, unpacked from an archive or set up
+  by an offline installer had no install folder Hoard knew of, so the saves it
+  keeps next to its executable were never found. Hoard now learns the folder the
+  first time it sees the game running, and looks one level inside the usual
+  games folders (`Games`, `Juegos`, `GOG Games` and Program Files, on every
+  internal drive and in your home), where a folder only counts when it is named
+  like the game and holds its executable. Network drives stay out.
 
 ### Changed
 - **The per-IP rate limit only believes `X-Forwarded-For` from a trusted

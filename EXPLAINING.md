@@ -15,7 +15,9 @@ Most of detection is not searching. Hoard starts from a catalogue of more than
 which says where each game keeps its saves, and checks whether those places
 exist on your machine. It also reads your launchers' own library files, your
 Wine and Proton prefixes and, on Windows, the registry values the catalogue
-names.
+names. For games installed without a launcher, it looks one level inside the
+usual games folders (`D:\Games`, `GOG Games`, Program Files) and takes a folder
+only when it is named like the game and holds its executable.
 
 The two signals people ask about most, running processes and the filesystem
 scan, cover what that misses.
@@ -45,6 +47,11 @@ not the game.
 **When a watched folder changes**, Hoard notes which game-like process was alive
 at the time. That is how it learns that a folder belongs to a game when the name
 gives nothing away. These notes stay on your machine.
+
+**When a game Hoard does not track starts**, Hoard notes where its executable
+is. For a game no launcher installed, that is the only way to know its install
+folder, and with it the saves the game keeps inside it. This note stays on your
+machine too.
 
 **Hoard never:**
 

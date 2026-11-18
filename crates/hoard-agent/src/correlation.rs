@@ -460,7 +460,17 @@ pub struct WriteObservation {
 pub struct CorrelationStore {
     #[serde(default)]
     observations: HashMap<PathBuf, WriteObservation>,
+    /// Executables of catalogue games seen running while nothing tracked
+    /// accounted for them, with when (ms). Detection reads the install folder off
+    /// them: a game copied into `C:\Games` has no launcher record, and without
+    /// its folder the saves it keeps inside it are never found.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    launched: HashMap<PathBuf, u64>,
 }
+
+/// Plenty for every game a person runs; the oldest goes first, and running it
+/// again notes it again.
+const MAX_LAUNCHED: usize = 200;
 
 fn now_ms() -> u64 {
     SystemTime::now()
@@ -505,6 +515,27 @@ impl CorrelationStore {
         let text = serde_json::to_string_pretty(self).context("serializing correlation store")?;
         std::fs::write(path, text).with_context(|| format!("writing {}", path.display()))?;
         Ok(())
+    }
+
+    /// Notes that `exe` ran. `true` when it was new, so the caller only rewrites
+    /// the file for news.
+    pub fn record_launch(&mut self, exe: &Path) -> bool {
+        let fresh = self.launched.insert(exe.to_path_buf(), now_ms()).is_none();
+        if self.launched.len() > MAX_LAUNCHED {
+            if let Some(oldest) = self
+                .launched
+                .iter()
+                .min_by_key(|(_, at)| **at)
+                .map(|(p, _)| p.clone())
+            {
+                self.launched.remove(&oldest);
+            }
+        }
+        fresh
+    }
+
+    pub fn launched_exes(&self) -> impl Iterator<Item = &Path> {
+        self.launched.keys().map(PathBuf::as_path)
     }
 
     /// Records a write on `dir` that happened while `processes` were alive. With
@@ -1145,5 +1176,42 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert!(loaded.signal_for(Path::new("/a/b/Saves")).is_some());
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn a_launch_is_news_once_and_survives_the_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("correlation.json");
+        let exe = Path::new("/games/Hades/x64/Hades.exe");
+        let mut store = CorrelationStore::default();
+
+        assert!(store.record_launch(exe));
+        assert!(!store.record_launch(exe), "seen again is not news");
+        store.save(&path).unwrap();
+
+        let loaded = CorrelationStore::load(&path);
+        assert_eq!(loaded.launched_exes().collect::<Vec<_>>(), vec![exe]);
+    }
+
+    #[test]
+    fn a_store_written_before_launches_were_noted_still_loads() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("correlation.json");
+        std::fs::write(&path, r#"{"observations":{}}"#).unwrap();
+        assert_eq!(CorrelationStore::load(&path).launched_exes().count(), 0);
+    }
+
+    #[test]
+    fn the_oldest_launch_goes_first_past_the_cap() {
+        let mut store = CorrelationStore::default();
+        for i in 0..MAX_LAUNCHED {
+            store
+                .launched
+                .insert(PathBuf::from(format!("/g/{i}.exe")), i as u64);
+        }
+        store.record_launch(Path::new("/g/new.exe"));
+        assert_eq!(store.launched.len(), MAX_LAUNCHED);
+        assert!(!store.launched.contains_key(Path::new("/g/0.exe")));
+        assert!(store.launched.contains_key(Path::new("/g/new.exe")));
     }
 }

@@ -190,6 +190,71 @@ pub fn portable_install_roots(os: Os) -> Vec<PathBuf> {
     out
 }
 
+/// Where people keep PC games they copied, unpacked or installed without a
+/// launcher. `GOG Games` is where GOG's offline installers put them.
+const GAME_COLLECTION_DIRS: &[&str] = &[
+    "Games",
+    "Juegos",
+    "Jeux",
+    "Spiele",
+    "Giochi",
+    "Jogos",
+    "GOG Games",
+];
+
+/// Folders whose children may be games no launcher knows about: the root of
+/// each internal drive and its games folders, the same folders in the home, and
+/// Program Files on Windows. Like [`portable_install_roots`], only listed one
+/// level deep by the caller, and network drives stay out.
+pub fn game_install_roots(os: Os) -> Vec<PathBuf> {
+    let drives = internal_drive_roots(os);
+    let program_files: Vec<PathBuf> = if os == Os::Windows {
+        ["ProgramFiles", "ProgramFiles(x86)"]
+            .iter()
+            .filter_map(std::env::var_os)
+            .map(PathBuf::from)
+            .collect()
+    } else {
+        Vec::new()
+    };
+    game_install_roots_in(&drives, &expand_path("<home>", os), &program_files)
+}
+
+fn game_install_roots_in(drives: &[PathBuf], homes: &[PathBuf], extra: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    let mut push = |p: PathBuf| {
+        if seen.insert(p.clone()) && p.is_dir() {
+            out.push(p);
+        }
+    };
+    for base in drives.iter().chain(homes) {
+        for dir in GAME_COLLECTION_DIRS {
+            push(base.join(dir));
+        }
+    }
+    for drive in drives {
+        push(drive.clone());
+    }
+    for dir in extra {
+        push(dir.clone());
+    }
+    out
+}
+
+/// A folder that holds many programs side by side (`D:\Games`, Program Files),
+/// so never the install folder of any one of them.
+pub fn is_games_collection(dir: &Path) -> bool {
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    GAME_COLLECTION_DIRS
+        .iter()
+        .chain(COLLECTION_DIRS)
+        .chain(&["Program Files", "Program Files (x86)"])
+        .any(|c| c.eq_ignore_ascii_case(name))
+}
+
 /// The roots of this machine's internal drives.
 ///
 /// On Windows those are the fixed drive letters. On Linux and macOS there are no
@@ -526,5 +591,42 @@ mod tests {
         for r in &roots {
             assert!(seen.insert(r.clone()), "duplicate root: {r:?}");
         }
+    }
+
+    #[test]
+    fn game_roots_are_the_games_folders_that_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let drive = tmp.path().join("d");
+        let home = tmp.path().join("home");
+        let pf = tmp.path().join("Program Files");
+        std::fs::create_dir_all(drive.join("Games")).unwrap();
+        std::fs::create_dir_all(drive.join("Juegos")).unwrap();
+        std::fs::create_dir_all(home.join("GOG Games")).unwrap();
+        std::fs::create_dir_all(&pf).unwrap();
+
+        let roots = game_install_roots_in(
+            std::slice::from_ref(&drive),
+            std::slice::from_ref(&home),
+            &[pf.clone(), pf.clone()],
+        );
+
+        assert_eq!(
+            roots,
+            vec![
+                drive.join("Games"),
+                drive.join("Juegos"),
+                home.join("GOG Games"),
+                drive,
+                pf
+            ]
+        );
+    }
+
+    #[test]
+    fn a_games_folder_is_a_collection_and_a_game_folder_is_not() {
+        assert!(is_games_collection(Path::new("D:/Games")));
+        assert!(is_games_collection(Path::new("/home/u/GOG Games")));
+        assert!(is_games_collection(Path::new("C:/Program Files (x86)")));
+        assert!(!is_games_collection(Path::new("D:/Games/Hades")));
     }
 }
