@@ -61,7 +61,7 @@ ashpd = { version = "0.13", default-features = false, features = [
 # The Run entry under HKCU that starts the service at logon when the Task
 # Scheduler won't take a task (see `autostart::platform`).
 winreg = { workspace = true }
-windows-sys = { version = "0.59", features = [
+windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",

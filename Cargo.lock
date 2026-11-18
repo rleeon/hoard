@@ -3807,7 +3807,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
  "winreg 0.52.0",
  "zip",
  "zstd 0.13.4",
@@ -3911,7 +3911,7 @@ dependencies = [
  "slint-build",
  "sys-locale",
  "tokio",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
  "winresource",
 ]
 
@@ -4001,7 +4001,7 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "uuid",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
  "winreg 0.52.0",
 ]
 
@@ -7959,7 +7959,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
