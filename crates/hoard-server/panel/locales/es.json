@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} ha entrado con tu proveedor de identidad, pero este servidor no tiene ninguna cuenta con ese nombre. Pide a un admin que la cree.",
   "error.oidc_failed": "No se pudo entrar con tu proveedor de identidad. El log del servidor dice por qué.",
   "error.oidc_expired": "Ese inicio de sesión tardó demasiado o empezó en otro navegador. Vuelve a intentarlo.",
-  "error.oidc_no_name": "Tu proveedor de identidad no dijo quién eres. Un admin tiene que revisar panel.oidc.username_claim."
+  "error.oidc_no_name": "Tu proveedor de identidad no dijo quién eres. Un admin tiene que revisar panel.oidc.username_claim.",
+  "error.oidc_email_unverified": "Tu proveedor de identidad no ha verificado {user}, así que no sirve para entrar en una cuenta aquí. Verifica la dirección allí, o un admin puede cambiar panel.oidc.username_claim.",
+  "error.oidc_not_yours": "La cuenta {user} está vinculada a otra persona en tu proveedor de identidad. Un admin puede liberarla con hoard-admin user unlink."
 }

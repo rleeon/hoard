@@ -445,7 +445,11 @@ async fn new_people_get_an_account_and_groups_decide_admin() {
     )
     .await;
     let s = start(&h).await;
-    let claims = id_claims(&h, &s.nonce, json!({ "email": "ana@example.com" }));
+    let claims = id_claims(
+        &h,
+        &s.nonce,
+        json!({ "email": "ana@example.com", "email_verified": true }),
+    );
     let userinfo = json!({ "sub": "subject-1", "groups": ["family", "hoard-admins"] });
     let res = come_back(&h, &s, claims, userinfo).await;
     assert_eq!(location(&res), "/panel");
@@ -453,6 +457,130 @@ async fn new_people_get_an_account_and_groups_decide_admin() {
     assert_eq!(
         user_row(&h, "ana@example.com").await,
         Some((NO_PASSWORD.to_string(), 1))
+    );
+}
+
+/// An address the provider never checked is whatever someone typed at signup.
+#[tokio::test]
+async fn an_unverified_email_names_nobody() {
+    let h = harness("username_claim = \"email\"\ncreate_accounts = true").await;
+    for verified in [json!(false), json!("false"), Value::Null] {
+        let s = start(&h).await;
+        let mut extra = json!({ "email": "root@example.com" });
+        if !verified.is_null() {
+            extra["email_verified"] = verified.clone();
+        }
+        let claims = id_claims(&h, &s.nonce, extra);
+        let res = come_back(&h, &s, claims, json!({ "sub": "subject-1" })).await;
+        assert_eq!(
+            location(&res),
+            "/panel?login_error=oidc_email_unverified&user=root%40example.com",
+            "{verified}"
+        );
+        assert_eq!(cookie(&res, "hoard_session"), None);
+    }
+    assert_eq!(user_row(&h, "root@example.com").await, None);
+
+    // Some providers say it with a string, and some only at userinfo.
+    let s = start(&h).await;
+    let claims = id_claims(&h, &s.nonce, json!({ "email": "ana@example.com" }));
+    let userinfo = json!({ "sub": "subject-1", "email_verified": "true" });
+    let res = come_back(&h, &s, claims, userinfo).await;
+    assert_eq!(location(&res), "/panel");
+}
+
+async fn linked_to(h: &Harness, name: &str) -> (Option<String>, Option<String>) {
+    sqlx::query_as("SELECT oidc_issuer, oidc_subject FROM users WHERE username = ?")
+        .bind(name)
+        .fetch_one(&h.state.pool)
+        .await
+        .unwrap()
+}
+
+/// A name is only how the token finds the account. The first sign-in ties it
+/// to the provider's `sub`, and someone else holding the same name later (a
+/// self-registered `root`, a reused username) is turned away.
+#[tokio::test]
+async fn an_account_stays_with_the_person_who_linked_it() {
+    let h = harness("").await;
+    let s = start(&h).await;
+    let claims = id_claims(&h, &s.nonce, json!({ "preferred_username": "root" }));
+    assert_eq!(
+        location(&come_back(&h, &s, claims, json!({})).await),
+        "/panel"
+    );
+    assert_eq!(
+        linked_to(&h, "root").await,
+        (Some(h.issuer.clone()), Some("subject-1".into()))
+    );
+
+    let s = start(&h).await;
+    let claims = id_claims(
+        &h,
+        &s.nonce,
+        json!({ "preferred_username": "root", "sub": "subject-2" }),
+    );
+    let res = come_back(&h, &s, claims, json!({})).await;
+    assert_eq!(
+        location(&res),
+        "/panel?login_error=oidc_not_yours&user=root"
+    );
+    assert_eq!(cookie(&res, "hoard_session"), None);
+
+    // The same person again still gets in.
+    let s = start(&h).await;
+    let claims = id_claims(&h, &s.nonce, json!({ "preferred_username": "root" }));
+    assert_eq!(
+        location(&come_back(&h, &s, claims, json!({})).await),
+        "/panel"
+    );
+}
+
+/// One person at the provider owns one account here: renamed to a name that
+/// belongs to an account nobody has linked yet, they still don't get it.
+#[tokio::test]
+async fn a_linked_person_cannot_take_a_second_account() {
+    let h = harness("").await;
+    sqlx::query("INSERT INTO users (id, username, password_hash, is_admin) VALUES (?,'ana','x',0)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .execute(&h.state.pool)
+        .await
+        .unwrap();
+    let s = start(&h).await;
+    let claims = id_claims(&h, &s.nonce, json!({ "preferred_username": "ana" }));
+    assert_eq!(
+        location(&come_back(&h, &s, claims, json!({})).await),
+        "/panel"
+    );
+
+    let s = start(&h).await;
+    let claims = id_claims(&h, &s.nonce, json!({ "preferred_username": "root" }));
+    let res = come_back(&h, &s, claims, json!({})).await;
+    assert_eq!(
+        location(&res),
+        "/panel?login_error=oidc_not_yours&user=root"
+    );
+    assert_eq!(linked_to(&h, "root").await, (None, None));
+}
+
+/// A new issuer in the config is the operator moving providers, not someone
+/// sneaking in: the accounts link again instead of locking everyone out.
+#[tokio::test]
+async fn a_new_provider_links_again() {
+    let h = harness("").await;
+    sqlx::query("UPDATE users SET oidc_issuer = 'https://old.example', oidc_subject = 'old' WHERE username = 'root'")
+        .execute(&h.state.pool)
+        .await
+        .unwrap();
+    let s = start(&h).await;
+    let claims = id_claims(&h, &s.nonce, json!({ "preferred_username": "root" }));
+    assert_eq!(
+        location(&come_back(&h, &s, claims, json!({})).await),
+        "/panel"
+    );
+    assert_eq!(
+        linked_to(&h, "root").await,
+        (Some(h.issuer.clone()), Some("subject-1".into()))
     );
 }
 

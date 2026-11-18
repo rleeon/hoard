@@ -52,6 +52,16 @@ pub enum UserCommand {
         /// Username
         username: String,
     },
+    /// Forget which identity-provider account this one belongs to.
+    ///
+    /// The first OIDC sign-in into an account links it to that person's `sub`
+    /// at the provider, and nobody else gets in under its name after that.
+    /// When the person really did change (a new account at the provider, the
+    /// old one deleted), this frees it for their next sign-in.
+    Unlink {
+        /// Username
+        username: String,
+    },
     /// Delete a user and all their data
     Delete {
         /// Username to delete
@@ -235,6 +245,22 @@ pub async fn run(cmd: UserCommand, cfg: &Config) -> Result<()> {
                 .execute(&pool)
                 .await?;
             println!("'{}' is no longer an admin", username);
+        }
+        UserCommand::Unlink { username } => {
+            let affected = sqlx::query(
+                "UPDATE users SET oidc_issuer = NULL, oidc_subject = NULL WHERE username = ?",
+            )
+            .bind(&username)
+            .execute(&pool)
+            .await?
+            .rows_affected();
+            if affected == 0 {
+                anyhow::bail!("User '{}' not found", username);
+            }
+            println!(
+                "'{}' is free for the next OIDC sign-in under that name",
+                username
+            );
         }
         UserCommand::Delete { username } => {
             let row = sqlx::query("SELECT id, is_admin FROM users WHERE username = ?")

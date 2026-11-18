@@ -249,7 +249,9 @@ function takeLoginError() {
   const code = q.get("login_error");
   if (!code) return null;
   history.replaceState(null, "", location.pathname + location.hash);
-  if (code === "oidc_unknown_user") return t("error.oidc_unknown_user", { user: q.get("user") || "" });
+  if (code === "oidc_unknown_user" || code === "oidc_email_unverified" || code === "oidc_not_yours") {
+    return t("error." + code, { user: q.get("user") || "" });
+  }
   if (code === "oidc_expired" || code === "oidc_no_name" || code === "bad_username") return t("error." + code);
   return t("error.oidc_failed");
 }

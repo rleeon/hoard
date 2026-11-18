@@ -547,10 +547,21 @@ and opens the same browser session a password would. The rest is optional:
 | Setting (under `[panel.oidc]`) | Default | What it does |
 |---|---|---|
 | `scopes` | `["profile", "email"]` | Scopes to ask for besides `openid`. Add `"groups"` where the provider gates the groups claim behind it (Authelia, Authentik). |
-| `username_claim` | `"preferred_username"` | The claim that names the account. `"email"` for providers that only know people by address. |
+| `username_claim` | `"preferred_username"` | The claim that names the account. `"email"` for providers that only know people by address; then the provider has to say the address is verified (`email_verified`), or the sign-in is refused. |
 | `ignore_case` | `false` | As `trusted_header_ignore_case` above. |
 | `create_accounts` | `false` | As `trusted_header_create_accounts` above. |
 | `groups_claim` and `admin_group` | unset | Admin rights follow membership of `admin_group` in this claim (usually `"groups"`), at each sign-in. |
+
+The name only finds the account. The first sign-in through the provider
+links the account to that person's `sub` there, and from then on a token
+that names the account but belongs to someone else is refused, as is a
+second account for the same person. That matters with a provider where
+people register themselves and pick their own username: whoever signs in
+first under a name gets the matching account, so have the real owners of
+existing accounts sign in once before you open registration. Changing
+`issuer` links everyone again on their next sign-in. If someone's account
+at the provider really changed, `hoard-admin user unlink <name>` frees
+theirs.
 
 The secret can also come from the environment
 (`HOARD__PANEL__OIDC__CLIENT_SECRET`) instead of the file. Claims the ID token

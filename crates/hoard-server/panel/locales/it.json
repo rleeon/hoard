@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} ha effettuato l'accesso con il tuo provider di identità, ma questo server non ha un account con quel nome. Chiedi a un admin di crearlo.",
   "error.oidc_failed": "L'accesso con il tuo provider di identità non è riuscito. Il log del server dice perché.",
   "error.oidc_expired": "Questo accesso ha richiesto troppo tempo o è iniziato in un altro browser. Riprova.",
-  "error.oidc_no_name": "Il tuo provider di identità non ha detto chi sei. Un admin deve controllare panel.oidc.username_claim."
+  "error.oidc_no_name": "Il tuo provider di identità non ha detto chi sei. Un admin deve controllare panel.oidc.username_claim.",
+  "error.oidc_email_unverified": "Il tuo provider di identità non ha verificato {user}, quindi non può indicare un account qui. Verifica l'indirizzo lì, oppure un admin può cambiare panel.oidc.username_claim.",
+  "error.oidc_not_yours": "L'account {user} è collegato a un'altra persona nel tuo provider di identità. Un admin può liberarlo con hoard-admin user unlink."
 }

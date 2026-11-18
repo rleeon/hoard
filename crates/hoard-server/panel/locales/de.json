@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} hat sich bei deinem Identitätsanbieter angemeldet, aber dieser Server hat kein Konto mit diesem Namen. Bitte einen Admin, es anzulegen.",
   "error.oidc_failed": "Die Anmeldung über deinen Identitätsanbieter hat nicht geklappt. Das Server-Log sagt, warum.",
   "error.oidc_expired": "Diese Anmeldung hat zu lange gedauert oder wurde in einem anderen Browser begonnen. Versuch es noch einmal.",
-  "error.oidc_no_name": "Dein Identitätsanbieter hat nicht gesagt, wer du bist. Ein Admin muss panel.oidc.username_claim prüfen."
+  "error.oidc_no_name": "Dein Identitätsanbieter hat nicht gesagt, wer du bist. Ein Admin muss panel.oidc.username_claim prüfen.",
+  "error.oidc_email_unverified": "Dein Identitätsanbieter hat {user} nicht bestätigt, daher kann die Adresse hier kein Konto bezeichnen. Bestätige sie dort, oder ein Admin ändert panel.oidc.username_claim.",
+  "error.oidc_not_yours": "Das Konto {user} ist bei deinem Identitätsanbieter mit einer anderen Person verknüpft. Ein Admin kann es mit hoard-admin user unlink freigeben."
 }

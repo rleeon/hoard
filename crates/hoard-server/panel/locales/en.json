@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} signed in with your identity provider, but this server has no account by that name. Ask an admin to create it.",
   "error.oidc_failed": "Signing in with your identity provider did not work. The server log says why.",
   "error.oidc_expired": "That sign-in took too long or was started in another browser. Try again.",
-  "error.oidc_no_name": "Your identity provider did not say who you are. An admin has to check panel.oidc.username_claim."
+  "error.oidc_no_name": "Your identity provider did not say who you are. An admin has to check panel.oidc.username_claim.",
+  "error.oidc_email_unverified": "Your identity provider has not verified {user}, so it can't name an account here. Verify the address there, or an admin can set panel.oidc.username_claim to another claim.",
+  "error.oidc_not_yours": "The account {user} is linked to another person at your identity provider. An admin can free it with hoard-admin user unlink."
 }

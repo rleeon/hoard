@@ -406,6 +406,7 @@ async fn finish(
     // Some providers keep the ID token lean and hand the rest out at userinfo
     // (Authelia does by default). Asked only when something is missing.
     let wants_more = !claims.contains_key(oidc.username_claim())
+        || (names_by_email(oidc) && !claims.contains_key("email_verified"))
         || oidc
             .admin_group()
             .is_some_and(|(claim, _)| !claims.contains_key(claim));
@@ -469,6 +470,58 @@ async fn verify_id_token(
     Ok(data.claims)
 }
 
+fn names_by_email(oidc: &OidcConfig) -> bool {
+    oidc.username_claim() == "email"
+}
+
+/// Some providers send the flag as a string.
+fn email_verified(claims: &Map<String, Value>) -> bool {
+    match claims.get("email_verified") {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => s.eq_ignore_ascii_case("true"),
+        _ => false,
+    }
+}
+
+/// Whether the person behind this token may have the account, judged by the
+/// provider's `sub` rather than by the name that led here. The first OIDC
+/// sign-in links the account to that `sub`; later ones must match it. A new
+/// issuer in the config links again, so changing providers doesn't lock
+/// everyone out. A `sub` that already owns another account is refused too: it
+/// is someone renamed at the provider landing in a name that isn't theirs.
+async fn owns_account(
+    pool: &sqlx::SqlitePool,
+    user_id: &str,
+    issuer: &str,
+    subject: &str,
+) -> anyhow::Result<bool> {
+    // Only claims an unlinked account (or one linked under another issuer).
+    // Two first sign-ins racing on the same account: the second finds it
+    // taken and is judged below like any later one.
+    let linked = sqlx::query(
+        "UPDATE users SET oidc_issuer = ?, oidc_subject = ? \
+         WHERE id = ? AND (oidc_subject IS NULL OR oidc_issuer IS NOT ?)",
+    )
+    .bind(issuer)
+    .bind(subject)
+    .bind(user_id)
+    .bind(issuer)
+    .execute(pool)
+    .await;
+    match linked {
+        Ok(r) if r.rows_affected() > 0 => return Ok(true),
+        Ok(_) => {}
+        Err(e) if crate::routes::admin::is_unique_violation(&e) => return Ok(false),
+        Err(e) => return Err(e.into()),
+    }
+    let owner: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT oidc_issuer, oidc_subject FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(matches!(owner, Some((Some(i), Some(s))) if i == issuer && s == subject))
+}
+
 fn in_group(value: &Value, group: &str) -> bool {
     match value {
         Value::Array(items) => items.iter().filter_map(Value::as_str).any(|g| g == group),
@@ -496,6 +549,11 @@ async fn sign_in(
         );
         return back_to_gate("oidc_no_name", None);
     };
+    // An address nobody proved is a name anyone could have typed at signup.
+    if names_by_email(oidc) && !email_verified(claims) {
+        tracing::warn!(%username, "panel: OIDC sign-in with an unverified email, refused");
+        return back_to_gate("oidc_email_unverified", Some(username));
+    }
 
     let found = match session::lookup_user(&state.pool, username, oidc.ignore_case).await {
         Ok(f) => f,
@@ -523,6 +581,31 @@ async fn sign_in(
             return back_to_gate("oidc_unknown_user", Some(username));
         }
     };
+
+    // `verify_id_token` required both, so neither is ever missing here.
+    let issuer = claims
+        .get("iss")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let subject = claims
+        .get("sub")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    match owns_account(&state.pool, &user_id, issuer, subject).await {
+        Ok(true) => {}
+        Ok(false) => {
+            tracing::warn!(
+                username = %real_username,
+                subject,
+                "panel: OIDC sign-in names an account linked to someone else, refused"
+            );
+            return back_to_gate("oidc_not_yours", Some(&real_username));
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "panel: OIDC account link failed");
+            return back_to_gate("oidc_failed", None);
+        }
+    }
 
     if let Some((groups_claim, admin_group)) = oidc.admin_group() {
         match claims.get(groups_claim) {

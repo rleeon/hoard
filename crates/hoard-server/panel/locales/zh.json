@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} 已通过你的身份提供商登录，但此服务器上没有该名称的账户。请让管理员创建。",
   "error.oidc_failed": "通过身份提供商登录失败。原因见服务器日志。",
   "error.oidc_expired": "此次登录耗时过长，或是在另一个浏览器中开始的。请重试。",
-  "error.oidc_no_name": "你的身份提供商没有说明你是谁。管理员需要检查 panel.oidc.username_claim。"
+  "error.oidc_no_name": "你的身份提供商没有说明你是谁。管理员需要检查 panel.oidc.username_claim。",
+  "error.oidc_email_unverified": "你的身份提供商尚未验证 {user}，因此不能用它登录此处的账户。请在那里验证该地址，或让管理员更改 panel.oidc.username_claim。",
+  "error.oidc_not_yours": "账户 {user} 已关联到你的身份提供商中的另一个人。管理员可以用 hoard-admin user unlink 解除关联。"
 }

@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} として IDプロバイダーでサインインしましたが、このサーバーにはその名前のアカウントがありません。管理者に作成を依頼してください。",
   "error.oidc_failed": "IDプロバイダーでのサインインに失敗しました。理由はサーバーのログにあります。",
   "error.oidc_expired": "このサインインは時間がかかりすぎたか、別のブラウザーで開始されました。もう一度お試しください。",
-  "error.oidc_no_name": "IDプロバイダーがあなたが誰かを伝えませんでした。管理者が panel.oidc.username_claim を確認する必要があります。"
+  "error.oidc_no_name": "IDプロバイダーがあなたが誰かを伝えませんでした。管理者が panel.oidc.username_claim を確認する必要があります。",
+  "error.oidc_email_unverified": "IDプロバイダーが {user} を確認していないため、このサーバーのアカウントには使えません。プロバイダー側でアドレスを確認するか、管理者が panel.oidc.username_claim を変更してください。",
+  "error.oidc_not_yours": "アカウント {user} は、IDプロバイダー上の別の人に紐付いています。管理者が hoard-admin user unlink で解除できます。"
 }

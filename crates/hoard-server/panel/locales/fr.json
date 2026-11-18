@@ -247,5 +247,7 @@
   "error.oidc_unknown_user": "{user} s'est connecté via votre fournisseur d'identité, mais ce serveur n'a aucun compte à ce nom. Demandez à un admin de le créer.",
   "error.oidc_failed": "La connexion via votre fournisseur d'identité a échoué. Le journal du serveur dit pourquoi.",
   "error.oidc_expired": "Cette connexion a pris trop de temps ou a commencé dans un autre navigateur. Réessayez.",
-  "error.oidc_no_name": "Votre fournisseur d'identité n'a pas dit qui vous êtes. Un admin doit vérifier panel.oidc.username_claim."
+  "error.oidc_no_name": "Votre fournisseur d'identité n'a pas dit qui vous êtes. Un admin doit vérifier panel.oidc.username_claim.",
+  "error.oidc_email_unverified": "Votre fournisseur d'identité n'a pas vérifié {user}, elle ne peut donc pas désigner un compte ici. Vérifiez l'adresse chez lui, ou un admin peut changer panel.oidc.username_claim.",
+  "error.oidc_not_yours": "Le compte {user} est lié à une autre personne chez votre fournisseur d'identité. Un admin peut le libérer avec hoard-admin user unlink."
 }
