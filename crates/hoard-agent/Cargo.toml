@@ -99,7 +99,7 @@ winreg = { workspace = true }
 # written but invisible: Explorer keeps its environment block cached and every
 # terminal it launches inherits the old one, so `hoard` would not exist until you
 # signed out. Checked against a real Windows machine.
-windows-sys = { version = "0.59", features = [
+windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     # `GetLogicalDrives` and `GetDriveTypeW` in `roots::internal_drive_roots`: an
