@@ -10,9 +10,10 @@
 //! thread per module would only give two hung threads instead of one. With a
 //! healthy keyring the operations take milliseconds and the queue is invisible.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Result};
 pub use hoard_core::ipc::KeyringFault;
@@ -40,10 +41,24 @@ pub struct KeyringTimeout {
     /// What was being done, in one phrase, for the log and `last_error`.
     pub doing: &'static str,
     pub after: Duration,
+    /// An earlier call that gave up is still waiting on the keyring, so this one
+    /// was never sent (see [`keyring_op`]).
+    pub still_busy: bool,
 }
 
 impl std::fmt::Display for KeyringTimeout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.still_busy {
+            return write!(
+                f,
+                "the system keyring still hasn't answered an earlier request after {}s, \
+                 so Hoard didn't queue another one while {}. It is most likely locked, \
+                 waiting for an unlock nobody can answer; unlock the login keyring \
+                 (or sign in again with `hoard login`)",
+                self.after.as_secs(),
+                self.doing
+            );
+        }
         write!(
             f,
             "the system keyring didn't answer in {}s while {}. It is most likely \
@@ -88,6 +103,25 @@ impl std::fmt::Display for KeyringUnreadable {
 }
 
 impl std::error::Error for KeyringUnreadable {}
+
+/// The keyring is still locked and the last operation couldn't unlock it, so this
+/// one was not sent: it would only raise the same failing prompt again.
+///
+/// Linux only in practice (see `prompts`), but the type stays on every platform so
+/// [`fault`] can name it without a `cfg`.
+#[derive(Debug)]
+pub struct KeyringStillLocked;
+
+impl std::fmt::Display for KeyringStillLocked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(
+            "the system keyring is still locked and couldn't be unlocked a moment ago; \
+             Hoard won't raise another unlock prompt until it is unlocked",
+        )
+    }
+}
+
+impl std::error::Error for KeyringStillLocked {}
 
 /// The user's services start at boot (`loginctl enable-linger`), before anyone
 /// logs in, and a desktop keyring only exists inside a session: the service can't
@@ -136,7 +170,7 @@ pub fn lingering() -> bool {
 pub fn fault(err: &anyhow::Error) -> Option<KeyringFault> {
     // Our own cap first: it never reaches `keyring::Error`, because the point of
     // it is that the call never came back.
-    if err.is::<KeyringTimeout>() {
+    if err.is::<KeyringTimeout>() || err.is::<KeyringStillLocked>() {
         return Some(KeyringFault::Locked);
     }
     let native = err.downcast_ref::<keyring::Error>()?;
@@ -223,6 +257,82 @@ fn keyring_queue() -> Option<&'static Mutex<mpsc::Sender<KeyringJob>>> {
         .as_ref()
 }
 
+// As in the journal and the engine slot: somebody else's panic must not leave the
+// keyring unreachable forever.
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+#[derive(Default)]
+struct Finished {
+    done: Mutex<bool>,
+    cv: Condvar,
+}
+
+impl Finished {
+    fn set(&self) {
+        *lock(&self.done) = true;
+        self.cv.notify_all();
+    }
+
+    fn wait(&self, up_to: Duration) -> bool {
+        let guard = lock(&self.done);
+        let (guard, _) = self
+            .cv
+            .wait_timeout_while(guard, up_to, |done| !*done)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard
+    }
+}
+
+/// Position in the queue, so the latest abandoned job can be told from an older one.
+static NEXT_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// The newest job whose caller gave up while it was still running.
+///
+/// The queue alone did not stop a pile-up. On 07-11-2026 a laptop with nobody
+/// logged in had its keyring thread stuck on a prompt that would never complete
+/// (`dbus-secret-service` waits up to a year for it), and every minute another
+/// read went into the queue behind it, each one waiting its 5 s first. Now a call
+/// waits for that job instead, within its own cap, and is not queued at all if the
+/// job is still stuck. The thread runs jobs in order, so the newest abandoned one
+/// being done means every older one is too.
+static ABANDONED: Mutex<Option<(u64, Arc<Finished>)>> = Mutex::new(None);
+
+fn earlier_call_finished(up_to: Duration) -> bool {
+    let pending = lock(&ABANDONED).clone();
+    let Some((seq, finished)) = pending else {
+        return true;
+    };
+    if !finished.wait(up_to) {
+        return false;
+    }
+    let mut slot = lock(&ABANDONED);
+    if slot.as_ref().is_some_and(|(s, _)| *s == seq) {
+        *slot = None;
+    }
+    true
+}
+
+fn remember_abandoned(seq: u64, finished: Arc<Finished>) {
+    let mut slot = lock(&ABANDONED);
+    if slot.as_ref().is_none_or(|(s, _)| seq > *s) {
+        *slot = Some((seq, finished));
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static CALLS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many keyring operations this thread has asked for, so a test can prove a
+/// path never touches the keyring without reading the real one.
+#[cfg(test)]
+pub(crate) fn calls_on_this_thread() -> usize {
+    CALLS.with(|c| c.get())
+}
+
 /// Runs `op` on the keyring thread and stops waiting for it after `wait`. Returns
 /// whatever `op` returns, or [`KeyringTimeout`] when it did not answer in time.
 pub(crate) fn keyring_op<T: Send + 'static>(
@@ -230,31 +340,158 @@ pub(crate) fn keyring_op<T: Send + 'static>(
     wait: Duration,
     op: impl FnOnce() -> Result<T> + Send + 'static,
 ) -> Result<T> {
+    #[cfg(test)]
+    CALLS.with(|c| c.set(c.get() + 1));
+
+    let deadline = Instant::now() + wait;
     let Some(queue) = keyring_queue() else {
         bail!("no keyring thread available");
     };
+    if !earlier_call_finished(wait) {
+        return Err(anyhow::Error::new(KeyringTimeout {
+            doing,
+            after: wait,
+            still_busy: true,
+        }));
+    }
+    let finished = Arc::new(Finished::default());
     let (tx, rx) = mpsc::channel();
+    let job_finished = Arc::clone(&finished);
     let job: KeyringJob = Box::new(move || {
+        let result = guarded(op);
+        job_finished.set();
         // If whoever asked has already given up, the send fails and the result is
         // dropped: nobody is left waiting on anybody.
-        let _ = tx.send(op());
+        let _ = tx.send(result);
     });
-    // As in the journal and the engine slot: somebody else's panic must not leave
-    // the keyring unreachable forever.
-    let sender = queue
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let sender = lock(queue);
+    // Taken under the sender's lock, so sequence order is queue order.
+    let seq = NEXT_SEQ.fetch_add(1, Ordering::Relaxed);
     if sender.send(job).is_err() {
         bail!("the keyring thread is gone");
     }
     drop(sender);
-    match rx.recv_timeout(wait) {
+    match rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
         Ok(result) => result,
         Err(RecvTimeoutError::Timeout) => {
-            Err(anyhow::Error::new(KeyringTimeout { doing, after: wait }))
+            remember_abandoned(seq, finished);
+            Err(anyhow::Error::new(KeyringTimeout {
+                doing,
+                after: wait,
+                still_busy: false,
+            }))
         }
         // The thread left with the operation half done (a panic inside `keyring`).
         Err(RecvTimeoutError::Disconnected) => bail!("the keyring call died while {doing}"),
+    }
+}
+
+/// The operation as the keyring thread runs it: skipped while a dismissed prompt
+/// would only be raised again.
+#[cfg(target_os = "linux")]
+fn guarded<T>(op: impl FnOnce() -> Result<T>) -> Result<T> {
+    if prompts::skip() {
+        return Err(anyhow::Error::new(KeyringStillLocked));
+    }
+    let result = op();
+    if let Err(err) = &result {
+        prompts::observe(err);
+    }
+    result
+}
+
+// Keychain and Credential Manager raise no unlock prompt a session can't show.
+#[cfg(not(target_os = "linux"))]
+fn guarded<T>(op: impl FnOnce() -> Result<T>) -> Result<T> {
+    op()
+}
+
+/// Any operation on a locked Secret Service collection raises an unlock prompt
+/// (`keyring` unlocks before it reads or writes). With no display the prompt fails
+/// at once, and GNOME Keyring keeps one descriptor for every prompt that failed: on
+/// 07-11-2026 a laptop with nobody logged in took 1.012 prompts in 7 hours, one per
+/// minute from the desktop's cloud poll, hit its 1.024 limit and spun at 100 %
+/// writing the same error to the journal.
+///
+/// So after an operation that found the keyring locked, ask before each next one
+/// whether the collection still is. That is a property read: no prompt, no
+/// descriptor. While it is locked the operation is skipped; once somebody unlocks it
+/// (a login unlocks the login keyring) the next one goes through, with no timer to
+/// wait out. A prompt the user cancelled on purpose counts too, and that is wanted:
+/// it stops Hoard from asking again every minute.
+#[cfg(target_os = "linux")]
+mod prompts {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use anyhow::Result;
+
+    static ARMED: AtomicBool = AtomicBool::new(false);
+
+    #[derive(Debug, PartialEq)]
+    pub(super) enum Before {
+        Run,
+        /// Unlocked since the operation that armed the check.
+        Disarm,
+        Skip,
+    }
+
+    pub(super) fn before(armed: bool, still_locked: impl FnOnce() -> Result<bool>) -> Before {
+        if !armed {
+            return Before::Run;
+        }
+        match still_locked() {
+            Ok(true) => Before::Skip,
+            Ok(false) => Before::Disarm,
+            // Can't tell (no default collection, the service went away): let the
+            // operation report what is really wrong.
+            Err(_) => Before::Run,
+        }
+    }
+
+    pub(super) fn skip() -> bool {
+        match before(ARMED.load(Ordering::Relaxed), default_collection_locked) {
+            Before::Run => false,
+            Before::Disarm => {
+                ARMED.store(false, Ordering::Relaxed);
+                false
+            }
+            Before::Skip => true,
+        }
+    }
+
+    pub(super) fn observe(err: &anyhow::Error) {
+        if left_locked(err) {
+            ARMED.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The keyring was locked and stayed locked. Told by type and by the error name
+    /// the spec defines, never by the text: `keyring` boxes the platform's own error.
+    ///
+    /// Two shapes, both from the same laptop with GNOME Keyring: updating an item
+    /// that exists comes back as a dismissed prompt, and creating one comes back as
+    /// `IsLocked` even though the prompt was raised (and failed) just the same.
+    pub(super) fn left_locked(err: &anyhow::Error) -> bool {
+        let inner = match err.downcast_ref::<keyring::Error>() {
+            Some(keyring::Error::NoStorageAccess(inner))
+            | Some(keyring::Error::PlatformFailure(inner)) => inner,
+            _ => return false,
+        };
+        match inner.downcast_ref::<dbus_secret_service::Error>() {
+            Some(dbus_secret_service::Error::Prompt | dbus_secret_service::Error::Locked) => true,
+            Some(dbus_secret_service::Error::Dbus(e)) => {
+                e.name() == Some("org.freedesktop.Secret.Error.IsLocked")
+            }
+            _ => false,
+        }
+    }
+
+    // `keyring` keeps its items in the `default` collection.
+    fn default_collection_locked() -> Result<bool> {
+        use dbus_secret_service::{EncryptionType, SecretService};
+        let ss = SecretService::connect(EncryptionType::Plain)?;
+        let locked = ss.get_default_collection()?.is_locked()?;
+        Ok(locked)
     }
 }
 
@@ -353,8 +590,109 @@ mod tests {
         let capped = anyhow::Error::new(KeyringTimeout {
             doing: "reading the Cloud session",
             after: KEYRING_TIMEOUT,
+            still_busy: false,
         });
         assert_eq!(fault(&capped), Some(KeyringFault::Locked));
+        assert_eq!(
+            fault(&anyhow::Error::new(KeyringStillLocked)),
+            Some(KeyringFault::Locked)
+        );
+    }
+
+    /// The 07-11-2026 pile-up: with the keyring thread stuck, a new call must not
+    /// join the queue behind it, where it would run (and prompt) whenever the
+    /// thread frees up, long after its caller left.
+    #[test]
+    fn a_call_behind_one_that_never_answered_is_not_queued() {
+        keyring_op(
+            "reading the Cloud session",
+            Duration::from_millis(20),
+            a_locked_keyring(),
+        )
+        .expect_err("tiene que rendirse, no esperar");
+
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let ran_in_op = Arc::clone(&ran);
+        let started = Instant::now();
+        let err = keyring_op(
+            "saving the Cloud session",
+            Duration::from_millis(20),
+            move || {
+                ran_in_op.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .expect_err("the keyring is still busy");
+        assert!(
+            started.elapsed() < Duration::from_millis(250),
+            "waited too long: {:?}",
+            started.elapsed()
+        );
+        let timeout = err.downcast_ref::<KeyringTimeout>().expect("motivo tipado");
+        assert!(timeout.still_busy, "{err:#}");
+        assert_eq!(timeout.doing, "saving the Cloud session");
+
+        // Not queued, so not even a free thread runs it later.
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(!ran.load(Ordering::SeqCst));
+
+        // And once the stuck call returns, the keyring is reachable again.
+        keyring_op("reading the Cloud session", KEYRING_TIMEOUT, || Ok(())).expect("answers again");
+    }
+
+    /// Both shapes a locked GNOME Keyring gave on 07-11-2026 arm the check; the
+    /// Windows size limit seen through the same wrapper, and the bare text, don't.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_keyring_left_locked_is_told_apart_by_type() {
+        fn native(e: dbus_secret_service::Error) -> anyhow::Error {
+            anyhow::Error::new(keyring::Error::NoStorageAccess(Box::new(e)))
+        }
+        let dismissed =
+            native(dbus_secret_service::Error::Prompt).context("saving the Cloud session");
+        assert!(prompts::left_locked(&dismissed));
+        let is_locked = anyhow::Error::new(keyring::Error::PlatformFailure(Box::new(
+            dbus_secret_service::Error::Dbus(dbus::Error::new_custom(
+                "org.freedesktop.Secret.Error.IsLocked",
+                "Cannot create an item in a locked collection",
+            )),
+        )));
+        assert!(prompts::left_locked(&is_locked));
+        assert!(prompts::left_locked(&native(
+            dbus_secret_service::Error::Locked
+        )));
+
+        let other_dbus = anyhow::Error::new(keyring::Error::PlatformFailure(Box::new(
+            dbus_secret_service::Error::Dbus(dbus::Error::new_custom(
+                "org.freedesktop.DBus.Error.ServiceUnknown",
+                "The name is not activatable",
+            )),
+        )));
+        assert!(!prompts::left_locked(&other_dbus));
+        let too_long = anyhow::Error::new(keyring::Error::PlatformFailure(
+            "Attribute 'password encoded as UTF-16' is longer than platform limit of 2560 chars"
+                .into(),
+        ));
+        assert!(!prompts::left_locked(&too_long));
+        let text_only = anyhow::Error::new(keyring::Error::PlatformFailure(
+            "Secret Service: unlock prompt was dismissed".into(),
+        ));
+        assert!(!prompts::left_locked(&text_only));
+    }
+
+    /// Unarmed, nothing is asked; armed, only a keyring that is still locked is left
+    /// alone, and not being able to tell runs the call.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn after_a_dismissed_prompt_only_a_still_locked_keyring_is_skipped() {
+        use prompts::{before, Before};
+        assert_eq!(
+            before(false, || panic!("nothing to check while unarmed")),
+            Before::Run
+        );
+        assert_eq!(before(true, || Ok(true)), Before::Skip);
+        assert_eq!(before(true, || Ok(false)), Before::Disarm);
+        assert_eq!(before(true, || bail!("no default collection")), Before::Run);
     }
 
     /// The text a locked GNOME keyring gives a lingering service before anyone

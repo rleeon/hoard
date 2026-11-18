@@ -3780,6 +3780,8 @@ dependencies = [
  "async-compression",
  "base64 0.22.1",
  "bytes",
+ "dbus",
+ "dbus-secret-service",
  "directories",
  "filetime",
  "futures",

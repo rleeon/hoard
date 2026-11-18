@@ -876,6 +876,7 @@ mod tests {
         anyhow::Error::new(KeyringTimeout {
             doing: "reading the self-hosted session",
             after: KEYRING_TIMEOUT,
+            still_busy: false,
         })
     }
 

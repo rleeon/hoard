@@ -92,6 +92,17 @@ minisign-verify = "0.2"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# Asks whether the keyring is locked without raising an unlock prompt
+# (`keychain::prompts`). The crate and version `keyring` already uses on Linux, so
+# it adds nothing to the build.
+[target.'cfg(target_os = "linux")'.dependencies]
+dbus-secret-service = "4.1"
+
+# To build the spec's `IsLocked` error in a test; `dbus-secret-service` doesn't
+# re-export it. Already in the tree under it.
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+dbus = "0.9"
+
 [target.'cfg(windows)'.dependencies]
 winreg = { workspace = true }
 # `SendMessageTimeoutW`, to broadcast `WM_SETTINGCHANGE` after touching the user's

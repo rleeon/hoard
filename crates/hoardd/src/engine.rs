@@ -651,6 +651,9 @@ fn classify(err: &anyhow::Error) -> EngineDownReason {
         || err
             .downcast_ref::<hoard_agent::keychain::KeyringUnreadable>()
             .is_some()
+        || err
+            .downcast_ref::<hoard_agent::keychain::KeyringStillLocked>()
+            .is_some()
     {
         return EngineDownReason::KeyringUnreadable;
     }
@@ -1251,6 +1254,7 @@ mod tests {
         let stuck = anyhow::Error::new(hoard_agent::keychain::KeyringTimeout {
             doing: "reading the self-hosted session",
             after: std::time::Duration::from_secs(5),
+            still_busy: false,
         })
         .context("reading the session");
         assert_eq!(classify(&stuck), EngineDownReason::KeyringUnreadable);

@@ -584,12 +584,22 @@ pub fn load_session() -> Result<Option<Session>> {
     let Some(file) = read_session_file()? else {
         return Ok(None);
     };
-    let from_keyring = match keyring_get() {
-        Ok(None) => take_legacy_item(file.user.as_ref()),
-        other => other,
-    };
-    let Some(auth) = pick_auth(from_keyring, file.auth.clone())? else {
-        return Ok(None);
+    // A whole pair in the file beats whatever the keyring answers (see `pick_auth`),
+    // so asking would only cost. With lingering it is every read: the daemon lends a
+    // token on each of the desktop's minute polls, and on a locked keyring with no
+    // display each read was an unlock prompt that failed (07-11-2026, `keychain`).
+    let auth = match file.auth.clone() {
+        Some(pair) if is_whole_pair(&pair) => pair,
+        from_file => {
+            let from_keyring = match keyring_get() {
+                Ok(None) => take_legacy_item(file.user.as_ref()),
+                other => other,
+            };
+            let Some(auth) = pick_auth(from_keyring, from_file)? else {
+                return Ok(None);
+            };
+            auth
+        }
     };
     if auth.access_token.is_empty() {
         return Ok(None);
@@ -1153,6 +1163,7 @@ mod tests {
         anyhow::Error::new(KeyringTimeout {
             doing: "reading the Cloud session",
             after: KEYRING_TIMEOUT,
+            still_busy: false,
         })
     }
 
@@ -1307,6 +1318,32 @@ mod tests {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
             None => std::env::remove_var("XDG_CONFIG_HOME"),
         }
+    }
+
+    /// The keyring's answer can't change what a whole pair in the file decides, so
+    /// it isn't asked. Lingering leaves the pair there on every rotation, which made
+    /// this the read behind each of the desktop's minute polls.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_whole_pair_in_the_file_is_read_without_asking_the_keyring() {
+        with_isolated_config(|| {
+            let tokens = Tokens {
+                access: "jwt-del-fichero".to_string(),
+                refresh: "refresh-del-fichero".to_string(),
+            };
+            store_tokens_unlocked(&tokens, "https://api.hoard.services").expect("writes");
+
+            let asked = crate::keychain::calls_on_this_thread();
+            let session = load_session().expect("reads").expect("there is a session");
+            assert_eq!(
+                crate::keychain::calls_on_this_thread(),
+                asked,
+                "the keyring was asked"
+            );
+            assert_eq!(session.access, "jwt-del-fichero");
+            assert_eq!(session.refresh, "refresh-del-fichero");
+            assert_eq!(session.server_url, "https://api.hoard.services");
+        });
     }
 
     /// What a hang left on disk (an empty file, zeros) reads as no file and is
