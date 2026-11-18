@@ -35,7 +35,7 @@ publish = false
 tokio = { version = "1", features = ["full"] }
 
 # HTTP server
-axum = { version = "0.7", features = ["multipart"] }
+axum = { version = "0.8", features = ["multipart"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["trace", "cors", "compression-gzip", "compression-zstd"] }
 
