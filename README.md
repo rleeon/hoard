@@ -4,12 +4,12 @@
 [![CI](https://github.com/rleeon/hoard/actions/workflows/ci.yml/badge.svg)](https://github.com/rleeon/hoard/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/rleeon/hoard?label=release)](https://github.com/rleeon/hoard/releases/latest) [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 > Steam Cloud is not a backup strategy. Hoard is.
-> Next release 1.3.1 in 1/12/26.
 
 **Hoard is an open-source (AGPL-3.0) game save backup and sync system.** 
 You can Self-Host **[Without Account or Telemetry](EXPLAINING.md#what-leaves-your-machine)**, or log in and play.
 The desktop app and the CLI work the same against either. Self-hosting
 needs no Hoard account and has no quota beyond your own disk.
+> Next release 1.3.1 in 1/12/26.
 
 ![Hoard app photo](web/static/WEB.png)
 
