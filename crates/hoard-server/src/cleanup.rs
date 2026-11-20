@@ -242,8 +242,8 @@ async fn purge_dead_sessions(pool: &SqlitePool, tombstone_days: i64) -> anyhow::
     let res = sqlx::query(
         "DELETE FROM api_tokens \
          WHERE device_name = ? \
-           AND ((expires_at IS NOT NULL AND expires_at < ?) \
-             OR (revoked_at IS NOT NULL AND revoked_at < ?))",
+           AND ((expires_at IS NOT NULL AND julianday(expires_at) < julianday(?)) \
+             OR (revoked_at IS NOT NULL AND julianday(revoked_at) < julianday(?)))",
     )
     .bind(crate::routes::session::SESSION_DEVICE_NAME)
     .bind(&cutoff)

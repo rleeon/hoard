@@ -86,12 +86,17 @@ pub async fn require_auth(
     }
 
     // Check expiry
+    // Parsed, not compared as text: the strings only sort right while every
+    // writer formats them the same way. One that can't be read counts as
+    // expired.
     if let Some(exp) = &row.expires_at {
-        let now = time::OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
-            .unwrap_or_default();
-        if exp.as_str() < now.as_str() {
-            return unauthorized();
+        match time::OffsetDateTime::parse(exp, &time::format_description::well_known::Rfc3339) {
+            Ok(exp) if exp > time::OffsetDateTime::now_utc() => {}
+            Ok(_) => return unauthorized(),
+            Err(e) => {
+                warn!(error = %e, token_id = %row.token_id, "token expiry unreadable, rejecting");
+                return unauthorized();
+            }
         }
     }
 
@@ -107,7 +112,15 @@ pub async fn require_auth(
         .await;
     });
 
-    let user_id = Uuid::parse_str(&row.user_id).unwrap_or_else(|_| Uuid::nil());
+    // Every row that fails here would otherwise share the nil id, and with it
+    // each other's saves.
+    let user_id = match Uuid::parse_str(&row.user_id) {
+        Ok(id) => id,
+        Err(e) => {
+            warn!(error = %e, token_id = %row.token_id, "user id is not a uuid");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
     req.extensions_mut().insert(AuthUser {
         user_id,
         username: row.username,

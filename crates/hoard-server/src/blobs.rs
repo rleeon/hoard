@@ -7,7 +7,7 @@
 //! file happens only when it reaches 0 during the trash purge.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use sqlx::{Row, SqlitePool};
@@ -49,6 +49,40 @@ pub fn blob_path(data_dir: &Path, user_id: &str, sha256: &str) -> PathBuf {
         .join(user_id)
         .join(prefix)
         .join(sha256)
+}
+
+/// `data/<user>/<game>/<label>/`, where a save's versions lived before the
+/// blob store. Nothing writes there any more; it is only read by the migration
+/// below and cleaned up on rename and delete.
+///
+/// `None` when a piece would leave that folder. The label is free text (a slot
+/// name may hold a `/`, so nested folders stay allowed), and `PathBuf::join`
+/// follows `..` and lets an absolute label replace the whole path: a save
+/// labelled `../../..` sent its own delete to `remove_dir_all(data_dir)`,
+/// taking every user's blobs with it.
+pub(crate) fn legacy_save_dir(
+    data_dir: &Path,
+    user_id: &str,
+    game_slug: &str,
+    label: &str,
+) -> Option<PathBuf> {
+    let one_component = |s: &str| {
+        let mut parts = Path::new(s).components();
+        matches!(parts.next(), Some(Component::Normal(_))) && parts.next().is_none()
+    };
+    if !one_component(user_id)
+        || !one_component(game_slug)
+        || !crate::routes::snapshots::is_safe_relative_path(label)
+    {
+        return None;
+    }
+    Some(
+        data_dir
+            .join("data")
+            .join(user_id)
+            .join(game_slug)
+            .join(label),
+    )
 }
 
 /// One-time migration of legacy folder-based snapshots into the blob store.
@@ -98,15 +132,15 @@ pub async fn backfill_from_folders(pool: &SqlitePool, data_dir: &Path) -> anyhow
         let label: String = snap.get("label");
 
         let base = if deleted.is_some() {
-            data_dir.join("trash").join(&snap_id)
+            Some(data_dir.join("trash").join(&snap_id))
         } else {
-            data_dir
-                .join("data")
-                .join(&user_id)
-                .join(&game_slug)
-                .join(&label)
-                .join(format!("v{}", version_num))
+            legacy_save_dir(data_dir, &user_id, &game_slug, &label)
+                .map(|dir| dir.join(format!("v{}", version_num)))
         };
+        // Still counted below: the refcounts follow the rows, not the files.
+        if base.is_none() {
+            warn!(snapshot = %snap_id, "blob backfill: save label leaves the data folder, skipping its files");
+        }
 
         let files = sqlx::query(
             "SELECT relative_path, size_bytes, sha256 FROM snapshot_files WHERE snapshot_id = ?",
@@ -135,8 +169,8 @@ pub async fn backfill_from_folders(pool: &SqlitePool, data_dir: &Path) -> anyhow
 
             let dst = blob_path(data_dir, &user_id, &sha);
             if !dst.exists() {
-                let src = base.join(&rel);
-                if src.exists() {
+                let src = base.as_ref().map(|b| b.join(&rel));
+                if let Some(src) = src.filter(|s| s.exists()) {
                     if let Some(parent) = dst.parent() {
                         tokio::fs::create_dir_all(parent).await.ok();
                     }
@@ -151,7 +185,7 @@ pub async fn backfill_from_folders(pool: &SqlitePool, data_dir: &Path) -> anyhow
             }
         }
 
-        if base.exists() {
+        if let Some(base) = base.filter(|b| b.exists()) {
             old_dirs.push(base);
         }
     }

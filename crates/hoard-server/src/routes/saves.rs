@@ -9,6 +9,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::auth::AuthUser;
+use crate::blobs::legacy_save_dir;
 use crate::routes::health::ServerState;
 use crate::routes::{parse_save_id, repair_slug, repair_ts};
 
@@ -107,17 +108,6 @@ pub async fn create(
             internal_err()
         }
     })?;
-
-    // Create physical directory
-    let save_dir = state
-        .config
-        .storage
-        .data_dir
-        .join("data")
-        .join(&user_id)
-        .join(slug_str)
-        .join(&label);
-    tokio::fs::create_dir_all(&save_dir).await.ok();
 
     let row = fetch_save(&state.pool, &id, &user_id)
         .await
@@ -242,8 +232,8 @@ pub async fn patch(
         )
     })?;
 
-    // ---- Label rename ------------------------------------------------------
-    // The label is part of the on-disk path (data/<user>/<game>/<label>/v*/),
+    // ---- label rename
+    // The label is part of the legacy on-disk path (data/<user>/<game>/<label>/v*/),
     // so a rename has to move two pieces in lockstep: the `saves.label`
     // row and the directory itself. We do the UPDATE inside a transaction,
     // then rename the directory, then commit. If the rename fails we roll
@@ -276,24 +266,15 @@ pub async fn patch(
                     }
                 })?;
 
-            let old_dir = state
-                .config
-                .storage
-                .data_dir
-                .join("data")
-                .join(&user_id)
-                .join(&current.game_slug)
-                .join(&current.label);
-            let new_dir = state
-                .config
-                .storage
-                .data_dir
-                .join("data")
-                .join(&user_id)
-                .join(&current.game_slug)
-                .join(new_label);
+            let data_dir = &state.config.storage.data_dir;
+            let old_dir = legacy_save_dir(data_dir, &user_id, &current.game_slug, &current.label)
+                .filter(|d| d.exists());
+            let new_dir = legacy_save_dir(data_dir, &user_id, &current.game_slug, new_label);
+            let mut moved = None;
 
-            if old_dir.exists() {
+            // A label that would leave the data folder moves nothing: the row
+            // is renamed and an old folder, if any, stays where it was.
+            if let (Some(old_dir), Some(new_dir)) = (old_dir, new_dir) {
                 // Reject if the target dir already exists: the UNIQUE
                 // constraint above should make this unreachable but we
                 // double-check rather than trust two writers can't race.
@@ -313,13 +294,16 @@ pub async fn patch(
                     tx.rollback().await.ok();
                     return Err(internal_err());
                 }
+                moved = Some((old_dir, new_dir));
             }
 
             if let Err(e) = tx.commit().await {
                 // Commit failed after the rename succeeded, so try to undo
                 // the rename so the world stays consistent.
                 tracing::warn!(error = %e, "commit failed after rename; reverting rename");
-                tokio::fs::rename(&new_dir, &old_dir).await.ok();
+                if let Some((old_dir, new_dir)) = &moved {
+                    tokio::fs::rename(new_dir, old_dir).await.ok();
+                }
                 return Err(internal_err());
             }
         }
@@ -424,13 +408,9 @@ pub async fn delete(
         {
             tracing::warn!(error = %e, save_id = %save_id, "save delete: could not unlink its objects");
         }
-        // Where versions lived before the content-addressed store.
-        let dir = data_dir
-            .join("data")
-            .join(&user_id)
-            .join(&row.game_slug)
-            .join(&row.label);
-        tokio::fs::remove_dir_all(&dir).await.ok();
+        if let Some(dir) = legacy_save_dir(data_dir, &user_id, &row.game_slug, &row.label) {
+            tokio::fs::remove_dir_all(&dir).await.ok();
+        }
     });
     let _ = unlink.await;
 
