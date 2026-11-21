@@ -10,6 +10,9 @@
   let state = $state<'idle' | 'sending' | 'done' | 'error'>('idle');
 
   const token = $derived($page.url.searchParams.get('t') ?? '');
+  // Which email the link came from. Links without it predate the second kind
+  // and are all the cleanup notice's.
+  const newDevice = $derived($page.url.searchParams.get('k') === 'new-device');
 
   async function mute() {
     if (!token) return;
@@ -38,6 +41,35 @@
     <p class="mt-4 leading-relaxed text-ink-soft">
       Open it straight from the email, without editing the address.
     </p>
+  {:else if newDevice && state === 'done'}
+    <h1 class="text-2xl font-semibold text-ink">Done, no more of those</h1>
+    <p class="mt-4 leading-relaxed text-ink-soft">
+      Hoard will no longer email you when a device signs in to your account. Everything else about
+      your account still reaches you.
+    </p>
+    <p class="mt-4 leading-relaxed text-ink-soft">
+      Your account page still lists every device signed in, and unlinking one signs it out.
+    </p>
+  {:else if newDevice}
+    <h1 class="text-2xl font-semibold text-ink">Stop these emails?</h1>
+    <p class="mt-4 leading-relaxed text-ink-soft">
+      You are about to turn off the email Hoard sends when a new device signs in to your account.
+      It stays off for every device from now on. Every other message about your account still
+      reaches you.
+    </p>
+    <p class="mt-4 leading-relaxed text-ink-soft">
+      It is how you would hear about a machine you do not know, so turn it off only if you are sure.
+    </p>
+    <div class="mt-8">
+      <Button onclick={mute} disabled={state === 'sending'}>
+        {state === 'sending' ? 'Stopping…' : 'Stop these emails'}
+      </Button>
+    </div>
+    {#if state === 'error'}
+      <p class="mt-4 text-sm text-ink-faint">
+        That did not go through. Try again in a moment, or ask on Discord.
+      </p>
+    {/if}
   {:else if state === 'done'}
     <h1 class="text-2xl font-semibold text-ink">Done, no more of those</h1>
     <p class="mt-4 leading-relaxed text-ink-soft">

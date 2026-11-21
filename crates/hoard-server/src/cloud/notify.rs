@@ -330,6 +330,90 @@ pub fn devices_full(
     });
 }
 
+/// Shortest gap between two "new device" emails about the same machine. A
+/// machine that is unlinked and signs in again a week later is news; one stuck
+/// in a sign-in loop is not, every few minutes.
+const NEW_DEVICE_COOLDOWN: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// A machine just joined the account.
+///
+/// Not through [`prepare`]: this one goes to Pro accounts as well and never
+/// carries an offer, because it is about who can reach the saves. Skipped for
+/// an account younger than an hour, which is its owner setting up their
+/// machines one after another, and for good once the reader follows the link
+/// that turns it off.
+pub fn new_device(
+    state: &CloudState,
+    user_id: Uuid,
+    fingerprint: String,
+    device_name: String,
+    device_os: String,
+) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        let Some(cfg) = state.config.cloud.as_ref().map(|c| c.email.clone()) else {
+            return;
+        };
+        if !email::is_configured(&cfg) {
+            return;
+        }
+        let row: Option<(String, bool)> = sqlx::query_as(
+            "SELECT email, created_at > now() - interval '1 hour' OR deleted_at IS NOT NULL
+               FROM profiles WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten();
+        let Some((to, quiet)) = row else {
+            return;
+        };
+        if quiet || to.is_empty() {
+            return;
+        }
+        let kind = Kind::NewDevice;
+        // The switch the link in the message turns off: a row of its own, for
+        // the whole account, so one click silences every machine after it.
+        let switch = match notices::account_switch(&state.pool, user_id, kind).await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(%user_id, kind = kind.as_str(), error = %e, "notice switch failed");
+                return;
+            }
+        };
+        if switch.muted {
+            return;
+        }
+        match notices::claim_periodic(
+            &state.pool,
+            user_id,
+            kind,
+            &fingerprint,
+            NEW_DEVICE_COOLDOWN,
+        )
+        .await
+        {
+            Ok(Some(_)) => {}
+            Ok(None) => return,
+            Err(e) => {
+                tracing::warn!(%user_id, kind = kind.as_str(), error = %e, "notice claim failed");
+                return;
+            }
+        }
+        let r = email::send_new_device(
+            &cfg,
+            &to,
+            &device_name,
+            &device_os,
+            time::OffsetDateTime::now_utc(),
+            switch.mute_token,
+        )
+        .await;
+        settle(&state, user_id, kind, &fingerprint, r).await;
+    });
+}
+
 // ---- daily housekeeping
 
 /// Spawn the once-a-day pass: re-arm storage notices for accounts that are no
@@ -365,6 +449,14 @@ pub fn spawn_daily(state: CloudState) {
             }
             if let Err(e) = warn_passes(&state).await {
                 tracing::warn!(error = %e, "pass reminder sweep failed");
+            }
+            // Past its cooldown a "new device" row says nothing; without this
+            // the table keeps one per machine ever seen.
+            if let Err(e) =
+                notices::expire_stale_scopes(&state.pool, Kind::NewDevice, NEW_DEVICE_COOLDOWN)
+                    .await
+            {
+                tracing::warn!(error = %e, "new device notice sweep failed");
             }
             tick.tick().await;
         }

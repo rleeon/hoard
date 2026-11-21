@@ -39,6 +39,9 @@ pub enum Kind {
     PassExpiring,
     /// A pass's year ended and its grace month is running. Same scoping.
     PassEnded,
+    /// A machine joined the account. Scoped to its fingerprint and periodic,
+    /// so a machine that is unlinked and comes back is news again.
+    NewDevice,
 }
 
 impl Kind {
@@ -51,6 +54,7 @@ impl Kind {
             Kind::DevicesFull => "devices_full",
             Kind::PassExpiring => "pass_expiring",
             Kind::PassEnded => "pass_ended",
+            Kind::NewDevice => "new_device",
         }
     }
 }
@@ -186,6 +190,53 @@ pub async fn expire_stale(pool: &PgPool, kind: Kind, after: Duration) -> Result<
     )
     .bind(kind.as_str())
     .bind(format!("{} seconds", after.as_secs()))
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+/// The account-wide on/off row of a notice that is otherwise sent per scope.
+pub struct Switch {
+    pub muted: bool,
+    pub mute_token: Uuid,
+}
+
+/// Read, creating it on first use, the row with an empty scope that stands for
+/// the whole account. Muting it through its token silences `kind` for good:
+/// [`expire_stale_scopes`] never drops it, unlike the per-scope rows beside it.
+pub async fn account_switch(
+    pool: &PgPool,
+    user_id: Uuid,
+    kind: Kind,
+) -> Result<Switch, sqlx::Error> {
+    // The no-op update is what makes RETURNING answer for an existing row too.
+    let (muted, mute_token): (bool, Uuid) = sqlx::query_as(
+        "INSERT INTO email_notices (user_id, kind, scope) VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, kind, scope) DO UPDATE SET kind = EXCLUDED.kind
+      RETURNING muted_at IS NOT NULL, mute_token",
+    )
+    .bind(user_id)
+    .bind(kind.as_str())
+    .bind(ACCOUNT)
+    .fetch_one(pool)
+    .await?;
+    Ok(Switch { muted, mute_token })
+}
+
+/// [`expire_stale`] for a notice with an [`account_switch`]: drops the
+/// per-scope rows and keeps the switch, so a mute outlives the sweep.
+pub async fn expire_stale_scopes(
+    pool: &PgPool,
+    kind: Kind,
+    after: Duration,
+) -> Result<u64, sqlx::Error> {
+    let res = sqlx::query(
+        "DELETE FROM email_notices
+          WHERE kind = $1 AND scope <> $3 AND sent_at < now() - $2::interval",
+    )
+    .bind(kind.as_str())
+    .bind(format!("{} seconds", after.as_secs()))
+    .bind(ACCOUNT)
     .execute(pool)
     .await?;
     Ok(res.rows_affected())

@@ -293,3 +293,74 @@ async fn the_footer_link_turns_offers_off_for_good() {
     assert!(mine.is_some(), "the refusal is recorded with its date");
     assert!(theirs.is_none(), "and only for the account it belongs to");
 }
+
+/// The "new device" mail: one switch per account that a single click turns
+/// off for good, beside per-machine rows the daily sweep is free to drop.
+#[tokio::test]
+async fn the_new_device_switch_mutes_every_machine_and_survives_the_sweep() {
+    let Some(pool) = pool().await else { return };
+    let u = user(&pool).await;
+    let day = std::time::Duration::from_secs(24 * 60 * 60);
+
+    let first = notices::account_switch(&pool, u, Kind::NewDevice)
+        .await
+        .unwrap();
+    assert!(!first.muted);
+    let again = notices::account_switch(&pool, u, Kind::NewDevice)
+        .await
+        .unwrap();
+    assert_eq!(first.mute_token, again.mute_token, "one switch per account");
+
+    assert!(
+        notices::claim_periodic(&pool, u, Kind::NewDevice, "fp-desk", day)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    // Same machine within the day: no second mail.
+    assert!(
+        notices::claim_periodic(&pool, u, Kind::NewDevice, "fp-desk", day)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    assert_eq!(
+        notices::mute_by_token(&pool, first.mute_token)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("new_device")
+    );
+    assert!(
+        notices::account_switch(&pool, u, Kind::NewDevice)
+            .await
+            .unwrap()
+            .muted
+    );
+
+    // Age every row past the cooldown, then sweep.
+    sqlx::query("UPDATE email_notices SET sent_at = now() - interval '3 days' WHERE user_id = $1")
+        .bind(u)
+        .execute(&pool)
+        .await
+        .unwrap();
+    notices::expire_stale_scopes(&pool, Kind::NewDevice, day)
+        .await
+        .unwrap();
+
+    let left: Vec<(String,)> = sqlx::query_as(
+        "SELECT scope FROM email_notices WHERE user_id = $1 AND kind = 'new_device'",
+    )
+    .bind(u)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(left, vec![(ACCOUNT.to_string(),)]);
+    assert!(
+        notices::account_switch(&pool, u, Kind::NewDevice)
+            .await
+            .unwrap()
+            .muted
+    );
+}

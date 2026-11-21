@@ -14,7 +14,8 @@ export const NOTICES = [
   'devices-full',
   'export-ready',
   'pass-expiring',
-  'pass-ended'
+  'pass-ended',
+  'new-device'
 ] as const;
 
 export type NoticeSlug = (typeof NOTICES)[number];
@@ -43,5 +44,6 @@ export const NOTICE_CTA: Record<NoticeSlug, { key: string; href: string }> = {
   'devices-full': { key: 'notices.cta_devices', href: '/account' },
   'export-ready': { key: 'notices.cta_account', href: '/account' },
   'pass-expiring': { key: 'notices.cta_pass', href: '/checkout?plan=pro&cycle=once' },
-  'pass-ended': { key: 'notices.cta_pass', href: '/checkout?plan=pro&cycle=once' }
+  'pass-ended': { key: 'notices.cta_pass', href: '/checkout?plan=pro&cycle=once' },
+  'new-device': { key: 'notices.cta_devices', href: '/account' }
 };

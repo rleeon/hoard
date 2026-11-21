@@ -773,6 +773,13 @@ async fn register_device(
             .props(serde_json::json!({ "os": os, "nth": devices_now }))
             .device(Some(fingerprint), app_version)
             .spawn(&state.pool);
+        crate::cloud::notify::new_device(
+            state,
+            user.user_id,
+            fingerprint.to_string(),
+            name.to_string(),
+            os.unwrap_or("Unknown").to_string(),
+        );
     }
 
     // A brand new machine that just took the last slot: same notice, sent from

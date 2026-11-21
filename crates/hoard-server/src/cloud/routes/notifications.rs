@@ -219,9 +219,10 @@ pub struct MuteOut {
 /// `POST /v1/notices/mute`: stop one repeating service email.
 ///
 /// Unauthenticated, because the reader is in their mail client and asking them
-/// to sign in first would make the link useless. The mute is not permanent: the
-/// daily sweep drops the row once nothing has refreshed it for a fortnight, so
-/// silence lasts exactly as long as the situation that earned it.
+/// to sign in first would make the link useless. The cleanup notice's mute is
+/// not permanent: the daily sweep drops the row once nothing has refreshed it
+/// for a fortnight, so silence lasts exactly as long as the situation that
+/// earned it. The new device notice's is, by design (`notices::account_switch`).
 pub async fn mute(
     State(state): State<CloudState>,
     Json(body): Json<MuteIn>,

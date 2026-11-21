@@ -80,6 +80,7 @@ const ARCHIVE_EXPIRING: Template = template!("archive_expiring", "/notices/archi
 const DEVICES_FULL: Template = template!("devices_full", "/notices/devices-full");
 const PASS_EXPIRING: Template = template!("pass_expiring", "/notices/pass-expiring");
 const PASS_ENDED: Template = template!("pass_ended", "/notices/pass-ended");
+const NEW_DEVICE: Template = template!("new_device", "/notices/new-device");
 
 /// True when the config has enough to actually send (key + from address).
 pub fn is_configured(cfg: &EmailConfig) -> bool {
@@ -289,6 +290,39 @@ pub async fn send_pass_ended(
         None,
         PASS_ENDED,
         &[("days", &fmt_days(days)), ("end", end), ("until", until)],
+    )
+    .await
+}
+
+/// "A machine just signed in." Goes to every plan, with no offer: it is about
+/// who can reach the account, and a pitch next to that would read as a trick.
+pub async fn send_new_device(
+    cfg: &EmailConfig,
+    to: &str,
+    device_name: &str,
+    device_os: &str,
+    when: OffsetDateTime,
+    mute_token: uuid::Uuid,
+) -> Result<bool> {
+    let when = when
+        .format(time::macros::format_description!(
+            "[day] [month repr:short] [year], [hour]:[minute] UTC"
+        ))
+        .unwrap_or_default();
+    send(
+        cfg,
+        to,
+        None,
+        NEW_DEVICE,
+        &[
+            ("device_name", device_name),
+            ("device_os", device_os),
+            ("when", &when),
+            (
+                "mute_url",
+                &format!("{SITE}/notices/mute?t={mute_token}&k=new-device"),
+            ),
+        ],
     )
     .await
 }
@@ -828,6 +862,42 @@ mod tests {
             );
         }
         assert_eq!(fmt_days(14), "14 days");
+    }
+
+    /// Security mail: whole, no pitch for Pro in either part, and the way to
+    /// unlink the machine right there.
+    #[test]
+    fn new_device_renders_whole_and_sells_nothing() {
+        let when = time::macros::datetime!(2026-11-21 18:05 UTC)
+            .format(time::macros::format_description!(
+                "[day] [month repr:short] [year], [hour]:[minute] UTC"
+            ))
+            .unwrap();
+        let vars = [
+            ("device_name", "Steam Deck <3"),
+            ("device_os", "Linux"),
+            ("when", when.as_str()),
+            (
+                "mute_url",
+                "https://hoard.services/notices/mute?t=abc&k=new-device",
+            ),
+        ];
+        let r = render(NEW_DEVICE, &vars, None);
+        assert_eq!(r.subject, "A new device signed in to your Hoard account");
+        for part in [&r.text, &r.html] {
+            assert!(!part.contains("{{"), "unfilled placeholder: {part}");
+            assert!(part.contains("21 Nov 2026, 18:05 UTC"), "{part}");
+            assert!(part.contains("hoard.services/account"));
+            assert!(part.contains("/notices/new-device"));
+            assert!(part.contains("/notices/mute?t=abc&"), "no way to stop it");
+            assert!(!part.contains("pricing"), "a pitch in a security mail");
+            assert!(!part.contains("no-offers"));
+        }
+        assert!(r.html.contains("Steam Deck &lt;3"));
+        assert_eq!(
+            r.html.matches("<tr>").count(),
+            r.html.matches("</tr>").count()
+        );
     }
 
     #[test]

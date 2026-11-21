@@ -1,0 +1,18 @@
+A new device signed in to your Hoard account
+
+{{device_name}} just signed in to your Hoard account and can now back up and
+restore your saves.
+
+  Device: {{device_name}}, {{device_os}}
+  When:   {{when}}
+
+If it was you, there is nothing to do.
+
+If you do not recognise it, unlink it from your account page. It is signed out
+right away and cannot sync again without signing in. Then check who else can
+get into the email, Google, Discord, GitHub or Twitch account you use to sign
+in to Hoard.
+
+Unlink a device: https://hoard.services/account
+
+Stop emailing me when a device signs in: {{mute_url}}
