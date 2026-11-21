@@ -1,5 +1,8 @@
 import type { AccountSession } from '../types';
 
+/** OAuth providers besides Google and GitHub. */
+export type SocialProvider = 'twitch' | 'discord';
+
 /**
  * AuthProvider, swap-in interface. Today: Supabase. Tomorrow: anything
  * that can produce a JWT and a session. Components and routes must
@@ -10,6 +13,7 @@ export interface AuthProvider {
   onAuthChange(cb: (session: AccountSession | null) => void): () => void;
   signInWithGoogle(redirectTo: string): Promise<void>;
   signInWithGithub(redirectTo: string): Promise<void>;
+  signInWithProvider(provider: SocialProvider, redirectTo: string): Promise<void>;
   signInWithEmail(email: string, redirectTo: string, captchaToken?: string): Promise<void>;
   signOut(): Promise<void>;
   getAccessToken(): Promise<string | null>;

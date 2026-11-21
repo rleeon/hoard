@@ -6,7 +6,7 @@
   import { api, ApiError } from '$lib/api';
   import { describeError } from '$lib/errors';
   import Button from '$lib/components/Button.svelte';
-  import LogoMark from '$lib/components/LogoMark.svelte';
+  import LogoH from '$lib/components/LogoH.svelte';
 
   type Phase = 'idle' | 'approving' | 'approved' | 'error';
 
@@ -71,7 +71,7 @@
 </svelte:head>
 
 <section class="mx-auto flex max-w-md flex-col items-center px-4 py-16 sm:px-6 sm:py-20">
-  <LogoMark size={48} />
+  <LogoH height={40} />
   <h1 class="mt-5 font-display text-3xl font-semibold tracking-tight text-ink">
     {$_('link.title')}
   </h1>

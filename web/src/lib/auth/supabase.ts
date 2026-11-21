@@ -84,6 +84,14 @@ export const supabaseAuth: AuthProvider = {
     if (error) throw error;
   },
 
+  async signInWithProvider(provider, redirectTo) {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo }
+    });
+    if (error) throw error;
+  },
+
   async signInWithEmail(email, redirectTo, captchaToken) {
     const { error } = await supabase.auth.signInWithOtp({
       email,

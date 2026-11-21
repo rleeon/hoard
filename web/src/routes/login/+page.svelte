@@ -5,13 +5,13 @@
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
-  import { auth } from '$lib/auth';
+  import { auth, type SocialProvider } from '$lib/auth';
   import { config } from '$lib/config';
   import { safeNext } from '$lib/safeNext';
   import { loopbackPort } from '$lib/loopbackPort';
   import { session } from '$lib/stores/session';
   import Button from '$lib/components/Button.svelte';
-  import LogoMark from '$lib/components/LogoMark.svelte';
+  import LogoH from '$lib/components/LogoH.svelte';
   import Turnstile from '$lib/components/Turnstile.svelte';
 
   // Cloudflare Turnstile. Empty site key => captcha disabled, and the email
@@ -132,7 +132,7 @@
     }
   }
 
-  /** Guard shared by the three sign-in paths. Returns false and explains
+  /** Guard shared by every sign-in path. Returns false and explains
    *  itself rather than silently doing nothing on a disabled-looking button. */
   function requireAcceptance(): boolean {
     if (accepted) {
@@ -161,6 +161,18 @@
     busy = true;
     try {
       await auth.signInWithGithub(redirectTo);
+    } catch (e) {
+      error = (e as Error).message;
+      busy = false;
+    }
+  }
+
+  async function withProvider(provider: SocialProvider) {
+    if (!requireAcceptance()) return;
+    error = null;
+    busy = true;
+    try {
+      await auth.signInWithProvider(provider, redirectTo);
     } catch (e) {
       error = (e as Error).message;
       busy = false;
@@ -238,7 +250,7 @@
 </svelte:head>
 
 <section class="mx-auto flex max-w-md flex-col items-center px-4 py-16 sm:px-6 sm:py-20">
-  <LogoMark size={48} />
+  <LogoH height={40} />
   <h1 class="mt-5 font-display text-3xl font-semibold tracking-tight text-ink">{$_('login.title')}</h1>
   <p class="mt-2 text-sm text-ink-soft">{$_('login.subtitle')}</p>
 
@@ -299,16 +311,46 @@
 
     <button
       class="glow pop-self anim-host ring-focus flex w-full items-center justify-center gap-3 rounded-lg border border-line-strong bg-surface px-4 py-3 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
-      onclick={withGithub}
+      onclick={() => withProvider('discord')}
       disabled={busy || !accepted}
     >
-      <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" data-anim="pop" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="#5865F2" data-anim="pop" aria-hidden="true">
         <path
-          d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+          d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .078-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03ZM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"
         />
       </svg>
-      {$_('login.github')}
+      {$_('login.continue_with', { values: { provider: 'Discord' } })}
     </button>
+
+    <div class="grid grid-cols-2 gap-2">
+      <button
+        class="glow pop-self anim-host ring-focus flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-2 py-3 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
+        onclick={withGithub}
+        disabled={busy || !accepted}
+        aria-label={$_('login.github')}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" data-anim="pop" aria-hidden="true">
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+          />
+        </svg>
+        GitHub
+      </button>
+
+      <button
+        class="glow pop-self anim-host ring-focus flex items-center justify-center gap-2 rounded-lg border border-line-strong bg-surface px-2 py-3 text-sm font-medium text-ink transition-colors hover:bg-bg disabled:opacity-50"
+        onclick={() => withProvider('twitch')}
+        disabled={busy || !accepted}
+        aria-label={$_('login.continue_with', { values: { provider: 'Twitch' } })}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="#9146FF" data-anim="pop" aria-hidden="true">
+          <path
+            d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0 1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"
+          />
+        </svg>
+        Twitch
+      </button>
+    </div>
 
     <div class="flex items-center gap-3">
       <div class="h-px flex-1 bg-line"></div>

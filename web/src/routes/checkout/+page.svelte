@@ -7,7 +7,7 @@
   import { describeError } from '$lib/errors';
   import { PLANS } from '$lib/plans';
   import Button from '$lib/components/Button.svelte';
-  import LogoMark from '$lib/components/LogoMark.svelte';
+  import LogoH from '$lib/components/LogoH.svelte';
   import type { BillingCycle, PlanId } from '$lib/types';
   import { ShieldCheck } from 'lucide-svelte';
 
@@ -90,7 +90,7 @@
   </div>
 {:else}
   <section class="mx-auto flex max-w-md flex-col items-center px-4 py-16 sm:px-6 sm:py-20">
-    <LogoMark size={44} />
+    <LogoH height={36} />
     <h1 class="mt-5 text-balance text-center font-display text-3xl font-semibold tracking-tight text-ink">
       {$_('checkout.title')}
     </h1>

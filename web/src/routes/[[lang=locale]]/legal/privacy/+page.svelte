@@ -24,7 +24,7 @@
   <h1 class="mt-6 text-balance text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
     {$_('legal.privacy_title')}
   </h1>
-  <p class="mt-3 text-sm text-ink-faint">{$_('legal.last_updated')}</p>
+  <p class="mt-3 text-sm text-ink-faint">{$_('legal.privacy_last_updated')}</p>
 
   {#if courtesy}
     <p class="mt-5 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
@@ -55,9 +55,18 @@
       <h2>1. Qué datos tratamos</h2>
       <h3>1.1. Datos de cuenta</h3>
       <p>
-        Tu dirección de correo electrónico, un identificador único de cuenta, la fecha de
-        registro y, si inicias sesión con Google, el identificador de Google asociado. No
-        recogemos tu nombre real salvo que lo introduzcas voluntariamente.
+        Tu dirección de correo electrónico, un identificador único de cuenta y la fecha de
+        registro. Si inicias sesión con Google, Discord, GitHub o Twitch, también el
+        identificador que ese proveedor da a tu cuenta y, cuando lo comparte, el nombre y la
+        foto de perfil que tengas allí, que sólo usamos para mostrar tu cuenta en la aplicación.
+        No te pedimos tu nombre real. El proveedor que elijas trata tus datos como responsable
+        independiente, según su propia política de privacidad.
+      </p>
+      <p>
+        Por cada dispositivo en el que inicias sesión guardamos su nombre, su sistema operativo,
+        la versión de la aplicación, cuándo se conectó por última vez y el identificador de su
+        sesión. Sirven para enseñarte tus dispositivos, avisarte cuando entra uno nuevo y cerrar
+        la sesión de uno cuando lo desvinculas.
       </p>
 
       <h3>1.2. Tu contenido y sus metadatos</h3>
@@ -144,15 +153,16 @@
         Te escribimos cuando algo afecta a tus partidas y no está a la vista en la aplicación:
         cuando la limpieza automática borra versiones antiguas para hacer sitio, cuando una copia
         no cabe en tu espacio, cuando un juego supera el tamaño máximo por juego, cuando un juego
-        archivado está a punto de borrarse, cuando tu cuenta usa todos sus dispositivos, y cuando
-        está lista una exportación que has pedido. Las cuentas Pro sólo reciben el de la
-        exportación.
+        archivado está a punto de borrarse, cuando tu cuenta usa todos sus dispositivos, cuando
+        un dispositivo nuevo inicia sesión en tu cuenta, y cuando está lista una exportación que
+        has pedido. Las cuentas Pro sólo reciben el de dispositivo nuevo y el de la exportación.
       </p>
       <p>
         Para no repetirte el mismo aviso guardamos qué aviso te mandamos y cuándo. El de la
         limpieza automática se repite como mucho una vez al día mientras dure, y lleva un enlace
         para dejar de recibirlo; ese enlace no identifica tu cuenta y deja de tener efecto a las
-        dos semanas sin limpiezas.
+        dos semanas sin limpiezas. El de dispositivo nuevo sale como mucho una vez al día por
+        dispositivo y también lleva un enlace para no recibirlo más; ese no caduca.
       </p>
       <p>
         Algunos de esos avisos incluyen una oferta para pasarte a Pro. Puedes rechazarlas al
@@ -172,7 +182,7 @@
           <tr><td>Registrar tu tiempo de juego y generar tu resumen</td><td>Ejecución del contrato</td></tr>
           <tr><td>Gestionar tu suscripción y aplicar los límites del plan</td><td>Ejecución del contrato</td></tr>
           <tr><td>Guardar la fecha y versión de los términos que aceptaste</td><td>Obligación legal e interés legítimo (prueba del consentimiento contractual)</td></tr>
-          <tr><td>Seguridad, prevención de abuso y captcha en el inicio de sesión</td><td>Interés legítimo (art. 6.1.f)</td></tr>
+          <tr><td>Seguridad de tu cuenta (aviso de dispositivo nuevo, cierre de sesión al desvincular un dispositivo), prevención de abuso y captcha en el inicio de sesión</td><td>Interés legítimo (art. 6.1.f)</td></tr>
           <tr><td>Diagnóstico y telemetría de producto</td><td>Interés legítimo, con interruptor de desactivación (apartado 1.4)</td></tr>
           <tr><td>Comunicaciones de servicio y avisos críticos</td><td>Ejecución del contrato</td></tr>
           <tr><td>Ofertas de Pro dentro de los avisos de servicio</td><td>Interés legítimo y art. 21.2 LSSI (cliente, servicio propio similar), con rechazo en cada mensaje</td></tr>
@@ -231,13 +241,14 @@
         </thead>
         <tbody>
           <tr><td>Cuenta, instantáneas, metadatos y tiempo de juego</td><td>Mientras la cuenta esté activa</td></tr>
+          <tr><td>Dispositivos y sus sesiones</td><td>Mientras la cuenta esté activa; un dispositivo que lleva 90 días sin conectarse se borra solo, y la sesión de uno desvinculado se olvida 7 días después de cerrarse</td></tr>
           <tr><td>Cuenta eliminada por ti</td><td>30 días de gracia reversibles, después borrado permanente</td></tr>
           <tr><td>Versiones que borras o que archiva la limpieza automática</td><td>7 días recuperables, después purga definitiva</td></tr>
           <tr><td>Logs técnicos de la API (IP, agente de usuario)</td><td>Hasta 30 días</td></tr>
           <tr><td>Eventos de diagnóstico de la aplicación</td><td>14 días</td></tr>
           <tr><td>Telemetría de producto (detección y uso de Screen)</td><td>180 días</td></tr>
           <tr><td>Uso de la aplicación e hitos de la cuenta</td><td>2 años, o hasta que borres la cuenta</td></tr>
-          <tr><td>Registro de avisos enviados por correo</td><td>Hasta que se resuelve lo que los motivó; el de la limpieza automática, 14 días después del último</td></tr>
+          <tr><td>Registro de avisos enviados por correo</td><td>Hasta que se resuelve lo que los motivó; el de la limpieza automática, 14 días después del último; el de dispositivo nuevo, un día, y tu decisión de no recibirlo, mientras exista la cuenta</td></tr>
           <tr><td>Fecha en que rechazaste las ofertas</td><td>Mientras exista la cuenta</td></tr>
           <tr><td>Registro de aceptación de los términos</td><td>Mientras dure la relación y 5 años más</td></tr>
           <tr><td>Facturación</td><td>Conservada por el Comerciante Registrado durante los plazos fiscales aplicables</td></tr>
@@ -300,7 +311,9 @@
       <p>
         Las instantáneas se cifran en reposo en el almacenamiento y toda la comunicación entre
         la aplicación y el servidor viaja por TLS. No almacenamos contraseñas en claro: la
-        autenticación está delegada en Supabase, que aplica funciones de hash robustas. El
+        autenticación está delegada en Supabase, que aplica funciones de hash robustas. Te
+        avisamos por correo cuando un dispositivo nuevo inicia sesión en tu cuenta, y al
+        desvincular uno su sesión se cierra y deja de poder sincronizar. El
         acceso a la API queda registrado y las credenciales del servicio se guardan en el
         llavero del sistema operativo. Aplicamos el principio de mínimo privilegio en el acceso
         a producción.
@@ -344,9 +357,17 @@
       <h2>1. What data we process</h2>
       <h3>1.1. Account data</h3>
       <p>
-        Your email address, a unique account identifier, the sign-up date and, if you sign in
-        with Google, the associated Google identifier. We do not collect your real name unless
-        you enter it yourself.
+        Your email address, a unique account identifier and the sign-up date. If you sign in
+        with Google, Discord, GitHub or Twitch, also the identifier that provider gives
+        your account and, when it shares them, the name and profile picture you have there, which
+        we only use to show your account in the app. We never ask for your real name. The
+        provider you choose processes your data as an independent controller, under its own
+        privacy policy.
+      </p>
+      <p>
+        For each device you sign in on we keep its name, its operating system, the app version,
+        when it last connected and the identifier of its session. They are there to show you your
+        devices, tell you when a new one signs in, and sign one out when you unlink it.
       </p>
 
       <h3>1.2. Your content and its metadata</h3>
@@ -428,14 +449,16 @@
         We write to you when something affects your saves and is not in front of you in the app:
         when automatic cleanup deletes old versions to make room, when a backup does not fit in
         your space, when a game goes over the per-game size limit, when an archived game is about
-        to be deleted, when your account is using all its devices, and when an export you asked
-        for is ready. Pro accounts only receive the export one.
+        to be deleted, when your account is using all its devices, when a new device signs in to
+        your account, and when an export you asked for is ready. Pro accounts only receive the new
+        device one and the export one.
       </p>
       <p>
         So as not to repeat ourselves we keep a record of which notice we sent you and when. The
         cleanup notice repeats at most once a day while it lasts and carries a link to stop it;
         that link does not identify your account, and it lapses after two weeks without a
-        cleanup.
+        cleanup. The new device notice goes out at most once a day per device and also carries a
+        link to stop it for good; that one does not lapse.
       </p>
       <p>
         Some of those notices include an offer to move to Pro. You can refuse them when you sign up
@@ -454,7 +477,7 @@
           <tr><td>Recording your playtime and building your recap</td><td>Performance of contract</td></tr>
           <tr><td>Managing your subscription and enforcing plan limits</td><td>Performance of contract</td></tr>
           <tr><td>Recording the date and version of the terms you accepted</td><td>Legal obligation and legitimate interest (proof of agreement)</td></tr>
-          <tr><td>Security, abuse prevention and sign-in captcha</td><td>Legitimate interest (art. 6(1)(f))</td></tr>
+          <tr><td>Account security (new device notice, signing a device out when you unlink it), abuse prevention and sign-in captcha</td><td>Legitimate interest (art. 6(1)(f))</td></tr>
           <tr><td>Diagnostics and product telemetry</td><td>Legitimate interest, with an off switch (section 1.4)</td></tr>
           <tr><td>Service communications and critical notices</td><td>Performance of contract</td></tr>
           <tr><td>Offers for Pro inside service notices</td><td>Legitimate interest and art. 21.2 LSSI (existing customer, similar own service), with a refusal in every message</td></tr>
@@ -512,13 +535,14 @@
         </thead>
         <tbody>
           <tr><td>Account, snapshots, metadata and playtime</td><td>While the account is active</td></tr>
+          <tr><td>Devices and their sessions</td><td>While the account is active; a device that has not connected for 90 days is removed on its own, and the session of an unlinked one is forgotten 7 days after it ends</td></tr>
           <tr><td>Account deleted by you</td><td>30-day reversible grace period, then permanent erasure</td></tr>
           <tr><td>Versions you delete or that automatic cleanup archives</td><td>7 days recoverable, then final purge</td></tr>
           <tr><td>API technical logs (IP, user agent)</td><td>Up to 30 days</td></tr>
           <tr><td>Application diagnostic events</td><td>14 days</td></tr>
           <tr><td>Product telemetry (detection and Screen usage)</td><td>180 days</td></tr>
           <tr><td>App usage and account milestones</td><td>2 years, or until you delete the account</td></tr>
-          <tr><td>Record of email notices sent</td><td>Until what caused them is resolved; the cleanup one, 14 days after the last</td></tr>
+          <tr><td>Record of email notices sent</td><td>Until what caused them is resolved; the cleanup one, 14 days after the last; the new device one, a day, and your choice not to receive it, for as long as the account exists</td></tr>
           <tr><td>Date you refused offers</td><td>For as long as the account exists</td></tr>
           <tr><td>Record of terms acceptance</td><td>For the duration of the relationship plus 5 years</td></tr>
           <tr><td>Billing</td><td>Kept by the Merchant of Record for the applicable tax periods</td></tr>
@@ -581,7 +605,9 @@
       <p>
         Snapshots are encrypted at rest in storage and all communication between the application
         and the server travels over TLS. We store no plaintext passwords: authentication is
-        delegated to Supabase, which applies strong hashing. API access is logged and service
+        delegated to Supabase, which applies strong hashing. We email you when a new device signs
+        in to your account, and unlinking a device signs it out so it can no longer sync. API
+        access is logged and service
         credentials are held in the operating system keyring. We apply least privilege for
         production access.
       </p>
