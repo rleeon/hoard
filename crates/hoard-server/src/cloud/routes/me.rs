@@ -1,7 +1,7 @@
 //! `/v1/me*`: account-facing endpoints for the desktop client.
 
 use crate::cloud::abuse;
-use crate::cloud::auth::CloudUser;
+use crate::cloud::auth::{CloudUser, SessionId};
 use crate::cloud::errors::CloudError;
 use crate::cloud::export;
 use crate::cloud::plans::Plan;
@@ -150,6 +150,7 @@ fn storage_status(plan: Plan, used: i64, limit: u64, grace: bool) -> &'static st
 pub async fn get_me(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
+    session: Option<Extension<SessionId>>,
     headers: HeaderMap,
 ) -> Result<Json<Me>, CloudError> {
     upsert_profile_for(&state, &user, &headers).await?;
@@ -157,7 +158,7 @@ pub async fn get_me(
     // "Dispositivos N/M" reflects reality. Runs before the profile SELECT so
     // the recomputed `devices_count` is the one we return. Best-effort: a
     // client that sends no fingerprint (older builds) leaves the count alone.
-    register_device(&state, &user, &headers).await?;
+    register_device(&state, &user, session.map(|e| e.0), &headers).await?;
     // One row per machine and day. The service polls this route whether or not
     // the window is open, so it says "Hoard was running", not "somebody looked".
     // `app.opened` is the other half.
@@ -643,6 +644,7 @@ async fn enforce_device_account_cap(
 async fn register_device(
     state: &CloudState,
     user: &CloudUser,
+    session: Option<SessionId>,
     headers: &HeaderMap,
 ) -> Result<(), CloudError> {
     let header = |k: &str| headers.get(k).and_then(|v| v.to_str().ok()).map(str::trim);
@@ -737,13 +739,14 @@ async fn register_device(
     // `xmax = 0` is true only for a row this statement inserted, which is how
     // a new machine is told from the 60-second refresh of a known one.
     let inserted: bool = sqlx::query_scalar(
-        "INSERT INTO devices (user_id, device_name, device_kind, os, fingerprint, app_version)
-             VALUES ($1, $2, 'desktop', $3, $4, $5)
+        "INSERT INTO devices (user_id, device_name, device_kind, os, fingerprint, app_version, session_id)
+             VALUES ($1, $2, 'desktop', $3, $4, $5, $6)
          ON CONFLICT (user_id, fingerprint)
          DO UPDATE SET last_seen_at = now(),
                        device_name  = EXCLUDED.device_name,
                        os           = EXCLUDED.os,
-                       app_version  = COALESCE(EXCLUDED.app_version, devices.app_version)
+                       app_version  = COALESCE(EXCLUDED.app_version, devices.app_version),
+                       session_id   = COALESCE(EXCLUDED.session_id, devices.session_id)
          RETURNING (xmax = 0)",
     )
     .bind(user.user_id)
@@ -751,6 +754,7 @@ async fn register_device(
     .bind(os)
     .bind(fingerprint)
     .bind(app_version)
+    .bind(session.map(|s| s.0))
     .fetch_one(&state.pool)
     .await?;
 
@@ -904,20 +908,26 @@ pub async fn list_devices(
 
 /// DELETE /v1/devices/:id: unlink a device. Scoped to the caller's user_id so
 /// you can never delete another account's row even with a guessed UUID. After
-/// the delete we recompute the cached `profiles.devices_count`. Deleting a
-/// machine that's still running just means it re-registers on its next
-/// `GET /v1/me`; that's intended (it's an "unlink", not a permanent ban).
+/// the delete we recompute the cached `profiles.devices_count`.
+///
+/// Unlinking also signs the machine out: its last known session goes to
+/// `revoked_sessions` (0077), whose tokens the auth middleware refuses. Until
+/// then a running machine simply re-registered on its next `GET /v1/me`, so a
+/// stolen laptop could not be put out of the account. The machine can come
+/// back with a fresh login, which is a new session.
+///
+/// Two sessions are spared. The caller's own: a machine whose fingerprint
+/// changed (a new hostname) asks to free its old row with the session it is
+/// still using. And one another row still holds, for the same reason seen from
+/// the other side.
 pub async fn delete_device(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
+    caller: Option<Extension<SessionId>>,
     Path(device_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<DeviceListOut>, CloudError> {
-    sqlx::query("DELETE FROM devices WHERE id = $1 AND user_id = $2")
-        .bind(device_id)
-        .bind(user.user_id)
-        .execute(&state.pool)
-        .await?;
+    revoke_device(&state.pool, user.user_id, device_id, caller.map(|e| e.0)).await?;
 
     sqlx::query(
         "UPDATE profiles
@@ -938,6 +948,40 @@ pub async fn delete_device(
     .await;
 
     list_devices(State(state), Extension(user), headers).await
+}
+
+/// Delete one device of `user_id` and revoke the session it last used, in one
+/// statement. Public for the tests, which drive it against a real Postgres.
+pub async fn revoke_device(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+    device_id: Uuid,
+    caller: Option<SessionId>,
+) -> Result<(), sqlx::Error> {
+    // The CTE's DELETE is not visible to the rest of the statement, so the
+    // "another row holds it" check has to skip the row being deleted itself.
+    sqlx::query(
+        "WITH gone AS (
+             DELETE FROM devices WHERE id = $1 AND user_id = $2
+             RETURNING session_id
+         )
+         INSERT INTO revoked_sessions (session_id, user_id)
+         SELECT g.session_id, $2
+           FROM gone g
+          WHERE g.session_id IS NOT NULL
+            AND g.session_id IS DISTINCT FROM $3
+            AND NOT EXISTS (
+                SELECT 1 FROM devices d
+                 WHERE d.user_id = $2 AND d.id <> $1 AND d.session_id = g.session_id
+            )
+         ON CONFLICT (session_id) DO NOTHING",
+    )
+    .bind(device_id)
+    .bind(user_id)
+    .bind(caller.map(|s| s.0))
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// One game in a heartbeat: slug + how long it's been running. A duration
@@ -979,6 +1023,7 @@ const MAX_SLUG_CHARS: usize = 128;
 pub async fn heartbeat(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
+    session: Option<Extension<SessionId>>,
     headers: HeaderMap,
     Json(body): Json<HeartbeatIn>,
 ) -> Result<StatusCode, CloudError> {
@@ -1033,8 +1078,9 @@ pub async fn heartbeat(
     // CLI that authenticated via device pairing and never hit `GET /v1/me`):
     // register it the same way `/v1/me` would; name and os come from the same
     // headers. The register path also keeps `profiles.devices_count` truthful.
+    let session = session.map(|e| e.0);
     if stored.is_none() {
-        register_device(&state, &user, &headers).await?;
+        register_device(&state, &user, session, &headers).await?;
     }
     let old: Vec<PlayingOut> = stored
         .flatten()
@@ -1070,14 +1116,18 @@ pub async fn heartbeat(
         serde_json::to_string(&playing).ok()
     };
 
+    // The session rides along so a headless machine that never polls `/v1/me`
+    // can still be signed out when it is unlinked.
     sqlx::query(
         "UPDATE devices
-            SET last_seen_at = now(), closed_at = NULL, playing = $3::jsonb
+            SET last_seen_at = now(), closed_at = NULL, playing = $3::jsonb,
+                session_id = COALESCE($4, session_id)
           WHERE user_id = $1 AND fingerprint = $2",
     )
     .bind(user.user_id)
     .bind(&fp)
     .bind(&playing_json)
+    .bind(session.map(|s| s.0))
     .execute(&state.pool)
     .await?;
 

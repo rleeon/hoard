@@ -150,6 +150,41 @@ pub async fn list_users(
     bail!("admin users kept answering full pages past 100.000 accounts")
 }
 
+/// End one session, the one `access_token` belongs to, and with it every
+/// refresh token of its family. Other sessions of the same account are left
+/// alone (`scope=local`).
+///
+/// GoTrue has no admin call to end a session by id; logout acts on the session
+/// of the token it is handed, so the caller passes the device's own token.
+/// A session that is already gone counts as done.
+pub async fn sign_out_session(
+    base_url: &str,
+    service_role_key: &str,
+    access_token: &str,
+) -> Result<()> {
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+    let base = base_url.trim_end_matches('/');
+    let resp = http
+        .post(format!("{base}/auth/v1/logout"))
+        .query(&[("scope", "local")])
+        .header("apikey", service_role_key)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .context("supabase logout request failed")?;
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let body = resp.text().await.unwrap_or_default();
+    if body.contains("session_not_found") {
+        return Ok(());
+    }
+    bail!("supabase logout answered {status}: {body}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

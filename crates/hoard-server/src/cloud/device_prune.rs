@@ -43,9 +43,24 @@ pub fn spawn(state: CloudState) {
                     incidents::record(Kind::Delete, "device prune: sweep failed");
                 }
             }
+            if let Err(e) = prune_revoked_sessions(&state.pool).await {
+                tracing::warn!(error = %e, "device prune: revoked sessions sweep failed");
+            }
             tick.tick().await;
         }
     });
+}
+
+/// Forget a revoked session once Supabase has ended it and every access token
+/// it minted has expired. Supabase caps a JWT at a week, so a week is enough
+/// whatever the project's expiry. A session never ended (its machine has not
+/// called since it was unlinked) stays: its refresh token still works.
+pub async fn prune_revoked_sessions(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let done =
+        sqlx::query("DELETE FROM revoked_sessions WHERE signed_out_at < now() - interval '7 days'")
+            .execute(pool)
+            .await?;
+    Ok(done.rows_affected())
 }
 
 /// Delete every device unseen for [`DEVICE_RETENTION_DAYS`] and repair the

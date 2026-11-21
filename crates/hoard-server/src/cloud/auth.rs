@@ -36,6 +36,12 @@ pub struct CloudUser {
     pub display_name: Option<String>,
 }
 
+/// The Supabase session a token belongs to (its `session_id` claim), inserted
+/// next to [`CloudUser`] when the token carries one. It outlives every refresh,
+/// which makes it the handle for putting one machine out of the account.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionId(pub Uuid);
+
 /// In-memory JWKS cache. Concurrent reads via `RwLock` (overwhelmingly the
 /// hot path, since every authenticated request hits this).
 pub struct JwksCache {
@@ -168,6 +174,8 @@ pub struct Claims {
     pub exp: usize,
     pub aud: serde_json::Value,
     pub iss: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
     /// OAuth provider profile bits. Supabase nests avatar/name under
     /// `user_metadata`; different providers use different keys (Google →
     /// `picture`/`name`, GitHub/Discord → `avatar_url`/`full_name`), so we
@@ -231,6 +239,19 @@ pub async fn require_cloud_auth(
             return CloudError::Unauthorized("sub is not a uuid").into_response();
         }
     };
+    let session_id = claims
+        .session_id
+        .as_deref()
+        .and_then(|s| Uuid::parse_str(s).ok());
+    if let Some(sid) = session_id {
+        if session_revoked(&state, sid, &token).await {
+            return CloudError::Unauthorized(
+                "this device was unlinked from the account; sign in again",
+            )
+            .into_response();
+        }
+        req.extensions_mut().insert(SessionId(sid));
+    }
     let email = claims.email.unwrap_or_default();
     let avatar_url = claims.user_metadata.avatar();
     let display_name = claims.user_metadata.display_name();
@@ -247,6 +268,87 @@ pub async fn require_cloud_auth(
 fn extract_bearer(req: &Request) -> Option<String> {
     let val = req.headers().get(header::AUTHORIZATION)?.to_str().ok()?;
     val.strip_prefix("Bearer ").map(|s| s.trim().to_string())
+}
+
+/// Was this session unlinked along with its device (`revoked_sessions`, 0077)?
+///
+/// Refusing the token is only half of it: Supabase would keep refreshing the
+/// session, and the machine would come back every few minutes with a new token
+/// to be refused again. So the first call from a revoked session also ends it
+/// at Supabase, with the very token it just presented, and from then on its
+/// refresh fails like any expired session's.
+///
+/// Fails open on a database error, like [`require_active_account`]: this sits
+/// in front of every request, and a 401 makes clients drop their session.
+async fn session_revoked(state: &CloudState, sid: Uuid, token: &str) -> bool {
+    let row: Result<Option<bool>, _> = sqlx::query_scalar(
+        "SELECT signed_out_at IS NULL
+                AND (logout_attempt_at IS NULL
+                     OR logout_attempt_at < now() - interval '5 minutes')
+           FROM revoked_sessions
+          WHERE session_id = $1",
+    )
+    .bind(sid)
+    .fetch_optional(&state.pool)
+    .await;
+    match row {
+        Ok(None) => false,
+        Ok(Some(due)) => {
+            if due {
+                spawn_sign_out(state.clone(), sid, token.to_string());
+            }
+            true
+        }
+        Err(e) => {
+            warn!(error = %e, "revoked session check failed; letting the request through");
+            false
+        }
+    }
+}
+
+fn spawn_sign_out(state: CloudState, sid: Uuid, token: String) {
+    tokio::spawn(async move {
+        // Claimed in the database so a burst of requests makes one call.
+        let claimed = sqlx::query(
+            "UPDATE revoked_sessions SET logout_attempt_at = now()
+              WHERE session_id = $1
+                AND signed_out_at IS NULL
+                AND (logout_attempt_at IS NULL
+                     OR logout_attempt_at < now() - interval '5 minutes')",
+        )
+        .bind(sid)
+        .execute(&state.pool)
+        .await;
+        if !matches!(claimed, Ok(ref r) if r.rows_affected() == 1) {
+            return;
+        }
+        let Some(cc) = state.config.cloud.as_ref() else {
+            return;
+        };
+        if cc.supabase_url.is_empty() || cc.supabase_service_role_key.is_empty() {
+            return;
+        }
+        match crate::cloud::supabase_admin::sign_out_session(
+            &cc.supabase_url,
+            &cc.supabase_service_role_key,
+            &token,
+        )
+        .await
+        {
+            Ok(()) => {
+                let _ = sqlx::query(
+                    "UPDATE revoked_sessions SET signed_out_at = now() WHERE session_id = $1",
+                )
+                .bind(sid)
+                .execute(&state.pool)
+                .await;
+                tracing::info!(session_id = %sid, "unlinked device: session ended at Supabase");
+            }
+            Err(e) => {
+                warn!(session_id = %sid, error = %format!("{e:#}"), "unlinked device: could not end the session at Supabase");
+            }
+        }
+    });
 }
 
 /// Axum middleware, layered *inside* `require_cloud_auth` (so it runs second and
