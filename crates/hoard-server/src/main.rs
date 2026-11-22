@@ -1,5 +1,6 @@
 use anyhow::Result;
 use axum::{
+    http::{header, HeaderValue},
     middleware,
     routing::{get, post},
     Router,
@@ -10,6 +11,7 @@ use hoard_server::{
     db, upgrade,
 };
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Instant};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tracing::{info, warn};
 
 use hoard_server::auth::require_auth;
@@ -579,6 +581,13 @@ async fn run_self_hosted(cfg: Config) -> Result<()> {
         app,
         blob_upload.with_state(state),
     );
+    // Snapshot downloads hand back bytes a user uploaded, so no browser gets to
+    // guess they are HTML. Outermost, so the exempt blob upload and a 429 carry
+    // it too; the panel sets its own and `if_not_present` leaves that alone.
+    let app = app.layer(SetResponseHeaderLayer::if_not_present(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    ));
 
     let addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     info!(%addr, "listening");
