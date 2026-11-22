@@ -421,6 +421,41 @@ pub async fn fetch_me(base: &str, access: &str) -> Result<Me> {
     serde_json::from_str::<Me>(&body).with_context(|| format!("parsing /v1/me: {body}"))
 }
 
+/// Did the server refuse this token because its device was unlinked from the
+/// account? Asked before renewing a token a client was refused with: renewing an
+/// unlinked session races the server ending it at Supabase, and when the renewal
+/// wins the app goes on holding a token nobody accepts.
+///
+/// `false` on anything but that exact answer (a network failure, a server older
+/// than the `session_revoked` code): the caller then renews as it always did.
+pub async fn session_revoked(base: &str, access: &str) -> bool {
+    let url = format!("{}/v1/me", base.trim_end_matches('/'));
+    let Ok(client) = http_client() else {
+        return false;
+    };
+    let Ok(resp) = client
+        .get(&url)
+        .bearer_auth(access)
+        .timeout(Duration::from_secs(7))
+        .send()
+        .await
+    else {
+        return false;
+    };
+    if resp.status() != StatusCode::UNAUTHORIZED {
+        return false;
+    }
+    let body = resp.text().await.unwrap_or_default();
+    revoked_code(&body)
+}
+
+fn revoked_code(body: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|v| v.get("code")?.as_str().map(|c| c == "session_revoked"))
+        .unwrap_or(false)
+}
+
 // ---- persistence (shared with the desktop)
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -936,13 +971,21 @@ fn refresh_gate() -> &'static tokio::sync::Mutex<Option<(Instant, Tokens)>> {
 /// shares the same session file): if GoTrue says stale, the disk is re-read and
 /// somebody else's rotation is adopted.
 pub async fn refresh_freshest() -> Result<Tokens> {
+    refresh_freshest_avoiding(None).await
+}
+
+/// [`refresh_freshest`] for a caller holding an access token the server just
+/// refused. The reuse window never hands that token back: the burst it exists
+/// for is several callers needing *a* fresh token, not one caller being given
+/// the token it reported dead.
+pub async fn refresh_freshest_avoiding(rejected: Option<&str>) -> Result<Tokens> {
     // Holding the lock across the network call is what serialises this.
     let mut last = refresh_gate().lock().await;
 
     let Some(sess) = load_session()? else {
         bail!("no Cloud session; sign in again");
     };
-    if let Some(tokens) = reusable(last.as_ref(), &sess.refresh) {
+    if let Some(tokens) = reusable(last.as_ref(), &sess.refresh, rejected) {
         return Ok(tokens);
     }
     let attempted = sess.refresh.clone();
@@ -972,10 +1015,22 @@ pub async fn refresh_freshest() -> Result<Tokens> {
 /// only the clock handed a new login the previous account's pair: sign out and
 /// back in with another account inside the window, and the engine started on the
 /// old one, context included, until the next refresh 45 minutes later.
-fn reusable(last: Option<&(Instant, Tokens)>, on_disk_refresh: &str) -> Option<Tokens> {
+///
+/// Nor the token a caller just took a 401 with. On 2026-11-21 an unlinked
+/// machine renewed in the same second the server ended its session at Supabase;
+/// the server refused the new token, and twice in the next 30 s the window gave
+/// it straight back as "rotated". The app sat on a dead token for 58 s, until a
+/// poll fell outside the window and the real refresh said `not_found`.
+fn reusable(
+    last: Option<&(Instant, Tokens)>,
+    on_disk_refresh: &str,
+    rejected: Option<&str>,
+) -> Option<Tokens> {
     let (at, tokens) = last?;
-    (at.elapsed() < REFRESH_REUSE_WINDOW && tokens.refresh == on_disk_refresh)
-        .then(|| tokens.clone())
+    (at.elapsed() < REFRESH_REUSE_WINDOW
+        && tokens.refresh == on_disk_refresh
+        && rejected != Some(tokens.access.as_str()))
+    .then(|| tokens.clone())
 }
 
 /// Decides whether the session on disk is any use for healing a
@@ -1026,21 +1081,43 @@ mod tests {
     #[test]
     fn a_burst_reuses_the_rotation_it_just_did() {
         let last = rotated("account-a-2", Duration::from_secs(5));
-        let got = reusable(Some(&last), "account-a-2").expect("same session, inside the window");
+        let got =
+            reusable(Some(&last), "account-a-2", None).expect("same session, inside the window");
         assert_eq!(got.access, "jwt-of-account-a-2");
+    }
+
+    #[test]
+    fn the_token_a_caller_was_refused_with_is_never_reused() {
+        let last = rotated("account-a-2", Duration::from_secs(5));
+        assert!(reusable(Some(&last), "account-a-2", Some("jwt-of-account-a-2")).is_none());
+        // A caller refused with an older token still gets the fresh one.
+        assert!(reusable(Some(&last), "account-a-2", Some("jwt-of-account-a-1")).is_some());
     }
 
     #[test]
     fn a_new_login_inside_the_window_is_not_handed_the_old_pair() {
         // Account A rotated 5 s ago; the user signed in to B since, so B is on disk.
         let last = rotated("account-a-2", Duration::from_secs(5));
-        assert!(reusable(Some(&last), "account-b-1").is_none());
+        assert!(reusable(Some(&last), "account-b-1", None).is_none());
     }
 
     #[test]
     fn an_old_rotation_is_not_reused() {
         let last = rotated("account-a-2", REFRESH_REUSE_WINDOW + Duration::from_secs(1));
-        assert!(reusable(Some(&last), "account-a-2").is_none());
+        assert!(reusable(Some(&last), "account-a-2", None).is_none());
+    }
+
+    #[test]
+    fn only_the_revoked_code_counts_as_unlinked() {
+        assert!(revoked_code(
+            r#"{"error":"this device was unlinked from the account; sign in again","code":"session_revoked"}"#
+        ));
+        // What a server older than the code answers, and an expired JWT.
+        assert!(!revoked_code(
+            r#"{"error":"invalid token","code":"unauthorized"}"#
+        ));
+        assert!(!revoked_code("not json"));
+        assert!(!revoked_code(""));
     }
 
     #[test]

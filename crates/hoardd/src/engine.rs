@@ -132,6 +132,9 @@ struct Inner {
     /// disk changed), and why. The keeper serves it, being the only owner of the
     /// lifecycle.
     restart_requested: Option<String>,
+    /// The session most recently signed out (`true` for Cloud), until something
+    /// changes the sessions again. See [`Engine::request_restart_if_signed_out`].
+    signed_out: Option<bool>,
     /// A session became readable while the engine was down: start again now, from
     /// the shortest backoff. Unlike `restart_requested` it never tears down an
     /// engine, see [`Engine::wake_if_a_session_would_help`].
@@ -342,7 +345,11 @@ impl Engine {
     /// start for want of a session and the user has just signed in), and waiting out
     /// the backoff would mean never finding out.
     pub fn request_restart(&self, reason: &str) {
-        self.lock().restart_requested = Some(reason.to_string());
+        {
+            let mut guard = self.lock();
+            guard.signed_out = None;
+            guard.restart_requested = Some(reason.to_string());
+        }
         self.wake.notify_one();
     }
 
@@ -358,13 +365,35 @@ impl Engine {
     ///
     /// A engine that is *down* is restarted either way: the session that is left
     /// may be the one it was missing.
+    ///
+    /// The same session signed out twice in a row is one restart. When a Cloud
+    /// session expires, every loop of the desktop that holds a token finds out
+    /// on its own and each one signs out: on 2026-11-21 two of them did it a
+    /// millisecond apart, the second restart queued behind the first, and the
+    /// machine sat through the start twice. The second one finds nothing the
+    /// first did not already delete, so there is nothing new to restart for. Any
+    /// other session change ([`Engine::request_restart`]) re-arms it.
     pub fn request_restart_if_signed_out(&self, was_cloud: bool, reason: &str) {
-        let mine = {
-            let guard = self.lock();
-            !guard.status.running || guard.status.is_cloud == was_cloud
+        let (mine, again) = {
+            let mut guard = self.lock();
+            let again = guard.signed_out == Some(was_cloud);
+            guard.signed_out = Some(was_cloud);
+            (
+                !guard.status.running || guard.status.is_cloud == was_cloud,
+                again,
+            )
         };
-        if mine {
-            self.request_restart(reason);
+        if again {
+            tracing::info!(
+                signed_out_cloud = was_cloud,
+                "hoardd: the same session was signed out again, the restart already asked for covers it"
+            );
+        } else if mine {
+            {
+                let mut guard = self.lock();
+                guard.restart_requested = Some(reason.to_string());
+            }
+            self.wake.notify_one();
         } else {
             tracing::info!(
                 signed_out_cloud = was_cloud,
@@ -1175,6 +1204,30 @@ mod tests {
     fn a_down_engine_restarts_on_either_sign_out() {
         let engine = down_with(EngineDownReason::NoSession, true);
         engine.request_restart_if_signed_out(false, "self-hosted signed out");
+        assert!(restart_asked(&engine));
+    }
+
+    /// Two loops of the desktop finding the same expired session: one restart.
+    #[test]
+    fn the_same_sign_out_twice_restarts_once() {
+        let engine = up_on(true);
+        engine.request_restart_if_signed_out(true, "a client signed out of Cloud");
+        assert!(engine.take_restart_request().is_some());
+        // The keeper has taken it and is restarting: `running` is false now.
+        engine.lock().status.running = false;
+        engine.request_restart_if_signed_out(true, "a client signed out of Cloud");
+        assert!(!restart_asked(&engine));
+    }
+
+    /// A sign-in in between makes the next sign-out a new one.
+    #[test]
+    fn a_session_change_rearms_the_sign_out() {
+        let engine = down_with(EngineDownReason::NoSession, true);
+        engine.request_restart_if_signed_out(true, "a client signed out of Cloud");
+        engine.take_restart_request();
+        engine.request_restart("a client handed us a new Cloud session");
+        engine.take_restart_request();
+        engine.request_restart_if_signed_out(true, "a client signed out of Cloud");
         assert!(restart_asked(&engine));
     }
 

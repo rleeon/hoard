@@ -522,14 +522,16 @@
       },
     );
 
-    // Terminal cloud session expiry (Supabase revoked the refresh token). The
-    // Rust side already cleared the session + stopped the pollers; here we calm
-    // the cloud dot, tell the user, and, if they're cloud-only, route them to
-    // the welcome screen so they can sign in again. A self-hosted user stays put.
-    initCloudSessionWatch(() => {
+    // Terminal cloud session expiry (Supabase revoked the refresh token, or the
+    // device was unlinked). The Rust side already cleared the session, stopped
+    // the pollers and held any self-hosted session stored alongside; here we calm
+    // the cloud dot, tell the user and send them to the welcome screen. Which
+    // account to sync next is theirs to pick, the app never switches on its own.
+    initCloudSessionWatch(async () => {
       resetCloudLoop();
       toastInfo($_("account.session_expired"));
-      if (!$auth.user) replace("/onboarding/language");
+      await hydrateAuth();
+      replace("/onboarding/language");
     });
 
     // The global shortcut for the HUD over the game (Alt+H out of the box). It is

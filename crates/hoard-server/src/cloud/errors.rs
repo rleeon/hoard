@@ -11,6 +11,12 @@ use serde::Serialize;
 #[derive(Debug)]
 pub enum CloudError {
     Unauthorized(&'static str),
+    /// A 401 with its own `code`, for the client that has to tell this refusal
+    /// from an expired token. Older clients only look at the status.
+    UnauthorizedCode {
+        code: &'static str,
+        message: &'static str,
+    },
     Forbidden(&'static str),
     /// Like `Forbidden`, but carries a stable machine-readable `code` so the
     /// client can localize the message instead of showing the English
@@ -48,6 +54,9 @@ impl IntoResponse for CloudError {
         let (status, code, msg) = match &self {
             CloudError::Unauthorized(m) => {
                 (StatusCode::UNAUTHORIZED, "unauthorized", (*m).to_string())
+            }
+            CloudError::UnauthorizedCode { code, message } => {
+                (StatusCode::UNAUTHORIZED, *code, (*message).to_string())
             }
             CloudError::Forbidden(m) => (StatusCode::FORBIDDEN, "forbidden", (*m).to_string()),
             CloudError::ForbiddenCode { code, message } => {
@@ -114,5 +123,28 @@ impl From<sqlx::Error> for CloudError {
 impl From<anyhow::Error> for CloudError {
     fn from(e: anyhow::Error) -> Self {
         CloudError::Internal(e)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The app tells an unlinked device from an expired token by this code, and
+    /// an app older than it by the status alone: both have to hold.
+    #[tokio::test]
+    async fn an_unlinked_device_gets_a_401_with_its_own_code() {
+        let resp = CloudError::UnauthorizedCode {
+            code: "session_revoked",
+            message: "this device was unlinked from the account; sign in again",
+        }
+        .into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(resp.into_body(), 4096).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], "session_revoked");
+        assert!(json["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("unlinked")));
     }
 }

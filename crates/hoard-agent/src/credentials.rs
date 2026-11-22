@@ -38,7 +38,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::api::Whoami;
 use crate::config::CliConfig;
@@ -510,6 +510,73 @@ pub fn is_valid_token(token: &str) -> bool {
         .all(|c| matches!(c, '0'..='9' | 'a'..='f'))
 }
 
+// ---- held until the user chooses
+
+/// When the Hoard One session goes (signed out, expired, the device unlinked), a
+/// self-hosted session already sitting on disk is **held**: neither the engine
+/// nor the app picks it up until the user signs in again. On 2026-11-21 an
+/// unlinked machine dropped Cloud and the engine started on its own against a
+/// server the user had last used from the CLI in August, which was switched off:
+/// two minutes of spinner and five backups given up. Which account to sync is the
+/// user's call, made on the sign-in screen, never the engine's.
+///
+/// The marker is a file whose mtime is the moment of the hold. A session counts
+/// as held when its file is not newer than that, so any login written later (the
+/// app's, `hoard login --token`, with or without the service) frees it with
+/// nobody having to remember to. A self-hosted login through the service also
+/// releases it explicitly ([`release_hold`]).
+fn hold_path() -> Result<PathBuf> {
+    let dirs = CliConfig::project_dirs()?;
+    Ok(dirs.config_dir().join("desktop").join("selfhost.hold"))
+}
+
+/// Holds whatever self-hosted session is stored right now. See [`hold_path`].
+pub fn hold_selfhosted() -> Result<()> {
+    let path = hold_path()?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    }
+    std::fs::write(&path, "held: Hoard One signed out\n")
+        .with_context(|| format!("writing {}", path.display()))
+}
+
+pub fn release_hold() -> Result<()> {
+    let path = hold_path()?;
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e).with_context(|| format!("deleting {}", path.display())),
+    }
+}
+
+/// Is the session stored in `source` (the app's `session.toml`, the CLI's
+/// `config.toml`) held? A failure to read the marker means no hold: refusing a
+/// session the user may be counting on over an unreadable timestamp is worse.
+pub fn is_held(source: &Path) -> bool {
+    let Ok(marker) = hold_path() else {
+        return false;
+    };
+    held_by(&marker, source)
+}
+
+/// [`is_held`] for the app's own session.
+pub fn session_is_held() -> bool {
+    session_path().is_ok_and(|p| is_held(&p))
+}
+
+fn held_by(marker: &Path, source: &Path) -> bool {
+    let Ok(held_at) = std::fs::metadata(marker).and_then(|m| m.modified()) else {
+        return false;
+    };
+    // No file, or no mtime: nothing proves it is a later login. `load` can still
+    // rebuild a session from the keyring blob with the file gone, and that one
+    // is as old as the hold.
+    match std::fs::metadata(source).and_then(|m| m.modified()) {
+        Ok(written_at) => written_at <= held_at,
+        Err(_) => true,
+    }
+}
+
 // ---- internals ---------------------------------------------------------
 
 fn read_session() -> Result<Option<Session>> {
@@ -758,6 +825,49 @@ mod tests {
     fn token_validation_rejects_non_hex() {
         let bad = format!("hoard_v1_{}", "z".repeat(64));
         assert!(!is_valid_token(&bad));
+    }
+
+    // ---- held until the user chooses
+
+    fn touch(path: &Path, at: std::time::SystemTime) {
+        std::fs::write(path, "x").unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_modified(at)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_session_older_than_the_hold_is_held_and_a_later_login_is_not() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (marker, source) = (
+            tmp.path().join("selfhost.hold"),
+            tmp.path().join("config.toml"),
+        );
+        let now = std::time::SystemTime::now();
+        let minute = std::time::Duration::from_secs(60);
+
+        touch(&source, now - minute);
+        assert!(!held_by(&marker, &source), "no marker, no hold");
+
+        touch(&marker, now);
+        assert!(held_by(&marker, &source), "the August token, still there");
+
+        touch(&source, now + minute);
+        assert!(
+            !held_by(&marker, &source),
+            "`hoard login --token` after the hold"
+        );
+    }
+
+    #[test]
+    fn a_session_with_no_file_is_held() {
+        let tmp = tempfile::tempdir().unwrap();
+        let marker = tmp.path().join("selfhost.hold");
+        touch(&marker, std::time::SystemTime::now());
+        assert!(held_by(&marker, &tmp.path().join("session.toml")));
     }
 
     // ---- the locked keyring, self-hosted path (D.19)

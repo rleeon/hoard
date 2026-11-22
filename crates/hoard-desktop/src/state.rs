@@ -68,7 +68,13 @@ impl AppState {
         // when it is needed. Reading the keyring here is what asked the user for their
         // password on macOS, and this runs before the link to the service even exists
         // (D.20).
-        let user = match hoard_agent::credentials::load_public() {
+        // A session held since Hoard One signed out is not one the user is in.
+        let stored = if hoard_agent::credentials::session_is_held() {
+            Ok(None)
+        } else {
+            hoard_agent::credentials::load_public()
+        };
+        let user = match stored {
             Ok(Some((server_url, cached))) => {
                 cached.map(|u| UserInfo {
                     user_id: u.user_id,

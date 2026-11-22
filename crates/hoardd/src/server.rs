@@ -178,10 +178,20 @@ impl Daemon {
 
     /// Forgets the Cloud session. `spawn_blocking` for the same reason as
     /// [`Daemon::adopt_session`].
+    ///
+    /// And holds whatever self-hosted session is stored, so the restart that
+    /// follows does not quietly start syncing with it: the user picks on the
+    /// sign-in screen (`credentials::hold_selfhosted`).
     async fn forget_session(&self) -> Result<()> {
-        tokio::task::spawn_blocking(hoard_agent::cloud_auth::clear_session)
-            .await
-            .context("clearing the Cloud session")?
+        tokio::task::spawn_blocking(|| {
+            hoard_agent::cloud_auth::clear_session()?;
+            if let Err(e) = hoard_agent::credentials::hold_selfhosted() {
+                tracing::warn!(error = %format!("{e:#}"), "hoardd: couldn't hold the self-hosted session");
+            }
+            Ok(())
+        })
+        .await
+        .context("clearing the Cloud session")?
     }
 
     /// Stores the self-hosted session a client has just validated. The twin of
@@ -199,6 +209,7 @@ impl Daemon {
         tokio::task::spawn_blocking(move || hoard_agent::credentials::save(&creds))
             .await
             .context("storing the self-hosted session")??;
+        release_hold();
         Ok(())
     }
 
@@ -534,6 +545,16 @@ impl Daemon {
         Reply::Error(IpcError::Internal {
             message: format!("{err:#}"),
         })
+    }
+}
+
+/// A self-hosted sign-in is the user's choice, which is what a hold waits for.
+///
+/// Not a self-hosted sign-out: the app's session going leaves `config.toml`, and
+/// freeing that would start the engine on the token the hold exists to keep out.
+fn release_hold() {
+    if let Err(e) = hoard_agent::credentials::release_hold() {
+        tracing::warn!(error = %format!("{e:#}"), "hoardd: couldn't release the self-hosted hold");
     }
 }
 

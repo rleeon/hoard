@@ -310,9 +310,16 @@ pub async fn resolve_borrowed(
 /// waits: on the keeper's task, the one shutdown aborts, that is half of D.19's
 /// failure, so the read goes to the blocking pool just as Cloud's does.
 async fn selfhosted_owned() -> Result<Active> {
-    let stored = tokio::task::spawn_blocking(credentials::load_detailed)
-        .await
-        .map_err(|join| anyhow::Error::new(join).context("reading the self-hosted session"))?;
+    // Before reading anything: the promotions below rewrite `session.toml`, and a
+    // newer file is exactly what frees a hold.
+    let held = credentials::session_is_held();
+    let stored = if held {
+        Ok(None)
+    } else {
+        tokio::task::spawn_blocking(credentials::load_detailed)
+            .await
+            .map_err(|join| anyhow::Error::new(join).context("reading the self-hosted session"))?
+    };
 
     // The token came from the 0600 file: either a client with no service left it
     // there, or the keyring was mute when it was stored. Lifting it NOW, from the
@@ -337,6 +344,7 @@ async fn selfhosted_owned() -> Result<Active> {
     let session_url = credentials::load_public()
         .ok()
         .flatten()
+        .filter(|_| !held)
         .map(|(url, _)| url);
     let creds = pick_selfhosted(
         stored.map(|s| s.map(|(creds, _)| creds)),
@@ -394,9 +402,13 @@ fn same_server(a: &str, b: &str) -> bool {
 }
 
 /// The session from `config.toml`, if there is one. `None` is not an error: it is
-/// the normal case for somebody who has never used the CLI.
+/// the normal case for somebody who has never used the CLI. A held one is not
+/// there either ([`credentials::hold_selfhosted`]).
 fn config_session() -> Result<Option<Credentials>> {
-    let (cfg, _) = CliConfig::load_default()?;
+    let (cfg, path) = CliConfig::load_default()?;
+    if credentials::is_held(&path) {
+        return Ok(None);
+    }
     Ok(cfg
         .auth
         .token
@@ -472,7 +484,12 @@ impl std::error::Error for NoSession {}
 /// It serves the two sources [`selfhosted`] resolves, in the same order, so what
 /// the client uses and what the engine uses cannot diverge.
 pub fn lend_server_session() -> Result<Option<hoard_core::ipc::ServerSession>> {
-    if let Some(creds) = credentials::load()? {
+    let stored = if credentials::session_is_held() {
+        None
+    } else {
+        credentials::load()?
+    };
+    if let Some(creds) = stored {
         return Ok(Some(hoard_core::ipc::ServerSession {
             server_url: creds.url,
             token: creds.token,
@@ -483,18 +500,15 @@ pub fn lend_server_session() -> Result<Option<hoard_core::ipc::ServerSession>> {
             }),
         }));
     }
-    let (cfg, _) = CliConfig::load_default()?;
-    Ok(cfg
-        .auth
-        .token
-        .filter(|t| !t.is_empty())
-        .map(|token| hoard_core::ipc::ServerSession {
-            server_url: cfg.server.url.clone(),
-            token,
+    Ok(
+        config_session()?.map(|creds| hoard_core::ipc::ServerSession {
+            server_url: creds.url,
+            token: creds.token,
             // `config.toml` does not cache the whoami: a client that needs it asks
             // the server, which is where it used to come from.
             user: None,
-        }))
+        }),
+    )
 }
 
 /// Sets the sync context with no network: Cloud through the stored JWT's `sub`,
@@ -547,6 +561,11 @@ pub enum LendError {
 ///
 /// `rejected` is the token that came back 401 for the client. See
 /// [`needs_rotation`] for the decision, which is pure and tested.
+///
+/// When it is the token we hold, the server is asked first whether the device
+/// was unlinked. Renewing then is worse than useless: the server ends the session
+/// at Supabase on that same first 401, and a renewal that wins the race hands
+/// the app a token nobody accepts.
 pub async fn lend_token(rejected: Option<&str>) -> Result<CloudToken, LendError> {
     let session = cloud_auth::load_session()
         .map_err(LendError::Transient)?
@@ -563,7 +582,15 @@ pub async fn lend_token(rejected: Option<&str>) -> Result<CloudToken, LendError>
         });
     }
 
-    match cloud_auth::refresh_freshest().await {
+    if rejected == Some(session.access.as_str())
+        && cloud_auth::session_revoked(&session.server_url, &session.access).await
+    {
+        return Err(LendError::Gone(
+            "this device was unlinked from the account; sign in again".to_string(),
+        ));
+    }
+
+    match cloud_auth::refresh_freshest_avoiding(rejected).await {
         Ok(tokens) => Ok(CloudToken {
             expires_at: cloud_auth::jwt_expiry(&tokens.access),
             access_token: tokens.access,

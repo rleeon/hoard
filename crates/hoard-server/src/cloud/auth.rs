@@ -245,9 +245,13 @@ pub async fn require_cloud_auth(
         .and_then(|s| Uuid::parse_str(s).ok());
     if let Some(sid) = session_id {
         if session_revoked(&state, sid, &token).await {
-            return CloudError::Unauthorized(
-                "this device was unlinked from the account; sign in again",
-            )
+            // Its own code so the app signs out on the spot instead of renewing:
+            // a renewal races the sign-out below and, when it wins, the machine
+            // holds a fresh token nobody accepts (58 s of it on 2026-11-21).
+            return CloudError::UnauthorizedCode {
+                code: "session_revoked",
+                message: "this device was unlinked from the account; sign in again",
+            }
             .into_response();
         }
         req.extensions_mut().insert(SessionId(sid));

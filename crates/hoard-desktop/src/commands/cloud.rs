@@ -381,10 +381,17 @@ fn save_account_snapshot(server_url: &str, user: &CloudAccount) -> Result<()> {
 /// anybody. The other half, deleting the pair from the keyring, is the service's,
 /// because the item is its own: [`forget_session`] and
 /// [`forget_session_in_background`].
+///
+/// A self-hosted session stored alongside is held from here on: signing out of
+/// Hoard One, or having it expire, is not choosing the other server. Here and not
+/// only in the service, so a logout the service never hears about holds too.
 fn clear_creds_local() -> Result<()> {
     let path = session_path()?;
     if path.exists() {
         std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
+    }
+    if let Err(e) = hoard_agent::credentials::hold_selfhosted() {
+        tracing::warn!(error = %format!("{e:#}"), "cloud: couldn't hold the self-hosted session");
     }
     Ok(())
 }
@@ -776,6 +783,11 @@ pub fn handle_session_expired(app: &AppHandle) {
     }
     if let Some(state) = app.try_state::<AppState>() {
         *state.cloud_account.lock().unwrap() = None;
+        // The self-hosted user cached at boot goes too: that session is held now,
+        // and keeping it would leave the window on a dashboard the engine no
+        // longer syncs. The UI takes the user to the sign-in screen.
+        *state.user.lock().unwrap() = None;
+        crate::commands::library::sync_active_context(state.inner());
     }
     cloud_pull::stop(app);
     let _ = app.emit("agent://session-expired", ());
