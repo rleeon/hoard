@@ -222,9 +222,11 @@ async fn build_export_zip(
     for (save_id, game_slug, label) in &saves {
         let dir = entry_dir(game_slug, label);
 
+        // Committed only: an upload still in flight sorts last, and its blobs
+        // may not be in the bucket or may be anything at all.
         let ver: Option<(i64, bool, String)> = sqlx::query_as(
             "SELECT version_num, content_addressed, r2_key FROM save_versions
-               WHERE save_id = $1 AND deleted_at IS NULL
+               WHERE save_id = $1 AND deleted_at IS NULL AND sha256 <> ''
                ORDER BY version_num DESC LIMIT 1",
         )
         .bind(save_id)

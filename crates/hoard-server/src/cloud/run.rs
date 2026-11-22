@@ -178,7 +178,7 @@ pub async fn run(cfg: Config) -> Result<()> {
             "/v1/cloud/features/:feature/activate",
             post(ent_routes::activate_feature),
         )
-        .route("/v1/cloud/saves", post(saves::init_upload))
+        .route("/v1/cloud/saves", post(saves::legacy_upload_gone))
         // Content-addressed init lives off the `/saves/:save_id` param path on
         // purpose: matchit 0.7 (axum 0.7) panics on a static `/saves/cas`
         // colliding with the `:save_id` param at the same position.
@@ -211,7 +211,7 @@ pub async fn run(cfg: Config) -> Result<()> {
         )
         .route(
             "/v1/cloud/saves/:save_id/versions/:version/commit",
-            post(saves::commit_upload),
+            post(saves::legacy_upload_gone),
         )
         .route(
             "/v1/cloud/saves/:save_id/versions/:version/cas/commit",

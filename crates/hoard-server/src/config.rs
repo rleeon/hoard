@@ -609,6 +609,14 @@ pub struct CloudConfig {
     /// default, in which case it only counts. `HOARD__CLOUD__RECONCILE_DELETE`.
     #[serde(default)]
     pub reconcile_delete: bool,
+    /// Refuse `cas_init` from clients that can't take conditional PUT links
+    /// (see `R2Store::presign_put`). Until this is on, an old client still gets
+    /// links that can overwrite a blob after its commit, and the reconcile
+    /// sweep is all that catches it. Off by default: it goes on once the
+    /// release that sends the capability is in people's hands.
+    /// `HOARD__CLOUD__REQUIRE_CONDITIONAL_PUT`.
+    #[serde(default)]
+    pub require_conditional_put: bool,
     /// Saves whose tracked folder is a game's install rather than its saves,
     /// as comma-separated save ids. A big push for one of them is turned away
     /// at `cas_init` before a single URL is minted; see `blocked_install` in

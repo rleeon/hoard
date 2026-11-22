@@ -11,6 +11,12 @@
 //!   month.
 //! * **A row with no object.** A live file that can't be restored. There were
 //!   none on 2026-09-27; this is the alarm for the day there are.
+//! * **An object bigger than its row, written after it.** A presigned PUT link
+//!   keeps working for its hour, commit or no commit, so a client could upload
+//!   one byte, have it measured and charged, and then put gigabytes at the same
+//!   key. Nothing on our side writes a blob after its row except the
+//!   compression sweep, and that only ever writes smaller. Such a blob is
+//!   charged at its real size, always, delete or not, and reported.
 //!
 //! By default it only counts. `cloud.reconcile_delete` lets it delete the first
 //! kind, under the same rules the upload path relies on: older than
@@ -58,6 +64,76 @@ pub struct Findings {
     pub missing_accounts: Vec<Uuid>,
     pub deleted_objects: u64,
     pub deleted_bytes: i64,
+    pub overwritten_objects: u64,
+    /// Bytes added to the accounts' storage for them.
+    pub overwritten_charged: i64,
+    pub overwritten_accounts: Vec<Uuid>,
+}
+
+/// One `cloud_blobs` row as this sweep needs it.
+#[derive(Debug, Clone)]
+pub struct Row {
+    pub sha: String,
+    /// The patch object it lives in, if it is one.
+    pub patch: Option<PatchKey>,
+    /// What its object should measure: the stored size, or the raw one while
+    /// nothing has compressed it. `None` when that isn't known (a patch from
+    /// before patches recorded it, a row marked missing).
+    pub expected: Option<i64>,
+    pub created_unix: i64,
+}
+
+/// An object found bigger than its row says, and written after the row was.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Overwrite {
+    pub sha: String,
+    pub patch: Option<PatchKey>,
+    pub expected: i64,
+    pub listed: i64,
+}
+
+/// Which listed objects were rewritten after their commit.
+///
+/// Both conditions, not either. Bigger alone could be a stale object a row
+/// never measured; written after the row alone is just the compression sweep.
+/// The row's time is the commit's, and the commit HEADs the object it charges,
+/// so an honest object is never newer than its row.
+pub fn overwritten(listed: &crate::cloud::r2::Listing, rows: &[Row]) -> Vec<Overwrite> {
+    let whole: std::collections::HashMap<&str, &Row> = rows
+        .iter()
+        .filter(|r| r.patch.is_none())
+        .map(|r| (r.sha.as_str(), r))
+        .collect();
+    let patched: std::collections::HashMap<&PatchKey, &Row> = rows
+        .iter()
+        .filter_map(|r| r.patch.as_ref().map(|p| (p, r)))
+        .collect();
+    let grown = |row: &Row, size: i64, at: i64| {
+        row.expected
+            .filter(|expected| size > *expected && at > row.created_unix)
+    };
+    let mut out = Vec::new();
+    for (sha, size, at) in &listed.blobs {
+        if let Some(expected) = whole.get(sha.as_str()).and_then(|r| grown(r, *size, *at)) {
+            out.push(Overwrite {
+                sha: sha.clone(),
+                patch: None,
+                expected,
+                listed: *size,
+            });
+        }
+    }
+    for (p, size, at) in &listed.patches {
+        if let Some(expected) = patched.get(p).and_then(|r| grown(r, *size, *at)) {
+            out.push(Overwrite {
+                sha: p.sha.clone(),
+                patch: Some(p.clone()),
+                expected,
+                listed: *size,
+            });
+        }
+    }
+    out
 }
 
 pub fn spawn(state: CloudState) {
@@ -125,17 +201,41 @@ async fn account(
     // its object until the GC takes both, and an upload that committed during
     // the listing must not read as an orphan.
     let all_rows = rows_of(&state.pool, user, false).await?;
-    let rows: HashSet<&str> = all_rows.iter().map(|(s, _)| s.as_str()).collect();
-    let row_patches: HashSet<&PatchKey> = all_rows.iter().filter_map(|(_, p)| p.as_ref()).collect();
+    let rows: HashSet<&str> = all_rows.iter().map(|r| r.sha.as_str()).collect();
+    let row_patches: HashSet<&PatchKey> = all_rows.iter().filter_map(|r| r.patch.as_ref()).collect();
+
+    for o in overwritten(&listed, &all_rows) {
+        match charge_overwrite(&state.pool, user, &o).await {
+            Ok(added) => {
+                tracing::error!(
+                    user_id = %user,
+                    sha = %o.sha,
+                    patch = o.patch.is_some(),
+                    expected_bytes = o.expected,
+                    stored_bytes = o.listed,
+                    charged_bytes = added,
+                    "reconcile: blob rewritten after its commit, charged at its real size"
+                );
+                f.overwritten_objects += 1;
+                f.overwritten_charged += added;
+                if !f.overwritten_accounts.contains(&user) && f.overwritten_accounts.len() < 20 {
+                    f.overwritten_accounts.push(user);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, user_id = %user, sha = %o.sha, "reconcile: charging a rewritten blob failed");
+            }
+        }
+    }
     let named = named_by_any_version(&state.pool, user).await?;
 
     let in_bucket: HashSet<&str> = listed.blobs.iter().map(|(s, _, _)| s.as_str()).collect();
     let patches_in_bucket: HashSet<&PatchKey> = listed.patches.iter().map(|(p, _, _)| p).collect();
     let missing = live
         .iter()
-        .filter(|(sha, patch)| match patch {
+        .filter(|r| match &r.patch {
             Some(p) => !patches_in_bucket.contains(p),
-            None => !in_bucket.contains(sha.as_str()),
+            None => !in_bucket.contains(r.sha.as_str()),
         })
         .count() as u64;
     if missing > 0 {
@@ -256,15 +356,17 @@ async fn account(
     Ok(())
 }
 
-/// Every row's sha, and for a patch the object it lives in. `live` keeps only
-/// the referenced ones.
-async fn rows_of(
-    pool: &sqlx::PgPool,
-    user: Uuid,
-    live: bool,
-) -> Result<Vec<(String, Option<PatchKey>)>, sqlx::Error> {
-    let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex'), encode(base_sha256, 'hex'), encoding
+/// `(sha, base, encoding, expected size, created_at)` as the query returns it.
+type RawRow = (String, Option<String>, Option<String>, Option<i64>, i64);
+
+/// Every row. `live` keeps only the referenced ones.
+async fn rows_of(pool: &sqlx::PgPool, user: Uuid, live: bool) -> Result<Vec<Row>, sqlx::Error> {
+    let rows: Vec<RawRow> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), encode(base_sha256, 'hex'), encoding,
+                CASE WHEN encoding = 'missing' THEN NULL
+                     WHEN base_sha256 IS NULL THEN coalesce(stored_bytes, size_bytes)
+                     ELSE stored_bytes END,
+                floor(extract(epoch FROM created_at))::bigint
            FROM cloud_blobs WHERE user_id = $1 AND (refcount > 0 OR NOT $2)",
     )
     .bind(user)
@@ -273,15 +375,73 @@ async fn rows_of(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(sha, base, encoding)| {
+        .map(|(sha, base, encoding, expected, created_unix)| {
             let patch = base.map(|base| PatchKey {
                 sha: sha.clone(),
                 base,
                 inflated: encoding.as_deref() == Some(crate::patch::INFLATED),
             });
-            (sha, patch)
+            Row {
+                sha,
+                patch,
+                expected,
+                created_unix,
+            }
         })
         .collect())
+}
+
+/// Charge a rewritten blob at what its object really holds. Returns the bytes
+/// added to the account.
+///
+/// The row is raised to the object's size, so tomorrow's sweep sees nothing
+/// new unless it is rewritten again. The account's total moves with it in the
+/// same transaction, because the storage triggers only follow references
+/// coming and going and would later hand back the bigger figure, so leaving
+/// them to it would turn the charge into a credit. A raw blob is filed as
+/// `raw`: there is nothing for the compression sweep to gain from reading
+/// gigabytes that no longer hash to their name.
+async fn charge_overwrite(pool: &sqlx::PgPool, user: Uuid, o: &Overwrite) -> Result<i64, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let row: Option<(i64, i64)> = sqlx::query_as(
+        "SELECT size_bytes, refcount FROM cloud_blobs
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex')
+            FOR UPDATE",
+    )
+    .bind(user)
+    .bind(&o.sha)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((size, refcount)) = row else {
+        return Ok(0);
+    };
+    sqlx::query(
+        "UPDATE cloud_blobs
+            SET size_bytes = GREATEST(size_bytes, $3),
+                stored_bytes = CASE WHEN stored_bytes IS NULL THEN NULL ELSE $3 END,
+                encoding = coalesce(encoding, 'raw')
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user)
+    .bind(&o.sha)
+    .bind(o.listed)
+    .execute(&mut *tx)
+    .await?;
+    let added = (o.listed - size).max(0);
+    if added > 0 && refcount > 0 {
+        sqlx::query(
+            "UPDATE profiles
+                SET storage_bytes = storage_bytes + $2,
+                    lifetime_storage_bytes = lifetime_storage_bytes + $2
+              WHERE user_id = $1",
+        )
+        .bind(user)
+        .bind(added)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(if refcount > 0 { added } else { 0 })
 }
 
 /// Shas an upload still pending names.
@@ -417,9 +577,19 @@ fn report(f: &Findings, delete: bool) {
         orphan_bytes = f.orphan_bytes,
         deleted_objects = f.deleted_objects,
         deleted_bytes = f.deleted_bytes,
+        overwritten_objects = f.overwritten_objects,
         delete,
         "reconcile: bucket compared with the database"
     );
+    if f.overwritten_objects > 0 {
+        tracing::error!(
+            objects = f.overwritten_objects,
+            charged_bytes = f.overwritten_charged,
+            accounts = ?f.overwritten_accounts,
+            "reconcile: blobs rewritten after their commit"
+        );
+        incidents::record(Kind::Other, "reconcile: blobs rewritten after their commit");
+    }
     if f.missing_objects > 0 {
         tracing::error!(
             objects = f.missing_objects,

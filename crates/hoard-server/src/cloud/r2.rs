@@ -156,21 +156,46 @@ impl R2Store {
             .collect())
     }
 
-    pub async fn presign_put(&self, key: &str, ttl: Option<Duration>) -> Result<PresignedUrl> {
+    /// A PUT link for `key`, good for the presign TTL.
+    ///
+    /// A link is not spent by using it: until it expires it writes the key
+    /// again, however many times, whatever size. Without `only_if_absent` that
+    /// includes after the commit that measured and charged the first write, so
+    /// one byte could be paid for and five gigabytes left in its place.
+    /// `only_if_absent` signs `If-None-Match: *` into the link: the bucket
+    /// refuses with 412 once the key holds anything, and since the header is
+    /// signed, a PUT that leaves it out fails the signature instead. The caller
+    /// has to send every header in [`PresignedUrl::headers`].
+    pub async fn presign_put(
+        &self,
+        key: &str,
+        ttl: Option<Duration>,
+        only_if_absent: bool,
+    ) -> Result<PresignedUrl> {
         let cfg = PresigningConfig::expires_in(ttl.unwrap_or(self.default_presign_ttl))?;
-        let req = self
+        let mut put = self
             .inner
             .client()
             .put_object()
             .bucket(self.inner.bucket())
-            .key(key)
+            .key(key);
+        if only_if_absent {
+            put = put.if_none_match("*");
+        }
+        let req = put
             .presigned(cfg)
             .await
             .with_context(|| format!("r2 presign_put {key}"))?;
+        let headers = req
+            .headers()
+            .filter(|(name, _)| !name.eq_ignore_ascii_case("host"))
+            .map(|(name, value)| (name.to_ascii_lowercase(), value.to_string()))
+            .collect();
         Ok(PresignedUrl {
             method: "PUT".to_string(),
             url: req.uri().to_string(),
             expires_in_secs: ttl.unwrap_or(self.default_presign_ttl).as_secs(),
+            headers,
         })
     }
 
@@ -189,6 +214,7 @@ impl R2Store {
             method: "GET".to_string(),
             url: req.uri().to_string(),
             expires_in_secs: ttl.unwrap_or(self.default_presign_ttl).as_secs(),
+            headers: Default::default(),
         })
     }
 
@@ -202,6 +228,10 @@ pub struct PresignedUrl {
     pub method: String,
     pub url: String,
     pub expires_in_secs: u64,
+    /// Headers signed into the link, which the request must carry as they are.
+    /// Empty, and absent from the JSON, for every link but a conditional PUT.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub headers: std::collections::BTreeMap<String, String>,
 }
 
 /// Build a deterministic R2 key for a save version. Includes the user id

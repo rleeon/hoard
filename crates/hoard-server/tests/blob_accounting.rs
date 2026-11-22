@@ -1788,3 +1788,335 @@ async fn only_accounts_whose_devices_all_decode_patches_may_send_them() {
         .await;
     cleanup(&pool, &[user]).await;
 }
+
+// ---- level 9: links that can't be used twice, and blobs that were rewritten
+
+async fn put(url: &str, headers: &[(String, String)], body: Vec<u8>) -> u16 {
+    let mut req = reqwest::Client::new().put(url);
+    for (name, value) in headers {
+        req = req.header(name.as_str(), value.as_str());
+    }
+    req.body(body).send().await.expect("put").status().as_u16()
+}
+
+fn if_none_match() -> Vec<(String, String)> {
+    vec![("if-none-match".to_string(), "*".to_string())]
+}
+
+async fn init(
+    state: &CloudState,
+    user: Uuid,
+    save_id: &str,
+    files: &[(u16, i64)],
+    conditional: bool,
+) -> (u16, serde_json::Value) {
+    use axum::response::IntoResponse;
+    let body = hoard_server::cloud::routes::saves::CasInit {
+        save_id: save_id.to_string(),
+        game_slug: "game-c".into(),
+        label: Some("default".into()),
+        device_name: None,
+        notes: None,
+        backup_only: false,
+        base_version: None,
+        files: files
+            .iter()
+            .map(|(seed, size)| hoard_server::cloud::routes::saves::CasFileEntry {
+                relative_path: format!("f{seed}.sav"),
+                sha256: sha(*seed),
+                size_bytes: *size,
+                modified_at: None,
+            })
+            .collect(),
+        patch_from: Vec::new(),
+        conditional_put: conditional,
+    };
+    let resp = match hoard_server::cloud::routes::saves::cas_init(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx(user)),
+        axum::Json(body),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(e) => e.into_response(),
+    };
+    let status = resp.status().as_u16();
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+        .await
+        .expect("body");
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+async fn manifest_status(state: &CloudState, user: Uuid, save_id: &str, v: i64) -> u16 {
+    use axum::response::IntoResponse;
+    match hoard_server::cloud::routes::saves::version_manifest(
+        axum::extract::State(state.clone()),
+        axum::Extension(ctx(user)),
+        axum::extract::Path((save_id.to_string(), v)),
+        axum::http::HeaderMap::new(),
+        axum::extract::Query(hoard_server::cloud::routes::saves::ManifestQuery {
+            presign: true,
+            zstd: true,
+            patch: true,
+        }),
+    )
+    .await
+    {
+        Ok(r) => r.status().as_u16(),
+        Err(e) => e.into_response().status().as_u16(),
+    }
+}
+
+/// The hole this level exists for: an unconditional link writes its key again
+/// for as long as it lives, after the commit that measured it included. A
+/// conditional one writes it once, and leaving the header out breaks the
+/// signature rather than the condition.
+#[tokio::test]
+async fn a_conditional_link_writes_once() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = Uuid::new_v4();
+    let key = r2::key_for_blob(user, &sha(1));
+    let link = state.r2.presign_put(&key, None, true).await.expect("presign");
+    assert_eq!(
+        link.headers.get("if-none-match").map(String::as_str),
+        Some("*")
+    );
+    assert!(link.url.contains("if-none-match"), "unsigned: {}", link.url);
+    // Refused outright: MinIO answers 400, S3 403.
+    let without = put(&link.url, &[], b"one".to_vec()).await;
+    assert!((400..500).contains(&without), "{without}");
+    assert_eq!(state.r2.head(&key).await.expect("head"), None);
+    assert_eq!(put(&link.url, &if_none_match(), b"one".to_vec()).await, 200);
+    assert_eq!(
+        put(&link.url, &if_none_match(), vec![0u8; 5_000]).await,
+        412
+    );
+    assert_eq!(state.r2.head(&key).await.expect("head"), Some(3));
+
+    let open_key = r2::key_for_blob(user, &sha(2));
+    let open = state
+        .r2
+        .presign_put(&open_key, None, false)
+        .await
+        .expect("presign");
+    assert!(open.headers.is_empty());
+    assert_eq!(put(&open.url, &[], b"one".to_vec()).await, 200);
+    assert_eq!(put(&open.url, &[], vec![0u8; 5_000]).await, 200);
+    assert_eq!(state.r2.head(&open_key).await.expect("head"), Some(5_000));
+}
+
+/// What the client counts on when a file changes under it: a PUT whose body
+/// fails before its `content-length` leaves nothing at the key.
+#[tokio::test]
+async fn a_put_cut_short_stores_nothing() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let key = r2::key_for_blob(Uuid::new_v4(), &sha(1));
+    let link = state.r2.presign_put(&key, None, true).await.expect("presign");
+    let chunks: Vec<std::io::Result<bytes::Bytes>> = vec![
+        Ok(bytes::Bytes::from_static(b"half")),
+        Err(std::io::Error::other("the file changed")),
+    ];
+    let sent = reqwest::Client::new()
+        .put(&link.url)
+        .header("if-none-match", "*")
+        .header(reqwest::header::CONTENT_LENGTH, 8)
+        .body(reqwest::Body::wrap_stream(futures::stream::iter(chunks)))
+        .send()
+        .await;
+    assert!(sent.is_err(), "{sent:?}");
+    assert_eq!(state.r2.head(&key).await.expect("head"), None);
+}
+
+/// One byte committed and five thousand put there an hour later is charged
+/// the five thousand. The same size rewritten, or a bigger object older than
+/// its row, is not what this looks for.
+#[tokio::test]
+async fn reconcile_charges_a_blob_rewritten_after_its_commit() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 10), (2, 20), (3, 30)], true).await;
+    sqlx::query("UPDATE cloud_blobs SET created_at = now() - interval '1 hour' WHERE user_id = $1")
+        .bind(user)
+        .execute(&pool)
+        .await
+        .expect("backdate");
+    sqlx::query(
+        "UPDATE cloud_blobs SET created_at = now() + interval '1 hour'
+          WHERE user_id = $1 AND sha256 = decode($2, 'hex')",
+    )
+    .bind(user)
+    .bind(sha(3))
+    .execute(&pool)
+    .await
+    .expect("postdate");
+    put_blob(&state, user, 1, 10).await;
+    put_blob(&state, user, 2, 5_000).await;
+    put_blob(&state, user, 3, 9_000).await;
+    assert_eq!(storage(&pool, user).await, 60);
+
+    let f = reconcile::reconcile(&state, Some(&[user]), later(), false)
+        .await
+        .expect("reconcile");
+    assert_eq!(f.overwritten_objects, 1);
+    assert_eq!(f.overwritten_charged, 4_980);
+    assert_eq!(f.overwritten_accounts, vec![user]);
+    assert_eq!(storage(&pool, user).await, 5_040);
+    assert_eq!(encoding(&pool, user, 2).await.as_deref(), Some("raw"));
+    assert!(in_bucket(&state, user, 2).await, "charged, not deleted");
+    let r = audit(&pool, &[user]).await;
+    assert!(r.is_clean(), "{r:?}");
+
+    let f = reconcile::reconcile(&state, Some(&[user]), later(), false)
+        .await
+        .expect("reconcile");
+    assert_eq!(f.overwritten_objects, 0, "charged once");
+    assert_eq!(storage(&pool, user).await, 5_040);
+
+    assert_eq!(delete_save(&state, user, &a).await, 204);
+    assert_eq!(storage(&pool, user).await, 0, "and handed back whole");
+    cleanup(&pool, &[user]).await;
+}
+
+/// A version still uploading has a manifest of whatever the client declared
+/// and blobs nobody has measured or charged. Serving it was a way to store
+/// and fetch data that never counted against anything.
+#[tokio::test]
+async fn a_version_still_uploading_is_not_served() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool.clone()).await;
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 10)], true).await;
+    add_version(&pool, user, &a, 2, &[(2, 5_000)], false).await;
+    assert_eq!(manifest_status(&state, user, &a, 2).await, 404);
+    assert_eq!(manifest_status(&state, user, &a, 1).await, 200);
+    cleanup(&pool, &[user]).await;
+}
+
+/// The manifest's size for a file the account already had is the client's
+/// word, never checked. The download is charged what the blob holds.
+#[tokio::test]
+async fn a_download_is_charged_what_the_blobs_hold() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool.clone()).await;
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 5_000)], true).await;
+    sqlx::query("UPDATE file_entries SET size_bytes = 1 WHERE save_id = $1")
+        .bind(&a)
+        .execute(&pool)
+        .await
+        .expect("understate");
+    assert_eq!(manifest_status(&state, user, &a, 1).await, 200);
+    let charged: i64 = sqlx::query_scalar(
+        "SELECT coalesce(sum(bytes), 0)::bigint FROM sync_log WHERE user_id = $1 AND kind = 'download'",
+    )
+    .bind(user)
+    .fetch_one(&pool)
+    .await
+    .expect("sync_log");
+    assert_eq!(charged, 5_000);
+    cleanup(&pool, &[user]).await;
+}
+
+/// Declared ten bytes, PUT four thousand: refused, so the size the per-save
+/// cap was checked against at init is the size that is stored.
+#[tokio::test]
+async fn a_raw_blob_must_be_the_size_it_was_declared() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 10)], false).await;
+    put_blob(&state, user, 1, 4_096).await;
+    assert_eq!(commit_with_raw(&state, user, &a, 1, &[1]).await, 400);
+    assert_eq!(storage(&pool, user).await, 0);
+    put_blob(&state, user, 1, 10).await;
+    assert_eq!(commit_with_raw(&state, user, &a, 1, &[1]).await, 200);
+    assert_eq!(storage(&pool, user).await, 10);
+    cleanup(&pool, &[user]).await;
+}
+
+/// An older client caught the file changing only after its PUT, and left the
+/// wrong bytes at the key for the next attempt to write over. A conditional
+/// link can't, so the retry clears them before handing it out.
+#[tokio::test]
+async fn a_conditional_retry_clears_what_the_last_attempt_left() {
+    let Some(pool) = pool().await else { return };
+    let Some(state) = bucket_state(pool.clone()).await else {
+        return;
+    };
+    let user = new_user(&pool).await;
+    let save_id = Uuid::new_v4().to_string();
+    let (status, out) = init(&state, user, &save_id, &[(1, 10)], false).await;
+    assert_eq!(status, 200, "{out}");
+    assert!(out["missing"][0]["upload"].get("headers").is_none());
+    put_blob(&state, user, 1, 10).await;
+
+    let (status, out) = init(&state, user, &save_id, &[(1, 10)], true).await;
+    assert_eq!(status, 200, "{out}");
+    assert!(!in_bucket(&state, user, 1).await, "cleared first");
+    let upload = &out["missing"][0]["upload"];
+    assert_eq!(upload["headers"]["if-none-match"], "*");
+    let url = upload["url"].as_str().expect("url");
+    assert_eq!(put(url, &if_none_match(), vec![1u8; 10]).await, 200);
+    assert_eq!(put(url, &if_none_match(), vec![1u8; 10]).await, 412);
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn an_old_client_is_turned_away_once_conditional_links_are_required() {
+    let Some(pool) = pool().await else { return };
+    let mut state = state_for(pool.clone()).await;
+    state
+        .config
+        .cloud
+        .as_mut()
+        .expect("cloud section")
+        .require_conditional_put = true;
+    let user = new_user(&pool).await;
+    let save_id = Uuid::new_v4().to_string();
+    let (status, out) = init(&state, user, &save_id, &[(1, 10)], false).await;
+    assert_eq!(status, 426, "{out}");
+    assert_eq!(out["code"], "update_required");
+    let (status, out) = init(&state, user, &save_id, &[(1, 10)], true).await;
+    assert_eq!(status, 200, "{out}");
+    cleanup(&pool, &[user]).await;
+}
+
+/// A file the account already holds counts at its stored size, whatever the
+/// new manifest claims for it.
+#[tokio::test]
+async fn the_per_save_cap_counts_held_blobs_at_their_stored_size() {
+    let Some(pool) = pool().await else { return };
+    let state = state_for(pool.clone()).await;
+    let user = new_user(&pool).await;
+    let a = new_save(&pool, user, "game-a").await;
+    add_version(&pool, user, &a, 1, &[(1, 1_800_000_000)], true).await;
+    let (status, out) = init(&state, user, &Uuid::new_v4().to_string(), &[(1, 1)], true).await;
+    assert_eq!(status, 413, "{out}");
+    assert_eq!(out["actual_bytes"], 1_800_000_000u64);
+    cleanup(&pool, &[user]).await;
+}
+
+#[tokio::test]
+async fn the_whole_archive_upload_is_gone() {
+    let resp = hoard_server::cloud::routes::saves::legacy_upload_gone().await;
+    assert_eq!(resp.status().as_u16(), 410);
+}

@@ -491,6 +491,7 @@ async fn a_commit_interns_each_distinct_content_once() {
                 },
             ],
             patch_from: Vec::new(),
+            conditional_put: false,
         };
         let user_ctx = hoard_server::cloud::auth::CloudUser {
             user_id: user,
@@ -634,6 +635,7 @@ async fn a_large_init_streams_the_same_answer() {
         base_version: None,
         files,
         patch_from: vec![from(big(3), &base), from(big(4), &sha(99))],
+        conditional_put: false,
     };
     let ctx = hoard_server::cloud::auth::CloudUser {
         user_id: user,
@@ -743,6 +745,7 @@ async fn the_init_offers_patch_links_only_for_a_base_held_whole() {
         base_version: None,
         files: vec![file("a.sav", sha(40)), file("b.sav", sha(41))],
         patch_from: vec![from(sha(40), &base), from(sha(41), &sha(99))],
+        conditional_put: false,
     };
     let ctx = hoard_server::cloud::auth::CloudUser {
         user_id: user,
@@ -953,6 +956,7 @@ async fn a_blocked_install_is_refused_before_anything_is_minted() {
             })
             .collect(),
         patch_from: Vec::new(),
+        conditional_put: false,
     };
     let ctx = || hoard_server::cloud::auth::CloudUser {
         user_id: user,

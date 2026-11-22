@@ -957,17 +957,24 @@ impl ApiClient {
         presigned: &PresignedUrl,
         body: reqwest::Body,
         content_length: u64,
-    ) -> Result<()> {
+    ) -> Result<PutOutcome> {
         let method = reqwest::Method::from_bytes(presigned.method.as_bytes())
             .unwrap_or(reqwest::Method::PUT);
-        let resp = self
+        let mut req = self
             .upload_http
             .request(method, &presigned.url)
-            .header(reqwest::header::CONTENT_LENGTH, content_length)
+            .header(reqwest::header::CONTENT_LENGTH, content_length);
+        for (name, value) in &presigned.headers {
+            req = req.header(name.as_str(), value.as_str());
+        }
+        let resp = req
             .body(body)
             .send()
             .await
             .map_err(|e| storage_transport_error(&presigned.url, e))?;
+        if resp.status() == StatusCode::PRECONDITION_FAILED && !presigned.headers.is_empty() {
+            return Ok(PutOutcome::AlreadyStored);
+        }
         if !resp.status().is_success() {
             let status = resp.status();
             // The bytes go straight to the bucket here, so this 429 is the
@@ -982,7 +989,7 @@ impl ApiClient {
             let text = resp.text().await.unwrap_or_default();
             bail!("storage upload failed ({status}): {text}");
         }
-        Ok(())
+        Ok(PutOutcome::Stored)
     }
 
     /// `POST /v1/cloud/saves/:id/versions/:n/commit`: finalize an upload.
@@ -1820,6 +1827,22 @@ pub struct PresignedUrl {
     pub url: String,
     #[serde(default)]
     pub expires_in_secs: u64,
+    /// Headers signed into the link. The request has to carry them as they
+    /// are, or the bucket refuses the signature.
+    #[serde(default)]
+    pub headers: std::collections::BTreeMap<String, String>,
+}
+
+/// How a PUT to a presigned link ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PutOutcome {
+    /// The bytes went into the bucket.
+    Stored,
+    /// The link was conditional and the key already held an object, so
+    /// nothing was written. For a content-addressed key that is the blob
+    /// already there: a retry after an answer lost on the way back, or another
+    /// device uploading the same file.
+    AlreadyStored,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1962,6 +1985,10 @@ pub struct CloudCasInit {
     /// would be patched against.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub patch_from: Vec<CloudPatchFrom>,
+    /// This client sends a link's signed headers and reads a 412 as already
+    /// stored (see [`PutOutcome`]), so the server may give it conditional
+    /// links, which nobody can use to overwrite a blob once it is committed.
+    pub conditional_put: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

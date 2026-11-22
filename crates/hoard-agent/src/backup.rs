@@ -23,7 +23,7 @@ use tokio::io::AsyncReadExt;
 
 use crate::api::{
     ApiClient, ApiError, CasCommit, CasFile, CasInit, CloudCasFileEntry, CloudCasInit,
-    CloudCasMissingBlob, RateLimitKind, Snapshot,
+    CloudCasMissingBlob, PutOutcome, RateLimitKind, Snapshot,
 };
 use crate::junkdirs;
 use crate::state::{CliState, SaveState};
@@ -1675,6 +1675,7 @@ where
                 base_version,
                 files: manifest,
                 patch_from: patch_from.clone(),
+                conditional_put: true,
             })
             .await
         {
@@ -1880,29 +1881,34 @@ where
                         let file = tokio::fs::File::open(&f.absolute_path)
                             .await
                             .with_context(|| format!("opening {}", f.absolute_path.display()))?;
-                        let (stream, sent) = hashing_stream(file);
-                        client
+                        let (stream, sent) = verified_stream(file, &blob.sha256, f.size_bytes);
+                        let put = client
                             .put_presigned(
                                 &blob.upload,
                                 reqwest::Body::wrap_stream(stream),
                                 f.size_bytes,
                             )
-                            .await
-                            .with_context(|| format!("uploading {}", f.relative_path))?;
-                        // The object is already in the bucket, but without a commit it
-                        // exists for nobody: the `cloud_blobs` row is created when the
-                        // version is confirmed, and the server's dedup looks at that
-                        // table, not at the bucket. So aborting here leaves the object
-                        // orphaned (the GC sweeps it) and the next attempt asks for it
-                        // again and overwrites it with the good content. What must not
-                        // happen, and what did, is a version being confirmed that
-                        // points at bytes that are not its own.
-                        {
-                            let sent =
-                                sent.lock().map_err(|_| anyhow!("upload hasher poisoned"))?;
-                            verify_sent(&f.relative_path, &blob.sha256, f.size_bytes, &sent)?;
+                            .await;
+                        // What must not happen, and what did, is a version being
+                        // confirmed that points at bytes that are not its own. The
+                        // stream refuses to finish a PUT whose bytes don't match, so a
+                        // file that changed under us ends as a cut-short request and
+                        // nothing lands; the next backup picks up the new contents.
+                        let sent = sent.lock().map_err(|_| anyhow!("upload hasher poisoned"))?;
+                        match put {
+                            Ok(PutOutcome::Stored) => {
+                                verify_sent(&f.relative_path, &blob.sha256, f.size_bytes, &sent)
+                            }
+                            // Not ours to check: the bytes were already at the key, and
+                            // this send may never have been read.
+                            Ok(PutOutcome::AlreadyStored) => Ok(()),
+                            Err(e) => {
+                                if sent.refused {
+                                    verify_sent(&f.relative_path, &blob.sha256, f.size_bytes, &sent)?;
+                                }
+                                Err(e.context(format!("uploading {}", f.relative_path)))
+                            }
                         }
-                        Ok(())
                     })
                     .await?;
                     if matches!(staged, Staged::Raw) {
@@ -2319,6 +2325,8 @@ pub(crate) async fn hash_file(path: &Path) -> Result<String> {
 pub(crate) struct Sent {
     digest: Sha256,
     len: u64,
+    /// [`verified_stream`] cut the upload short because the bytes didn't match.
+    refused: bool,
 }
 
 impl Sent {
@@ -2352,6 +2360,96 @@ fn hashing_stream(
         if let Ok(mut s) = tap.lock() {
             s.digest.update(chunk);
             s.len += chunk.len() as u64;
+        }
+    });
+    (stream, sent)
+}
+
+/// [`hashing_stream`] that won't let a wrong upload finish.
+///
+/// A cloud PUT goes straight to the bucket, which keeps whatever arrives under
+/// the sha it was given, so checking after the PUT is too late: the bytes are
+/// already there. With a conditional link they would also stay there, and the
+/// next attempt would be told the blob is already stored. So the last chunk is
+/// held back until the whole file has been hashed. If the sha or the length is
+/// not what was declared, the stream fails instead of ending, the request stops
+/// short of its `content-length`, and the bucket stores nothing.
+fn verified_stream(
+    file: tokio::fs::File,
+    declared_sha: &str,
+    declared_len: u64,
+) -> (
+    impl futures::Stream<Item = std::io::Result<bytes::Bytes>>,
+    std::sync::Arc<std::sync::Mutex<Sent>>,
+) {
+    struct Verifying {
+        inner: tokio_util::io::ReaderStream<tokio::fs::File>,
+        held: Option<bytes::Bytes>,
+        done: bool,
+        sent: std::sync::Arc<std::sync::Mutex<Sent>>,
+        sha: String,
+        len: u64,
+    }
+    fn refuse(sent: &std::sync::Mutex<Sent>) -> std::io::Error {
+        if let Ok(mut s) = sent.lock() {
+            s.refused = true;
+        }
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "the file changed while it was being uploaded",
+        )
+    }
+
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(Sent::default()));
+    let start = Verifying {
+        inner: tokio_util::io::ReaderStream::new(file),
+        held: None,
+        done: false,
+        sent: sent.clone(),
+        sha: declared_sha.to_string(),
+        len: declared_len,
+    };
+    let stream = stream::unfold(start, |mut st| async move {
+        if st.done {
+            return None;
+        }
+        loop {
+            match st.inner.next().await {
+                Some(Ok(chunk)) => {
+                    let over = match st.sent.lock() {
+                        Ok(mut s) => {
+                            s.digest.update(&chunk);
+                            s.len += chunk.len() as u64;
+                            s.len > st.len
+                        }
+                        Err(_) => true,
+                    };
+                    if over {
+                        st.done = true;
+                        return Some((Err(refuse(&st.sent)), st));
+                    }
+                    if let Some(prev) = st.held.replace(chunk) {
+                        return Some((Ok(prev), st));
+                    }
+                }
+                Some(Err(e)) => {
+                    st.done = true;
+                    return Some((Err(e), st));
+                }
+                None => {
+                    st.done = true;
+                    let intact = st
+                        .sent
+                        .lock()
+                        .map(|s| s.len == st.len && s.sha256() == st.sha)
+                        .unwrap_or(false);
+                    if !intact {
+                        return Some((Err(refuse(&st.sent)), st));
+                    }
+                    let last = st.held.take()?;
+                    return Some((Ok(last), st));
+                }
+            }
         }
     });
     (stream, sent)
@@ -3116,8 +3214,95 @@ mod tests {
         let corto = Sent {
             digest: Sha256::new(),
             len: 3,
+            refused: false,
         };
         assert!(verify_sent("save.dat", &corto.sha256(), len, &corto).is_err());
+    }
+
+    /// Everything a stream let out, and whether it ended in an error.
+    async fn drain(
+        stream: impl futures::Stream<Item = std::io::Result<bytes::Bytes>>,
+    ) -> (u64, bool) {
+        let mut out = 0u64;
+        let mut failed = false;
+        futures::pin_mut!(stream);
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(chunk) => out += chunk.len() as u64,
+                Err(_) => failed = true,
+            }
+        }
+        (out, failed)
+    }
+
+    #[tokio::test]
+    async fn a_verified_stream_sends_an_intact_file_whole() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("save.dat");
+        let bytes: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&path, &bytes).unwrap();
+        let sha = hash_file(&path).await.unwrap();
+
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let (stream, sent) = verified_stream(file, &sha, bytes.len() as u64);
+        let (out, failed) = drain(stream).await;
+        assert!(!failed);
+        assert_eq!(out, bytes.len() as u64);
+        assert!(!sent.lock().unwrap().refused);
+    }
+
+    /// The rotation again, now on the cloud path: the bucket must never see the
+    /// last byte, or it would keep the new save under the old sha.
+    #[tokio::test]
+    async fn a_verified_stream_never_finishes_a_rotated_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let old = tmp.path().join("old.dat");
+        let new_file = tmp.path().join("new.dat");
+        let a: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
+        let mut b = a.clone();
+        b[39_999] ^= 1;
+        std::fs::write(&old, &a).unwrap();
+        std::fs::write(&new_file, &b).unwrap();
+        let sha_old = hash_file(&old).await.unwrap();
+
+        let file = tokio::fs::File::open(&new_file).await.unwrap();
+        let (stream, sent) = verified_stream(file, &sha_old, a.len() as u64);
+        let (out, failed) = drain(stream).await;
+        assert!(failed);
+        assert!(out < a.len() as u64, "sent {out} of {}", a.len());
+        let sent = sent.lock().unwrap();
+        assert!(sent.refused);
+        assert!(verify_sent("save.dat", &sha_old, a.len() as u64, &sent).is_err());
+    }
+
+    /// A file that grew is cut off before it can fill the declared length.
+    #[tokio::test]
+    async fn a_verified_stream_stops_a_file_that_grew() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("save.dat");
+        let bytes: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&path, &bytes[..20_000]).unwrap();
+        let sha = hash_file(&path).await.unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let (stream, sent) = verified_stream(file, &sha, 20_000);
+        let (out, failed) = drain(stream).await;
+        assert!(failed);
+        assert!(out < 20_000, "sent {out}");
+        assert!(sent.lock().unwrap().refused);
+    }
+
+    #[tokio::test]
+    async fn a_verified_stream_of_an_empty_file_just_ends() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("empty.dat");
+        std::fs::write(&path, b"").unwrap();
+        let sha = hash_file(&path).await.unwrap();
+
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let (stream, _) = verified_stream(file, &sha, 0);
+        assert_eq!(drain(stream).await, (0, false));
     }
 
     #[test]

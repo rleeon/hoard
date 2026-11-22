@@ -21,44 +21,6 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
-/// Body for `POST /v1/cloud/saves`. The client states *intent*: how big the
-/// snapshot will be, which save it belongs to, optional notes. The server
-/// validates plan + quota, mints a presigned PUT URL for R2, and returns
-/// it. Once the upload finishes, the client calls `commit` with the actual
-/// sha256.
-#[derive(Debug, Deserialize)]
-pub struct UploadInit {
-    pub save_id: String,
-    pub game_slug: String,
-    #[serde(default)]
-    pub label: Option<String>,
-    pub size_bytes: u64,
-    /// Number of files inside the (opaque) tar.zst this version packs. The
-    /// server can't introspect the blob, so the client declares it; we store
-    /// it purely so the History view can show "N archivos". Older clients omit
-    /// it → 0 (unknown), same as pre-existing rows.
-    #[serde(default)]
-    pub file_count: i64,
-    /// Optional, used for analytics + device-limit check.
-    #[serde(default)]
-    pub device_name: Option<String>,
-    #[serde(default)]
-    pub notes: Option<String>,
-    /// When true, this save is excluded from the multi-device manifest pull
-    /// and other devices won't auto-restore it. Manual download via
-    /// `/v1/cloud/saves/:id/versions/:n/download` still works. Toggleable
-    /// per-save by the client (per the 1.6.1 "modo ahorro" UX).
-    #[serde(default)]
-    pub backup_only: bool,
-    /// The version the client based this upload on (its last-synced version
-    /// for this save). When present and it no longer matches the server's
-    /// `latest_version_num`, the upload is a non-fast-forward (another device
-    /// advanced the save) and is rejected with 409 so the client can pull +
-    /// resolve instead of clobbering the other device's line.
-    #[serde(default)]
-    pub base_version: Option<i64>,
-}
-
 /// 409 response for a divergent (non-fast-forward) push. Carries the current
 /// head so the client knows which version it must reconcile against, and the
 /// canonical save id it must reconcile *as*.
@@ -109,411 +71,27 @@ impl IntoResponse for SaveTooLargeResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct UploadInitOut {
-    pub version_num: i64,
-    pub r2_key: String,
-    pub upload: r2::PresignedUrl,
-    pub quota: quota::QuotaInfo,
-}
-
-pub async fn init_upload(
-    State(state): State<CloudState>,
-    Extension(user): Extension<CloudUser>,
-    Json(body): Json<UploadInit>,
-) -> Result<Response, CloudError> {
-    // 1. Per-save size cap: the cheapest check, and it doesn't touch the DB.
-    //    Resolve the plan from the cached load() in `check_storage` below
-    //    would mean two queries; do a tiny direct lookup so we can 413
-    //    before incurring the storage SUM.
-    let (plan, max_save_size_bytes) = match save_limits_for_user(&state, user.user_id).await? {
-        Some(p) => p,
-        None => return Err(CloudError::NotFound("no profile")),
-    };
-    let mut limits = plan.limits();
-    limits.max_save_size_bytes = max_save_size_bytes;
-    if body.size_bytes > max_save_size_bytes {
-        let upgrade_url = state
-            .config
-            .cloud
-            .as_ref()
-            .map(|c| c.upgrade_url.clone())
-            .unwrap_or_else(crate::config::default_upgrade_url);
-        // Only this game stopped syncing, and the app says so in a place the
-        // user may not look at for weeks. Scoped to the save, so two oversized
-        // games are two mails and twenty retries of one game are still one.
-        crate::cloud::notify::save_too_large(
-            &state,
-            user.user_id,
-            body.save_id.clone(),
-            body.game_slug.clone(),
-            body.size_bytes as i64,
-            max_save_size_bytes as i64,
-            plan.as_str(),
-            crate::cloud::plans::Plan::Pro.limits().max_save_size_bytes as i64,
-        );
-        log_sync_block(
-            &state,
-            user.user_id,
-            "save_too_large",
-            &body.save_id,
-            Some(body.game_slug.as_str()),
-            body.size_bytes,
-        )
-        .await;
-        return Ok(SaveTooLargeResponse {
-            error: "save exceeds per-save size limit",
-            code: "save_too_large",
-            plan: plan.as_str(),
-            limit_bytes: max_save_size_bytes,
-            actual_bytes: body.size_bytes,
-            upgrade_url,
-        }
-        .into_response());
-    }
-
-    // 2. Bandwidth window: a pre-upload check so we 429 *before* presigning.
-    //    The PUT itself goes direct to R2 so we can't intercept the bytes;
-    //    we credit the window in `commit_upload` once R2 head confirms the
-    //    object landed.
-    if let Err(resp) = bandwidth::check(&state, user.user_id, body.size_bytes, &limits).await {
-        log_sync_block(
-            &state,
-            user.user_id,
-            "bandwidth_block",
-            &body.save_id,
-            Some(&body.game_slug),
-            body.size_bytes,
-        )
-        .await;
-        return Ok(resp);
-    }
-
-    // 3. Storage quota.
-    let info = match quota::check_storage(
-        &state,
-        user.user_id,
-        &body.game_slug,
-        &body.save_id,
-        body.size_bytes,
-    )
-    .await
-    {
-        Ok(i) => i,
-        Err(resp) => {
-            return Ok(paced_quota_reject(
-                &state,
-                user.user_id,
-                &body.save_id,
-                Some(&body.game_slug),
-                body.size_bytes,
-                resp,
-            )
-            .await);
-        }
-    };
-
-    // 4. Ensure the saves row exists. UPSERT semantics: the first version
-    //    of a save creates it; subsequent versions just bump latest_version_num.
-    //    `backup_only` is captured per-save: a row toggled to backup_only=true
-    //    on a later upload stays out of the manifest until explicitly
-    //    re-enabled by the client.
-    let mut conn = state.pool.acquire().await?;
-    let save_row = resolve_save_row(
-        &mut conn,
-        &body.save_id,
-        user.user_id,
-        &body.game_slug,
-        &body.label,
-        body.backup_only,
-    )
-    .await?;
-
-    let head = save_row.1;
-
-    // Fast-forward check (the DAG's enforcement). A base that no longer matches
-    // the head means another device pushed since the client last synced.
-    //
-    // No base at all used to skip the check entirely, and that is the hole: a
-    // client sends no base when its local cursor is null, and a machine that has
-    // never synced this save, or one whose state was rebuilt. Against a save
-    // with history that is the *least* trustworthy upload there is, and it was
-    // the only one allowed through unchecked. In aug-2026 a device with a null
-    // cursor pushed its folder over a head ten versions ahead: the other
-    // machine's copy stayed in history, but the head became a folder that had
-    // never seen it, which reads exactly like "it stopped syncing".
-    //
-    // Treated as base 0: fine against an empty save (the first upload), a
-    // non-fast-forward against anything else. The client already knows this
-    // answer: it reconciles and pulls before retrying.
-    let base = body.base_version.unwrap_or(0);
-    if base != head && !save_has_no_history(&mut conn, &save_row.0, head).await? {
-        return Ok(NonFastForwardResponse {
-            error: "non-fast-forward: another device advanced this save since your base version",
-            code: "non_fast_forward",
-            head_version: head,
-            base_version: base,
-            save_id: save_row.0.clone(),
-        }
-        .into_response());
-    }
-    if base != head {
-        tracing::warn!(
-            user_id = %user.user_id,
-            save_id = %save_row.0,
-            game_slug = %body.game_slug,
-            base_version = base,
-            "init_upload: client cursor outlived the save's history — restarting it at version 1"
-        );
-    }
-
-    let next_version = head + 1;
-    // Root version has no parent; otherwise it descends from the current head.
-    let parent_version: Option<i64> = (head > 0).then_some(head);
-    let r2_key = r2::key_for_snapshot(user.user_id, &save_row.0, next_version as u64);
-
-    // 5. Insert the (pending) save_versions row. We only know size and key
-    //    so far; sha256 is filled in by `commit`. Until then the row is
-    //    pending and storage_bytes hasn't been credited (trigger runs on
-    //    INSERT but with the *requested* size; if the upload fails or never
-    //    commits, the cleanup cron deletes pending rows older than 1h).
-    //    A pending row already at this version is an earlier init that never
-    //    committed, and since `save_has_no_history` looks past it the insert
-    //    would trip the unique key. Same version, same `r2_key`: the new PUT
-    //    overwrites whatever the old attempt left in the bucket. A pending
-    //    content-addressed row is left alone: its manifest is the only record
-    //    of the blobs it uploaded, and only `cas_init` cleans those up.
-    sqlx::query(
-        "DELETE FROM save_versions
-          WHERE save_id = $1 AND version_num = $2 AND sha256 = '' AND NOT content_addressed",
-    )
-    .bind(&save_row.0)
-    .bind(next_version)
-    .execute(&state.pool)
-    .await?;
-    sqlx::query(
-        r#"
-        INSERT INTO save_versions (save_id, version_num, size_bytes, sha256, r2_key, notes, parent_version, file_count, device_name)
-        VALUES ($1, $2, $3, '', $4, $5, $6, $7, $8)
-        "#,
-    )
-    .bind(&save_row.0)
-    .bind(next_version)
-    .bind(body.size_bytes as i64)
-    .bind(&r2_key)
-    .bind(body.notes.as_deref())
-    .bind(parent_version)
-    .bind(body.file_count.max(0))
-    .bind(body.device_name.as_deref())
-    .execute(&state.pool)
-    .await?;
-
-    // 6. Mint the presigned PUT URL.
-    let upload = state
-        .r2
-        .presign_put(&r2_key, None)
-        .await
-        .map_err(CloudError::Internal)?;
-
-    Ok(Json(UploadInitOut {
-        version_num: next_version,
-        r2_key,
-        upload,
-        quota: info,
-    })
-    .into_response())
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UploadCommit {
-    pub sha256: String,
-    /// Actual size as observed by the client post-upload. We verify against
-    /// R2 head to make sure the user didn't lie.
-    pub size_bytes: u64,
-}
-
-#[derive(Debug, Serialize)]
 pub struct UploadCommitOut {
     pub save_id: String,
     pub version_num: i64,
     pub committed: bool,
 }
 
-pub async fn commit_upload(
-    State(state): State<CloudState>,
-    Extension(user): Extension<CloudUser>,
-    Path((save_id, version)): Path<(String, i64)>,
-    Json(body): Json<UploadCommit>,
-) -> Result<Response, CloudError> {
-    // Owner check first: never trust a save_id from the request without
-    // verifying the JWT subject owns it.
-    let owner: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM saves WHERE id = $1")
-        .bind(&save_id)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some(owner) = owner else {
-        return Err(CloudError::NotFound("save not found"));
-    };
-    if owner != user.user_id {
-        return Err(CloudError::Forbidden("save belongs to a different user"));
-    }
-    crate::cloud::archive::ensure_not_archived(&state, user.user_id, &save_id).await?;
-
-    // The committed hash is persisted (and, for CAS, addresses R2 objects).
-    // Reject anything that isn't a canonical sha256.
-    if !r2::is_valid_sha256(&body.sha256) {
-        return Err(CloudError::BadRequest("invalid sha256".into()));
-    }
-
-    // Look up the pending row.
-    let row: Option<(String, i64)> = sqlx::query_as(
-        "SELECT r2_key, size_bytes FROM save_versions
-            WHERE save_id = $1 AND version_num = $2",
+/// `POST /v1/cloud/saves` and `POST /v1/cloud/saves/:id/versions/:n/commit`,
+/// the whole-archive upload. No client has called them since 07-06-2026 and
+/// production holds no version they made in six months. They took the size
+/// from the client, presigned an unconditional PUT, and `download` served the
+/// version before it was ever committed: declare one byte, store five
+/// gigabytes, never pay for it. An old build gets a reason instead of a 404.
+pub async fn legacy_upload_gone() -> Response {
+    (
+        StatusCode::GONE,
+        Json(serde_json::json!({
+            "error": "this upload path is gone, update Hoard",
+            "code": "update_required",
+        })),
     )
-    .bind(&save_id)
-    .bind(version)
-    .fetch_optional(&state.pool)
-    .await?;
-    let Some((r2_key, expected_size)) = row else {
-        return Err(CloudError::NotFound("version not found"));
-    };
-
-    // Confirm the object actually landed in R2 with the right size.
-    let head_size = state
-        .r2
-        .head(&r2_key)
-        .await
-        .map_err(CloudError::Internal)?
-        .ok_or(CloudError::BadRequest(
-            "R2 object missing — upload not complete".into(),
-        ))?;
-    if head_size as u64 != body.size_bytes {
-        return Err(CloudError::BadRequest(format!(
-            "size mismatch: client says {} but R2 has {}",
-            body.size_bytes, head_size
-        )));
-    }
-
-    // Re-enforce the per-save cap and storage quota against the REAL object
-    // size. `init_upload` only saw the client-declared `size_bytes`, and the
-    // presigned PUT carries no content-length limit, so a client can declare a
-    // tiny size to pass the init gates and then upload an arbitrarily large
-    // object. The pending row already charged the init-declared size; the
-    // final footprint swaps that for `head_size`. On reject, best-effort drop
-    // the R2 object + pending row so a refused commit can't squat storage.
-    let (limits, info) = quota::load(&state.pool, user.user_id)
-        .await?
-        .ok_or(CloudError::NotFound("no profile"))?;
-    let upgrade_url = || {
-        state
-            .config
-            .cloud
-            .as_ref()
-            .map(|c| c.upgrade_url.clone())
-            .unwrap_or_else(crate::config::default_upgrade_url)
-    };
-    let real = head_size.max(0) as u64;
-    let reject = real > limits.max_save_size_bytes
-        || quota::would_exceed(
-            info.used_bytes.saturating_sub(expected_size.max(0) as u64),
-            real,
-            limits.storage_bytes,
-        );
-    if reject {
-        if let Err(e) = state.r2.delete_object(&r2_key).await {
-            tracing::warn!(error = %e, r2_key = %r2_key, "commit_upload: orphan object cleanup after quota reject failed");
-        }
-        sqlx::query(
-            "DELETE FROM save_versions WHERE save_id = $1 AND version_num = $2 AND sha256 = ''",
-        )
-        .bind(&save_id)
-        .bind(version)
-        .execute(&state.pool)
-        .await?;
-        if real > limits.max_save_size_bytes {
-            // No game_slug on this path, same as the quota reject below: the
-            // commit body carries the save id only.
-            log_sync_block(&state, user.user_id, "save_too_large", &save_id, None, real).await;
-            return Ok(SaveTooLargeResponse {
-                error: "save exceeds per-save size limit",
-                code: "save_too_large",
-                plan: info.plan,
-                limit_bytes: limits.max_save_size_bytes,
-                actual_bytes: real,
-                upgrade_url: upgrade_url(),
-            }
-            .into_response());
-        }
-        return Ok(paced_quota_reject(
-            &state,
-            user.user_id,
-            &save_id,
-            None,
-            real,
-            quota::quota_response(&info, real, upgrade_url()).into_response(),
-        )
-        .await);
-    }
-
-    // Atomically finalize: stamp sha256, bump the parent save's latest_version_num.
-    let mut tx = state.pool.begin().await?;
-    sqlx::query(
-        "UPDATE save_versions SET sha256 = $1, size_bytes = $2
-            WHERE save_id = $3 AND version_num = $4",
-    )
-    .bind(&body.sha256)
-    .bind(head_size)
-    .bind(&save_id)
-    .bind(version)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("UPDATE saves SET latest_version_num = $1, updated_at = now() WHERE id = $2")
-        .bind(version)
-        .bind(&save_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query(
-        "INSERT INTO sync_log (user_id, save_id, version_num, kind, bytes)
-             VALUES ($1, $2, $3, 'upload', $4)",
-    )
-    .bind(user.user_id)
-    .bind(&save_id)
-    .bind(version)
-    .bind(head_size)
-    .execute(&mut *tx)
-    .await?;
-    tx.commit().await?;
-    crate::cloud::routes::events::publish(&state, user.user_id, &save_id, version);
-
-    // Credit the bandwidth window with the observed size. Done after the
-    // commit so a failed upload doesn't eat into the user's quota. We log
-    // and swallow errors here: the upload itself was successful, and a stale
-    // bandwidth counter is recoverable, a 500 returned to the client is
-    // not.
-    if let Err(e) = bandwidth::record(&state.pool, user.user_id, head_size as u64).await {
-        tracing::warn!(error = %e, user_id = %user.user_id, "bandwidth: record failed on upload");
-    }
-
-    // Reclaim space if over the plan threshold (purges old content-addressed
-    // versions; off the response path). Then enforce the user's own
-    // max-versions cap on the fresh history.
-    let st = state.clone();
-    let uid = user.user_id;
-    tokio::spawn(async move {
-        crate::cloud::product_events::after_upload(&st, uid).await;
-        if let Err(e) = crate::cloud::purge::maybe_purge(&st, uid).await {
-            tracing::warn!(error = ?e, user_id = %uid, "quota purge after commit failed");
-        }
-        if let Err(e) = crate::cloud::purge::prune_version_caps(&st, uid).await {
-            tracing::warn!(error = ?e, user_id = %uid, "version-cap prune after commit failed");
-        }
-    });
-
-    Ok(Json(UploadCommitOut {
-        save_id,
-        version_num: version,
-        committed: true,
-    })
-    .into_response())
+        .into_response()
 }
 
 // ===========================================================================
@@ -603,6 +181,12 @@ pub struct CasInit {
     /// whole copy it holds to patch against.
     #[serde(default)]
     pub patch_from: Vec<PatchFrom>,
+    /// The client sends the headers a link comes with and reads a 412 as "the
+    /// bytes are already there", so its PUT links can be conditional (see
+    /// `R2Store::presign_put`). Older clients omit it and get the old links,
+    /// until `cloud.require_conditional_put` turns them away.
+    #[serde(default)]
+    pub conditional_put: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -675,6 +259,27 @@ pub async fn cas_init(
         return Err(refuse_blocked_install(user.user_id, &body));
     }
 
+    let require_conditional = state
+        .config
+        .cloud
+        .as_ref()
+        .is_some_and(|c| c.require_conditional_put);
+    if require_conditional && !body.conditional_put {
+        tracing::info!(
+            user_id = %user.user_id,
+            save_id = %body.save_id,
+            "cas_init: refused, the client can't take conditional PUT links"
+        );
+        return Ok((
+            StatusCode::UPGRADE_REQUIRED,
+            Json(serde_json::json!({
+                "error": "uploading needs a newer Hoard",
+                "code": "update_required",
+            })),
+        )
+            .into_response());
+    }
+
     let (plan, max_save_size_bytes) = match save_limits_for_user(&state, user.user_id).await? {
         Some(p) => p,
         None => return Err(CloudError::NotFound("no profile")),
@@ -682,8 +287,40 @@ pub async fn cas_init(
     let mut limits = plan.limits();
     limits.max_save_size_bytes = max_save_size_bytes;
 
-    // Logical save size = sum of all file sizes. Drives the per-save cap.
-    let logical_size: i64 = body.files.iter().map(|f| f.size_bytes.max(0)).sum();
+    // Dedup the manifest down to unique (sha -> size). Then find which of those
+    // the user already has stored, so we only charge bandwidth and storage for,
+    // and only presign, the genuinely new bytes.
+    let mut unique: BTreeMap<String, i64> = BTreeMap::new();
+    for f in &body.files {
+        unique
+            .entry(f.sha256.clone())
+            .or_insert(f.size_bytes.max(0));
+    }
+    let all_shas: Vec<&str> = unique.keys().map(String::as_str).collect();
+    let held: HashMap<String, i64> = sqlx::query_as::<_, (String, i64)>(
+        "SELECT encode(sha256, 'hex'), size_bytes FROM cloud_blobs
+              WHERE user_id = $1
+                AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+    )
+    .bind(user.user_id)
+    .bind(&all_shas)
+    .fetch_all(&state.pool)
+    .await?
+    .into_iter()
+    .collect();
+    let existing: std::collections::HashSet<String> = held.keys().cloned().collect();
+
+    // Logical save size = sum of all file sizes. Drives the per-save cap. A file
+    // the account already holds counts at the size it was stored with, not the
+    // one claimed now: listing a stored gigabyte as one byte would otherwise
+    // put any amount of it in the one save the cap is meant to bound.
+    let logical_size = body
+        .files
+        .iter()
+        .try_fold(0i64, |sum, f| {
+            sum.checked_add(held.get(&f.sha256).copied().unwrap_or(f.size_bytes).max(0))
+        })
+        .ok_or_else(|| CloudError::BadRequest("manifest sizes overflow".into()))?;
     if logical_size as u64 > limits.max_save_size_bytes {
         let upgrade_url = state
             .config
@@ -711,32 +348,14 @@ pub async fn cas_init(
         .into_response());
     }
 
-    // Dedup the manifest down to unique (sha -> size). Then find which of those
-    // the user already has stored, so we only charge bandwidth and storage for,
-    // and only presign, the genuinely new bytes.
-    let mut unique: BTreeMap<String, i64> = BTreeMap::new();
-    for f in &body.files {
-        unique
-            .entry(f.sha256.clone())
-            .or_insert(f.size_bytes.max(0));
-    }
-    let all_shas: Vec<&str> = unique.keys().map(String::as_str).collect();
-    let existing: Vec<(String,)> = sqlx::query_as(
-        "SELECT encode(sha256, 'hex') FROM cloud_blobs
-              WHERE user_id = $1
-                AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
-    )
-    .bind(user.user_id)
-    .bind(&all_shas)
-    .fetch_all(&state.pool)
-    .await?;
-    let existing: std::collections::HashSet<String> = existing.into_iter().map(|(s,)| s).collect();
-
     let missing_shas: Vec<(&String, &i64)> = unique
         .iter()
         .filter(|(sha, _)| !existing.contains(*sha))
         .collect();
-    let new_bytes: u64 = missing_shas.iter().map(|(_, sz)| **sz as u64).sum();
+    let new_bytes = missing_shas
+        .iter()
+        .try_fold(0u64, |sum, (_, sz)| sum.checked_add(**sz as u64))
+        .ok_or_else(|| CloudError::BadRequest("manifest sizes overflow".into()))?;
 
     // Bandwidth + storage are charged only on the bytes we'll actually move
     // and persist. A save rewritten in place with 10 MB of real change costs
@@ -1008,10 +627,29 @@ pub async fn cas_init(
     if !stale_shas.is_empty() {
         collect_abandoned_blobs(&state, user.user_id, &stale_shas, &body.files).await;
     }
+    // A conditional link won't write over anything, and that includes what the
+    // attempt being replaced left at a key this one wants again. Those bytes
+    // can be wrong: an older client that saw the file change mid-upload
+    // aborted *after* its PUT and counted on the next attempt overwriting it,
+    // which is the ordinary autosave rotation (`save` to `save.bak`) handing
+    // the old sha to a file that was the new content. Cleared here, the retry
+    // writes them fresh instead of being told they are already stored.
+    if body.conditional_put {
+        let again: Vec<String> = stale_shas
+            .iter()
+            .filter(|s| unique.contains_key(*s) && !existing.contains(*s))
+            .cloned()
+            .collect();
+        clear_unowned_blobs(&state, user.user_id, &again).await;
+    }
 
-    let patches = offer_patches(&state, user.user_id, &body.patch_from, |sha| {
-        unique.contains_key(sha) && !existing.contains(sha)
-    })
+    let patches = offer_patches(
+        &state,
+        user.user_id,
+        &body.patch_from,
+        body.conditional_put,
+        |sha| unique.contains_key(sha) && !existing.contains(sha),
+    )
     .await?;
     let missing: Vec<(String, i64)> = missing_shas
         .into_iter()
@@ -1032,7 +670,7 @@ pub async fn cas_init(
         missing: Vec::new(),
         quota: info,
     };
-    init_answer(state, user.user_id, out, missing, patches).await
+    init_answer(state, user.user_id, out, missing, patches, body.conditional_put).await
 }
 
 /// Above this many missing blobs the answer to `cas_init` is streamed.
@@ -1059,12 +697,13 @@ async fn init_answer(
     mut out: CasInitOut,
     missing: Vec<(String, i64)>,
     mut patches: HashMap<String, PatchUpload>,
+    conditional: bool,
 ) -> Result<Response, CloudError> {
     if missing.len() <= STREAM_MISSING_ABOVE {
         for (sha256, size_bytes) in missing {
             let patch = patches.remove(&sha256);
             out.missing.push(
-                mint_missing(&state, user_id, sha256, size_bytes, patch)
+                mint_missing(&state, user_id, sha256, size_bytes, patch, conditional)
                     .await
                     .map_err(CloudError::Internal)?,
             );
@@ -1102,7 +741,8 @@ async fn init_answer(
         async move {
             let mut buf = Vec::with_capacity(chunk.len() * 1024);
             for (i, (sha256, size_bytes, patch)) in chunk.into_iter().enumerate() {
-                let blob = mint_missing(&state, user_id, sha256, size_bytes, patch).await?;
+                let blob =
+                    mint_missing(&state, user_id, sha256, size_bytes, patch, conditional).await?;
                 if n > 0 || i > 0 {
                     buf.push(b',');
                 }
@@ -1133,9 +773,10 @@ async fn mint_missing(
     sha256: String,
     size_bytes: i64,
     patch: Option<PatchUpload>,
+    conditional: bool,
 ) -> anyhow::Result<CasMissingBlob> {
     let r2_key = r2::key_for_blob(user_id, &sha256);
-    let upload = state.r2.presign_put(&r2_key, None).await?;
+    let upload = state.r2.presign_put(&r2_key, None, conditional).await?;
     Ok(CasMissingBlob {
         sha256,
         size_bytes,
@@ -1153,6 +794,7 @@ async fn offer_patches(
     state: &CloudState,
     user_id: Uuid,
     patch_from: &[PatchFrom],
+    conditional: bool,
     is_missing: impl Fn(&str) -> bool,
 ) -> Result<HashMap<String, PatchUpload>, CloudError> {
     let mut offers = HashMap::new();
@@ -1195,12 +837,12 @@ async fn offer_patches(
         let link = |inflated| r2::key_for_patch(user_id, sha, base, inflated);
         let upload = state
             .r2
-            .presign_put(&link(false), None)
+            .presign_put(&link(false), None, conditional)
             .await
             .map_err(CloudError::Internal)?;
         let inflated_upload = state
             .r2
-            .presign_put(&link(true), None)
+            .presign_put(&link(true), None, conditional)
             .await
             .map_err(CloudError::Internal)?;
         offers.insert(
@@ -1235,16 +877,18 @@ const BLOB_CONCURRENCY: usize = 32;
 /// not a number that moves with how well a given game happens to compress. The
 /// server's own sweep has never given quota back either.
 ///
-/// For a raw upload the two sizes are the same thing and R2 is the authority,
-/// which is what stops a client understating its size at init and then PUTting
-/// something enormous at the presigned URL. A compressed upload breaks that: R2
-/// can only report the compressed size, so the raw size has to come from the
-/// client's manifest, which is exactly the number we refuse to trust elsewhere.
+/// For a raw upload the two sizes are the same thing, and they have to be
+/// equal. The client sends exactly the bytes it declared (a `content-length`
+/// it can't exceed, and the upload is checked against its sha), so any other
+/// size is not this file. Charging R2's figure would keep the quota right on its
+/// own, but the per-save cap is checked at init, against the declared sizes,
+/// and only this makes them binding: declare a megabyte, store at most a megabyte.
 ///
-/// What keeps it honest is that compression cannot inflate. An object *larger*
-/// than the raw size it claims is lying or broken, and is refused. So the charge
-/// is never smaller than what R2 actually holds, and understating still buys
-/// nothing: claim a megabyte and you may store at most a megabyte.
+/// A compressed upload can only be bounded, not matched: R2 reports the
+/// compressed size, so the raw size has to come from the client's manifest. What
+/// keeps that honest is that compression cannot inflate. An object *larger* than
+/// the raw size it claims is lying or broken, and is refused. So the charge is
+/// never smaller than what R2 actually holds.
 fn charge_for_blob(
     sha: &str,
     declared: i64,
@@ -1252,6 +896,11 @@ fn charge_for_blob(
     compressed: bool,
 ) -> Result<(i64, Option<i64>), CloudError> {
     if !compressed {
+        if stored != declared {
+            return Err(CloudError::BadRequest(format!(
+                "blob {sha} was declared as {declared} bytes but {stored} were stored"
+            )));
+        }
         return Ok((stored, None));
     }
     if stored > declared {
@@ -1630,7 +1279,9 @@ pub async fn cas_commit(
         if let Some(stored_bytes) = stored_bytes {
             stored_size.insert(sha.clone(), stored_bytes);
         }
-        new_bytes += charged.max(0) as u64;
+        new_bytes = new_bytes
+            .checked_add(charged.max(0) as u64)
+            .ok_or_else(|| CloudError::BadRequest("blob sizes overflow".into()))?;
         actual_size.insert(sha.clone(), charged);
     }
 
@@ -1940,6 +1591,7 @@ pub async fn version_manifest(
           FROM save_versions sv
           JOIN saves s ON s.id = sv.save_id
          WHERE sv.save_id = $1 AND sv.version_num = $2
+           AND sv.sha256 <> ''
         "#,
     )
     .bind(&save_id)
@@ -2027,7 +1679,25 @@ pub async fn version_manifest(
     for (_, sha, size, _) in &rows {
         unique_size.entry(sha.clone()).or_insert(*size);
     }
-    let download_bytes: u64 = unique_size.values().map(|s| *s as u64).sum();
+    let shas: Vec<String> = unique_size.keys().cloned().collect();
+    let blobs: Vec<(String, i64, bool)> = sqlx::query_as(
+        "SELECT encode(sha256, 'hex'), size_bytes, coalesce(encoding = 'zstd', false)
+           FROM cloud_blobs
+          WHERE user_id = $1
+            AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+    )
+    .bind(user.user_id)
+    .bind(&shas)
+    .fetch_all(&state.pool)
+    .await?;
+    // Charged at the size each blob was stored with. The manifest's figure is
+    // the one the client declared, and for a file it never had to upload (dedup)
+    // nothing ever checked it.
+    let stored_size: HashMap<&str, i64> = blobs.iter().map(|(s, z, _)| (s.as_str(), *z)).collect();
+    let download_bytes: u64 = unique_size.iter().fold(0u64, |sum, (sha, declared)| {
+        let size = stored_size.get(sha.as_str()).copied().unwrap_or(*declared);
+        sum.saturating_add(size.max(0) as u64)
+    });
 
     let plan = plan_for_user(&state, user.user_id)
         .await?
@@ -2048,20 +1718,11 @@ pub async fn version_manifest(
     // The second path costs real money and a small machine's CPU: 36 GB of
     // logical content sits behind it today, and every byte of it crosses Fly on
     // every restore. The first exists to empty it as the fleet updates.
-    let shas: Vec<String> = unique_size.keys().cloned().collect();
-    let compressed: std::collections::BTreeSet<String> = sqlx::query_as::<_, (String,)>(
-        "SELECT encode(sha256, 'hex') FROM cloud_blobs
-            WHERE user_id = $1
-              AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))
-              AND encoding = 'zstd'",
-    )
-    .bind(user.user_id)
-    .bind(&shas)
-    .fetch_all(&state.pool)
-    .await?
-    .into_iter()
-    .map(|(s,)| s)
-    .collect();
+    let compressed: std::collections::BTreeSet<String> = blobs
+        .into_iter()
+        .filter(|(_, _, zstd)| *zstd)
+        .map(|(sha, _, _)| sha)
+        .collect();
 
     // Patches and their bases. `zstd` marks a base whose at-rest rewrite
     // finished, the same rule as everywhere else.
@@ -2121,6 +1782,7 @@ pub async fn version_manifest(
                 method: "GET".to_string(),
                 url: format!("{public_base}/v1/cloud/blob/{token}"),
                 expires_in_secs: ttl_secs,
+                headers: Default::default(),
             }
         } else {
             if is_zstd {
@@ -2230,7 +1892,7 @@ pub async fn download(
           FROM save_versions sv
           JOIN saves s ON s.id = sv.save_id
          WHERE sv.save_id = $1 AND sv.version_num = $2
-           AND sv.deleted_at IS NULL
+           AND sv.deleted_at IS NULL AND sv.sha256 <> ''
         "#,
     )
     .bind(&save_id)
@@ -3005,6 +2667,37 @@ async fn collect_abandoned_blobs(
     }
 }
 
+/// Delete the objects at `shas` that no `cloud_blobs` row owns, so a conditional
+/// PUT can write them. Fails closed like [`collect_abandoned_blobs`]: if the
+/// owners can't be read, nothing is deleted and the upload may meet a 412.
+async fn clear_unowned_blobs(state: &CloudState, user_id: Uuid, shas: &[String]) {
+    if shas.is_empty() {
+        return;
+    }
+    let owned: std::collections::HashSet<String> = match sqlx::query_scalar(
+        "SELECT encode(sha256, 'hex') FROM cloud_blobs
+          WHERE user_id = $1
+            AND sha256 = ANY(ARRAY(SELECT decode(u, 'hex') FROM unnest($2::text[]) AS u))",
+    )
+    .bind(user_id)
+    .bind(shas)
+    .fetch_all(&state.pool)
+    .await
+    {
+        Ok(rows) => rows.into_iter().collect(),
+        Err(e) => {
+            tracing::warn!(error = %e, %user_id, "cas_init: owner check failed, leaving the old attempt's blobs");
+            return;
+        }
+    };
+    for sha in shas.iter().filter(|s| !owned.contains(*s)) {
+        let key = r2::key_for_blob(user_id, sha);
+        if let Err(e) = state.r2.delete_object(&key).await {
+            tracing::warn!(error = %e, r2_key = %key, "cas_init: clearing an old attempt's blob failed");
+        }
+    }
+}
+
 /// Which of `stale` are safe to delete: promised by the attempt being replaced,
 /// absent from the manifest replacing it, and referenced nowhere else in the
 /// account. The error is propagated rather than swallowed into an empty answer,
@@ -3269,17 +2962,26 @@ async fn plan_for_user(state: &CloudState, user_id: Uuid) -> Result<Option<Plan>
 mod charge_tests {
     use super::*;
 
-    /// A raw upload is charged what R2 says it holds, never what the client
-    /// claimed. This is the older rule and the one that stops a client
-    /// understating its size at init and then PUTting something enormous.
+    /// A raw upload is charged what R2 says it holds, and that has to be what
+    /// the client declared.
     #[test]
     fn a_raw_blob_is_charged_what_actually_landed() {
-        let (charged, stored) = charge_for_blob("aa", 10, 4096, false).expect("accepted");
-        assert_eq!(charged, 4096, "R2 is the authority for a raw upload");
+        let (charged, stored) = charge_for_blob("aa", 4096, 4096, false).expect("accepted");
+        assert_eq!(charged, 4096);
         assert_eq!(
             stored, None,
             "nothing to record: the object is its own size"
         );
+    }
+
+    /// Declaring ten bytes and PUTting 4 KiB, charged the 4 KiB, would keep the
+    /// quota right and still let a save past the per-save cap, checked at init
+    /// on the declared sizes. Smaller is refused too: it can't be the file the
+    /// sha names.
+    #[test]
+    fn a_raw_blob_of_another_size_is_refused() {
+        assert!(charge_for_blob("aa", 10, 4096, false).is_err());
+        assert!(charge_for_blob("aa", 4096, 10, false).is_err());
     }
 
     /// A compressed upload is charged the raw size, so the quota keeps meaning
