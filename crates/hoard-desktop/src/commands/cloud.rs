@@ -348,6 +348,10 @@ async fn save_creds(
             },
             server_url,
         )?;
+        // It did not hear about the login through the handover, so it gets nudged
+        // in case it started in between: an engine down for want of a session would
+        // otherwise sit out its backoff after the user has signed in.
+        crate::commands::agent::notify_session_changed(app);
     }
     Ok(())
 }
@@ -400,6 +404,11 @@ fn clear_creds_local() -> Result<()> {
 /// keyring. A service that does not answer does not block the logout: the session no
 /// longer exists for anybody who reads it, and the orphaned pair is overwritten by
 /// the next login.
+///
+/// A service that took the logout restarts its engine on its own; only one that did
+/// not gets told the session changed. Telling it both ways restarted the engine
+/// twice for every sign-in and sign-out, the second time on top of the start the
+/// first had just begun.
 async fn forget_session(app: &AppHandle) -> Result<()> {
     clear_creds_local()?;
     if let Some(state) = app.try_state::<AppState>() {
@@ -408,6 +417,7 @@ async fn forget_session(app: &AppHandle) -> Result<()> {
                 error = %format!("{err:#}"),
                 "cloud: the service didn't clear its stored session; the local session file is gone anyway"
             );
+            crate::commands::agent::notify_session_changed(app);
         }
     }
     Ok(())
@@ -426,6 +436,7 @@ fn forget_session_in_background(app: &AppHandle) -> Result<()> {
                     error = %format!("{err:#}"),
                     "cloud: the service didn't clear its stored session"
                 );
+                crate::commands::agent::notify_session_changed(&app);
             }
         }
     });
@@ -638,15 +649,13 @@ pub async fn cloud_complete_login(
     let prev_ctx = hoard_agent::state::current_context_id();
     let new_ctx = hoard_agent::state::cloud_context(&me.user_id);
     hoard_agent::state::set_active_context(Some(new_ctx.clone()));
-    // The service has the engine, and that engine is talking to the previous
-    // account: its `ApiClient`, its `state.json` context and its token rotator all
-    // belong to the session that has just stopped being valid. It is always told, not
-    // only "if it was running": it may have been down for minutes for want of a
-    // session, and this login is exactly what fixes it.
+    // The service restarts its engine on the session `save_creds` handed it, which
+    // is what both a running engine on the previous account and one down for want of
+    // a session need. Telling it again here made it restart twice: on 2026-11-22 the
+    // engine came up and was torn down 0.8 s later, and the second start took 4.4 s.
     if prev_ctx != new_ctx {
-        tracing::info!("cloud: sync context changed; asking the service to re-resolve its session");
+        tracing::info!("cloud: sync context changed");
     }
-    crate::commands::agent::notify_session_changed(&app);
 
     // Bring the automatic-mode schedulers up for this session if the user left
     // the toggle on. On a cold start Tauri's `setup()` runs `restart_if_enabled`;
@@ -744,11 +753,9 @@ pub async fn cloud_logout(app: AppHandle, state: State<'_, AppState>) -> Result<
     // the logged-out account's context file.
     crate::commands::library::sync_active_context(state.inner());
     // Stop the cloud-pull poller, or it would keep asking the service
-    // for a token and quietly do nothing forever.
+    // for a token and quietly do nothing forever. The engine is the service's
+    // business: `forget_session` told it.
     cloud_pull::stop(&app);
-    // The credentials are gone, so the service should drop the engine and resolve
-    // again instead of carrying on with a token we just deleted.
-    crate::commands::agent::notify_session_changed(&app);
     Ok(())
 }
 
