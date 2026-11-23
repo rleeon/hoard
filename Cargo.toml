@@ -132,7 +132,7 @@ regex = "1"
 strsim = "0.11"
 
 # Process & filesystem watching (Phase 4)
-sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 notify = "6"
 notify-debouncer-mini = "0.4"
 
