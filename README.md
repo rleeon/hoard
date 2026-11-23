@@ -9,7 +9,7 @@
 You can Self-Host **[Without Account or Telemetry](EXPLAINING.md#what-leaves-your-machine)**, or log in and play.
 The desktop app and the CLI work the same against either. Self-hosting
 needs no Hoard account and has no quota beyond your own disk.
-> Next release 1.3.1 in 1/12/26.
+> Next release 1.3.1: 2/12/26.
 
 ![Hoard app photo](web/static/WEB.png)
 
