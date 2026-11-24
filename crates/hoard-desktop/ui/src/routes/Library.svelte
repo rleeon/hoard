@@ -70,12 +70,14 @@
     wrongPathSuspected,
   } from "../lib/stores/agent";
   import CardResizeHandle from "../lib/components/CardResizeHandle.svelte";
+  import GridPager from "../lib/components/GridPager.svelte";
   import Select from "../lib/components/Select.svelte";
   import PinButton from "../lib/components/PinButton.svelte";
   import SaveMirrors from "../lib/components/SaveMirrors.svelte";
   import MirrorDialogs from "../lib/components/MirrorDialogs.svelte";
   import { askAddMirror, isMirrorFolder, refreshMirrors } from "../lib/stores/mirrors.svelte";
   import { comparePinned } from "../lib/stores/pins.svelte";
+  import { keepPage, keptPage, pageCount } from "../lib/stores/gridPages";
   import { fmtDate, fmtNumber } from "../lib/utils/format";
 
   let report = $state<DetectionReport | null>(null);
@@ -1105,6 +1107,44 @@
     onlyTracked ? allEntries.filter((e) => e.saves.length > 0) : allEntries,
   );
 
+  // ---- pages
+  // 36 tiles: the pager, 34 games and the deep scan. 36 fills every row at 2,
+  // 3, 4 and 6 columns, and the card size moves the count.
+  const PAGE_SIZE = 34;
+  const listKey = $derived(
+    [onlyTracked, confidenceFilter, sourceFilter, search.trim().toLowerCase()].join("|"),
+  );
+  let page = $derived(keptPage("library", listKey));
+  const pages = $derived(pageCount(entries.length, PAGE_SIZE));
+  // A rescan or an untrack can take the last page away from under it.
+  const pageIndex = $derived(Math.min(page, pages - 1));
+  const pageEntries = $derived(
+    entries.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE),
+  );
+
+  function goPage(n: number) {
+    page = n;
+    keepPage("library", listKey, n);
+  }
+
+  // The cloud saves with no folder here, the same way: a library from another
+  // machine brings all of its games at once. The pager and 35 of them.
+  const ORPHAN_PAGE_SIZE = 35;
+  let orphanPage = $derived(keptPage("orphans", ""));
+  const orphanPages = $derived(pageCount(cloudOrphans.length, ORPHAN_PAGE_SIZE));
+  const orphanPageIndex = $derived(Math.min(orphanPage, orphanPages - 1));
+  const pageOrphans = $derived(
+    cloudOrphans.slice(
+      orphanPageIndex * ORPHAN_PAGE_SIZE,
+      (orphanPageIndex + 1) * ORPHAN_PAGE_SIZE,
+    ),
+  );
+
+  function goOrphanPage(n: number) {
+    orphanPage = n;
+    keepPage("orphans", "", n);
+  }
+
   /** Detected paths we do not watch yet, with their original index so `pathConf`
    *  keeps reading the right confidence. The ones already tracked live in the card's
    *  green block, not here. */
@@ -1311,7 +1351,10 @@
         class="mb-6 grid gap-3 rounded-xl"
         style="grid-template-columns: repeat(auto-fill, minmax({cardWidth('detected')}px, 1fr))"
       >
-        {#each entries as entry (entry.slug)}
+        {#if pages > 1}
+          <GridPager page={pageIndex} {pages} onPage={goPage} />
+        {/if}
+        {#each pageEntries as entry (entry.slug)}
           {@const isTracked = entry.saves.length > 0}
           {@const pending = entry.game ? untrackedPaths(entry.game) : []}
           {@const expanded = expandedPaths.has(entry.slug)}
@@ -1779,7 +1822,10 @@
         class="grid gap-2 rounded-xl"
         style="grid-template-columns: repeat(auto-fill, minmax({cardWidth("orphans")}px, 1fr))"
       >
-        {#each cloudOrphans as save (save.save_id)}
+        {#if orphanPages > 1}
+          <GridPager page={orphanPageIndex} pages={orphanPages} onPage={goOrphanPage} compact />
+        {/if}
+        {#each pageOrphans as save (save.save_id)}
           <div
             data-card
             data-nav-frame

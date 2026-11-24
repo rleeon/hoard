@@ -13,7 +13,7 @@
    * head (local_version_num vs cloud_version_num, ADR 0021 D.10): the pill
    * is local, the cover chip is cloud. That split lives in SaveGameCard.
    */
-  import { onMount } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import { push } from "svelte-spa-router";
   import {
     AlertTriangle,
@@ -31,6 +31,7 @@
 
   import Button from "../lib/components/Button.svelte";
   import Card from "../lib/components/Card.svelte";
+  import GridPager from "../lib/components/GridPager.svelte";
   import Input from "../lib/components/Input.svelte";
   import Modal from "../lib/components/Modal.svelte";
   import SaveGameCard from "../lib/components/SaveGameCard.svelte";
@@ -65,6 +66,7 @@
     hydrateCoverAspect,
   } from "../lib/stores/coverAspect.svelte";
   import { toastError, toastSuccess } from "../lib/stores/toasts";
+  import { keepPage, keptPage, pageCount } from "../lib/stores/gridPages";
   import {
     formatBytes,
     fmtDateTime,
@@ -134,6 +136,24 @@
     return arr;
   });
 
+  // ---- pages
+  // 36 tiles: the pager and 35 games. 36 fills every row at 2, 3, 4 and 6
+  // columns, and the card size moves the count. Only the page on screen is
+  // mounted, covers and version counts included.
+  const PAGE_SIZE = 35;
+  let page = $derived(keptPage("dashboard", sortBy));
+  const pages = $derived(pageCount(sortedSaves.length, PAGE_SIZE));
+  // A delete can take the last page away from under it.
+  const pageIndex = $derived(Math.min(page, pages - 1));
+  const pageSaves = $derived(
+    sortedSaves.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE),
+  );
+
+  function goPage(n: number) {
+    page = n;
+    keepPage("dashboard", sortBy, n);
+  }
+
   // Slugs tracked more than once (two folders of the same game): the card
   // shows the label chip only for these, so single-save games stay clean.
   const dupSlugs = $derived.by(() => {
@@ -151,9 +171,40 @@
   // Fetched lazily after the list lands, one read-only call per save, never
   // blocking the grid. Refetched when the live session confirms a new
   // version for that save (upload committed / auto-restore landed).
+  //
+  // Each one is a request to the server, and all of them used to go out at
+  // once: 1000 with the 1000-game library. Four at a time now, the page on
+  // screen first; the rest keep coming because the summary's total needs them.
   let versionCounts = $state<Record<string, number | null>>({});
   const countsRequested = new Set<string>();
   const seenLiveVersion = new Map<string, number>();
+  const versionQueue = new Set<string>();
+  const VERSION_FETCHES = 4;
+  let versionsInFlight = 0;
+
+  function queueVersions(saveId: string) {
+    versionQueue.add(saveId);
+    pumpVersions();
+  }
+
+  function pumpVersions() {
+    // Untracked: called from the effect below, which would otherwise rerun
+    // on every page turn.
+    const onScreen = untrack(() => pageSaves);
+    while (versionsInFlight < VERSION_FETCHES && versionQueue.size > 0) {
+      const id =
+        onScreen.find((s) => versionQueue.has(s.save_id))?.save_id ??
+        versionQueue.values().next().value!;
+      versionQueue.delete(id);
+      versionsInFlight++;
+      void fetchVersions(id).finally(() => {
+        versionsInFlight--;
+        pumpVersions();
+      });
+    }
+  }
+
+  onDestroy(() => versionQueue.clear());
 
   async function fetchVersions(saveId: string) {
     try {
@@ -173,7 +224,7 @@
       if (changed) seenLiveVersion.set(s.save_id, live);
       if (!countsRequested.has(s.save_id) || changed) {
         countsRequested.add(s.save_id);
-        void fetchVersions(s.save_id);
+        queueVersions(s.save_id);
         anyChanged ||= changed;
       }
     }
@@ -357,7 +408,7 @@
     // Pruning frees server space right away, reflect it on the bar.
     refreshQuota().catch(() => {});
     // …and the stored-version counts this panel shows.
-    for (const s of saves) void fetchVersions(s.save_id);
+    for (const s of saves) queueVersions(s.save_id);
   }
 
   // ---- rename
@@ -913,7 +964,10 @@
         'dashboard',
       )}px, 100%), 1fr))"
     >
-      {#each sortedSaves as save (save.save_id)}
+      {#if pages > 1}
+        <GridPager page={pageIndex} {pages} onPage={goPage} />
+      {/if}
+      {#each pageSaves as save (save.save_id)}
         <SaveGameCard
           {save}
           {now}
