@@ -300,6 +300,13 @@ pub enum Request {
     SetBackupOnClose {
         enabled: bool,
     },
+    /// "Everything by hand" went on or off. An older daemon answers
+    /// [`IpcError::Unsupported`], and the client must not take the mode as
+    /// applied: that daemon doesn't know the setting in the prefs file either,
+    /// and would go on backing up by itself.
+    SetManualOnly {
+        enabled: bool,
+    },
     /// The user just moved their per-save cap on the website or in the app, so
     /// the engine's cached one is a plan behind.
     ///

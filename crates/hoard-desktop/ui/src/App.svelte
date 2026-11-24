@@ -338,6 +338,9 @@
   let automaticMode = $derived($prefs?.automatic_mode ?? false);
   let automaticBusy = $state(false);
   let globalSync = $derived($prefs?.global_sync ?? false);
+  // "Everything by hand" takes the Sync button away: it would only flip between
+  // the other two modes. The way back is the mode picker in Settings.
+  let manualMode = $derived($prefs?.manual_only ?? false);
   // The activity panel's state, read in two places (the button's colours and
   // the scroll that opens and closes with it).
   let activityVisible = $derived($prefs?.live_activity_visible ?? true);
@@ -1075,6 +1078,7 @@
               {/if}
             </div>
         {/if}
+        {#if !manualMode}
         <button
           type="button"
           data-tour="sync"
@@ -1097,6 +1101,7 @@
             {globalSync ? $_("sync.on") : $_("sync.off")}
           </span>
         </button>
+        {/if}
         <button
           type="button"
           data-tour="automatic"

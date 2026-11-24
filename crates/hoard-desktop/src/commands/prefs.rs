@@ -10,7 +10,7 @@
 //! the user disabled the launcher entry from outside Hoard.
 
 use hoard_agent::prefs::{Prefs, SyncMode};
-use hoard_core::ipc::{NotificationSwitch, Request};
+use hoard_core::ipc::{IpcError, NotificationSwitch, Request};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -145,11 +145,38 @@ pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
     let prev_auto_restore = prefs.auto_restore;
     let prev_global_sync = prefs.global_sync;
+    let prev_mode = prefs.sync_mode();
 
     prefs.set_sync_mode(mode);
     prefs
         .save(&path)
         .map_err(|e| AppError::plain(e.to_string()))?;
+
+    // First, and not best-effort like the rest: a service too old for it doesn't
+    // read the setting from the file either, and would go on backing up by
+    // itself under a screen that says nothing moves on its own. A service that
+    // is down reads it from the file when it starts.
+    if (mode == SyncMode::Manual) != (prev_mode == SyncMode::Manual) {
+        let request = Request::SetManualOnly {
+            enabled: mode == SyncMode::Manual,
+        };
+        if let Err(err) = state.daemon.request(request).await {
+            if matches!(
+                err.downcast_ref::<IpcError>(),
+                Some(IpcError::Unsupported { .. })
+            ) {
+                prefs.set_sync_mode(prev_mode);
+                prefs
+                    .save(&path)
+                    .map_err(|e| AppError::plain(e.to_string()))?;
+                return Err(AppError::new(
+                    "common.error_title",
+                    "settings.mode_manual_service_old",
+                ));
+            }
+            tracing::warn!(error = %format!("{err:#}"), "prefs: couldn't push the manual mode; the service reads it on its next start");
+        }
+    }
 
     if prefs.global_sync != prev_global_sync {
         push_pref(

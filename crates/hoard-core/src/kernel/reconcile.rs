@@ -367,6 +367,11 @@ fn decide_backup(
     if next.backup_conflict.needs_attention {
         return Some(hold(HOLD_BACKUP_NEEDS_ATTENTION));
     }
+    // Not even an urgent flush goes up on its own: in this mode nothing is
+    // pulled either, so there is no pull waiting on it.
+    if next.manual_only && !obs.backup_requested {
+        return Some(hold(HOLD_BACKUP_MANUAL));
+    }
     // The user's choice, and not a brake on progress: the pull is vetoed for the
     // whole session anyway, so nothing can land on top of what is held here, and
     // the first quiet tick after the game closes uploads it. Not even an urgent
@@ -417,6 +422,10 @@ pub const HOLD_BACKUP_BURST: &str = "backup autosave burst";
 /// The save backs up when the game closes and the game is open. Not a wait with
 /// a time on it: the shell drops the countdown instead of showing it.
 pub const HOLD_BACKUP_UNTIL_CLOSE: &str = "backup waits for the game to close";
+
+/// The user backs up by hand ("everything by hand"): a change waits for them.
+/// No time on it either, so the shell shows no countdown.
+pub const HOLD_BACKUP_MANUAL: &str = "backup waits for the user";
 
 /// The longest a change waits for its game to close.
 pub const BACKUP_ON_CLOSE_MAX_WAIT_SECS: i64 = 4 * 60 * 60;
@@ -1509,6 +1518,30 @@ mod tests {
             }]
         );
         assert_eq!(next.restore_failures, RestoreFailures::default());
+    }
+
+    #[test]
+    fn manual_only_waits_for_the_user() {
+        let state = State {
+            has_pending: true,
+            manual_only: true,
+            ..base_state()
+        };
+        let (next, d) = reconcile(&state, &quiet_obs(), world(0));
+        assert_eq!(
+            d,
+            vec![Decision::Hold {
+                reason: HOLD_BACKUP_MANUAL
+            }]
+        );
+        assert!(next.has_pending, "the change is kept for the user's backup");
+
+        let asked = Observation {
+            backup_requested: true,
+            ..quiet_obs()
+        };
+        let (_, d) = reconcile(&state, &asked, world(0));
+        assert_eq!(d, vec![Decision::Act(Action::Backup)]);
     }
 
     /// No network (a machine just out of suspend) is neither a failure nor
@@ -2929,6 +2962,7 @@ mod tests {
             conflicts in arb_conflicts(),
             failure_lane in any::<bool>(),
             backup_on_close in any::<bool>(),
+            manual_only in any::<bool>(),
             // Wide enough to cross the close-wait ceiling both ways.
             running_since in prop::option::of(-20_000i64..100),
         ) -> State {
@@ -2953,6 +2987,7 @@ mod tests {
                 deferred_notified,
                 min_backup_interval_secs: min_interval,
                 backup_on_close,
+                manual_only,
                 burst_since: burst_since.map(at),
                 burst_backups,
                 restore_failures: failures,
@@ -3108,6 +3143,7 @@ mod tests {
                 && !state.backup_conflict.needs_attention
                 && !obs.volume_offline
                 && (obs.backup_requested || !waits_for_close(&n, w.now))
+                && (obs.backup_requested || !state.manual_only)
                 && (state.has_pending || obs.fs_event)
                 && local_diverged(&state, &obs)
                 && state.next_backup_at.is_none_or(|t| w.now >= t)
@@ -3116,6 +3152,20 @@ mod tests {
                 prop_assert!(
                     acts(&ds).contains(&&Action::Backup),
                     "cambios pendientes sin subida: el slot queda encallado: {ds:?}"
+                );
+            }
+        }
+
+        /// "Everything by hand" means it: no upload the user did not ask for.
+        #[test]
+        fn inv_manual_only_uploads_only_when_asked(
+            state in arb_state(), obs in arb_obs(false), w in arb_world()
+        ) {
+            let (_n, ds) = reconcile(&state, &obs, w);
+            if state.manual_only && !obs.backup_requested {
+                prop_assert!(
+                    !acts(&ds).contains(&&Action::Backup),
+                    "an upload nobody asked for: {ds:?}"
                 );
             }
         }

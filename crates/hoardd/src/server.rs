@@ -409,6 +409,10 @@ impl Daemon {
                 self.with_engine(|h| async move { h.set_backup_on_close(enabled).await })
                     .await
             }
+            Request::SetManualOnly { enabled } => {
+                self.with_engine(|h| async move { h.set_manual_only(enabled).await })
+                    .await
+            }
             Request::SetPlanCap { limit_bytes, plan } => {
                 self.with_engine(|h| async move { h.set_plan_cap(limit_bytes, plan).await })
                     .await

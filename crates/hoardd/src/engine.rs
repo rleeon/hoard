@@ -806,6 +806,7 @@ fn engine_config() -> AgentConfig {
         auto_restore: prefs.auto_restore || headless,
         global_sync: prefs.global_sync || headless,
         backup_on_close: prefs.backup_on_close,
+        manual_only: prefs.manual_only,
         conflict_retention_days: prefs.conflict_retention_days,
         // `data_saving` deliberately does NOT feed the floor any more. Its
         // slider left the UI on 2026-06-14 ("the backend keeps its defaults"),

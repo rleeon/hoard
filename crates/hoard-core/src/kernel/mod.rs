@@ -201,6 +201,9 @@ pub struct State {
     /// (the shell leaves this off for it), and one it believes open for hours
     /// holds a change no longer than [`reconcile::BACKUP_ON_CLOSE_MAX_WAIT_SECS`].
     pub backup_on_close: bool,
+    /// "Everything by hand": nothing goes up until the user asks for it. A
+    /// change still marks the save pending, so the next "back up now" takes it.
+    pub manual_only: bool,
 
     // ---- live session status, durable across ticks
     /// The game process is running. Sticky: stays `true` through the grace

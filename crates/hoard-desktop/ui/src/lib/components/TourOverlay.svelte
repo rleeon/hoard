@@ -136,6 +136,8 @@
       route: null,
       focus: "item",
       itemTarget: '[data-tour="sync"]',
+      // Not there in "everything by hand".
+      requires: '[data-tour="sync"]',
     },
     {
       icon: RotateCw,

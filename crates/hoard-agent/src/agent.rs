@@ -124,6 +124,11 @@ pub struct AgentConfig {
     /// closes rather than each time it saves. A save's own answer
     /// (`SavePolicy::backup_on_close`) wins over it.
     pub backup_on_close: bool,
+    /// Mirror of `Prefs::manual_only`, "everything by hand": nothing is backed
+    /// up or restored unless the user asks. It wins over every per-save preset,
+    /// since the point is that nothing moves on its own. Detection and the
+    /// automatic mode's scans are not part of it.
+    pub manual_only: bool,
 }
 
 impl Default for AgentConfig {
@@ -138,6 +143,7 @@ impl Default for AgentConfig {
             min_snapshot_interval_secs: 0,
             global_sync: false,
             backup_on_close: false,
+            manual_only: false,
         }
     }
 }
@@ -390,6 +396,8 @@ enum AgentCommand {
     SetGlobalSync(bool),
     /// The global "back up when the game closes" setting moved.
     SetBackupOnClose(bool),
+    /// "Everything by hand" went on or off. See [`AgentConfig::manual_only`].
+    SetManualOnly(bool),
     /// Overwrite the client's cached per-save cap after the user changed it.
     /// See [`hoard_core::ipc::Request::SetPlanCap`].
     SetPlanCap {
@@ -624,6 +632,13 @@ impl AgentHandle {
         self.tx
             .send(AgentCommand::SetBackupOnClose(enabled))
             .await?;
+        Ok(())
+    }
+
+    /// Push "everything by hand" into the running agent. See
+    /// [`AgentConfig::manual_only`].
+    pub async fn set_manual_only(&self, enabled: bool) -> Result<()> {
+        self.tx.send(AgentCommand::SetManualOnly(enabled)).await?;
         Ok(())
     }
 
@@ -1056,11 +1071,7 @@ fn observe_local_fingerprint(path: &Path, game_slug: &str) -> Option<u64> {
 fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -> kernel::State {
     kernel::State {
         track_only: slot.save.track_only,
-        restore_enabled: slot
-            .save
-            .policy
-            .auto_restore
-            .unwrap_or(config.auto_restore || config.global_sync),
+        restore_enabled: restores_on_its_own(slot, config),
         min_backup_interval_secs: slot
             .save
             .policy
@@ -1070,6 +1081,7 @@ fn state_from_slot(slot: &SaveSlot, config: &AgentConfig, now: OffsetDateTime) -
         // anything that touched the folder, and the user's saves are not held
         // back on a guess. A strong signal corroborating it later turns it on.
         backup_on_close: backs_up_on_close(slot, config) && !slot.weak_session,
+        manual_only: config.manual_only,
         is_running: slot.is_running,
         // Passthrough: `process_alive` equals `is_running` in the observation, so
         // the kernel's grace never extends beyond the shell's sticky.
@@ -1551,6 +1563,17 @@ fn observe_slot(slot: &mut SaveSlot, cloud: &CloudHeads) -> kernel::Observation 
     }
 }
 
+/// Whether this save may pull a cloud version without being asked: its preset,
+/// or the global mode. Never in "everything by hand", whatever the preset says.
+fn restores_on_its_own(slot: &SaveSlot, config: &AgentConfig) -> bool {
+    !config.manual_only
+        && slot
+            .save
+            .policy
+            .auto_restore
+            .unwrap_or(config.auto_restore || config.global_sync)
+}
+
 /// Whether this save waits for its game to close before backing up: its own
 /// answer, or failing that the global one.
 fn backs_up_on_close(slot: &SaveSlot, config: &AgentConfig) -> bool {
@@ -1705,7 +1728,9 @@ fn reconcile_all(
                     tracing::debug!(save_id = %id, reason, "agent: reconcile hold");
                     if kernel::reconcile::hold_is_paced_backup(reason) {
                         announce_backup_wait(slots, &id, floor, now, events_tx);
-                    } else if reason == kernel::reconcile::HOLD_BACKUP_UNTIL_CLOSE {
+                    } else if reason == kernel::reconcile::HOLD_BACKUP_UNTIL_CLOSE
+                        || reason == kernel::reconcile::HOLD_BACKUP_MANUAL
+                    {
                         // No time to count down to: the close is the deadline.
                         // Nothing was announced for it (see the `fs_rx` branch).
                         if let Some(slot) = slots.get_mut(&id) {
@@ -1876,11 +1901,7 @@ fn execute_backup(
     let prev_set_hash = slot.last_set_hash.clone();
     let base_version = slot.known_version;
     let max_retries = config.max_retries;
-    let auto_restore = slot
-        .save
-        .policy
-        .auto_restore
-        .unwrap_or(config.auto_restore || config.global_sync);
+    let auto_restore = restores_on_its_own(slot, config);
     let conflict_root = config.conflict_root.clone();
     let conflict_retention_days = config.conflict_retention_days;
     let origin = if std::mem::take(&mut slot.manual_requested) {
@@ -2224,6 +2245,21 @@ async fn run_agent(
                                 &cloud_heads,
                             );
                         }
+                    }
+                    Some(AgentCommand::SetManualOnly(enabled)) => {
+                        config.manual_only = enabled;
+                        tracing::info!(manual_only = enabled, "agent: manual-only preference updated");
+                        // Out of it, whatever waited for the user goes up now; into
+                        // it, the countdowns already on screen have to go.
+                        if enabled {
+                            for slot in slots.values_mut() {
+                                slot.next_scheduled_backup_at = None;
+                            }
+                        }
+                        reconcile_all(
+                            &mut slots, &api, &events_tx, &cmd_tx, &config, &done_tx,
+                            &cloud_heads,
+                        );
                     }
                     Some(AgentCommand::SetBackupOnClose(enabled)) => {
                         config.backup_on_close = enabled;
@@ -2595,7 +2631,11 @@ async fn run_agent(
                     // nothing when the window was already open. (The reducer may still
                     // defer the upload on min-interval; the announcement belongs to
                     // the debounce, as it always did.)
-                    if delay > Duration::ZERO && !already_scheduled && !waits_for_close {
+                    if delay > Duration::ZERO
+                        && !already_scheduled
+                        && !waits_for_close
+                        && !config.manual_only
+                    {
                         let _ = events_tx.try_send(AgentEvent::BackupScheduled {
                             save_id: save_id.clone(),
                             delay_ms: delay.as_millis() as u64,
@@ -7265,6 +7305,7 @@ mod tests {
             conflict_retention_days: 14,
             min_snapshot_interval_secs: 0,
             backup_on_close: false,
+            manual_only: false,
         };
 
         let (handle, task) = spawn(api, config, vec![save], events_tx);
@@ -7300,6 +7341,81 @@ mod tests {
             "timed out waiting for BackupStarted: the fs event never reached the reducer as a backup",
         );
         assert_eq!(save_id, "watcher-bug-1");
+    }
+
+    /// "Everything by hand", end to end: the same rewrite as above announces
+    /// nothing and uploads nothing, and the user's "back up now" still goes.
+    #[tokio::test(flavor = "current_thread")]
+    async fn manual_only_uploads_only_when_asked() {
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        let save_path = tmp.path().to_path_buf();
+
+        let api = ApiClient::new("http://127.0.0.1:1", "fake").expect("fake api client");
+        let (events_tx, mut events_rx) = mpsc::channel::<AgentEvent>(64);
+
+        let save = WatchedSave {
+            save_id: "manual-1".into(),
+            game_slug: "fake-game".into(),
+            display_name: "Fake Game".into(),
+            label: "main".into(),
+            local_path: save_path.clone(),
+            steam_install_dir: None,
+            processes: vec![],
+            shared_processes: false,
+            policy: Default::default(),
+            allow_device_local: None,
+            known_version: None,
+            set_hash: None,
+            track_only: false,
+        };
+        let config = AgentConfig {
+            debounce_secs: 1,
+            max_retries: 0,
+            manual_only: true,
+            ..AgentConfig::default()
+        };
+        let (handle, task) = spawn(api, config, vec![save], events_tx);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        write_file(&save_path.join("save.dat"), b"progress");
+
+        // Twice the debounce and a poll tick: the automatic path would have
+        // started by now (the test above waits for exactly this).
+        let unasked = tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(evt) = events_rx.recv().await {
+                if matches!(
+                    evt,
+                    AgentEvent::BackupStarted { .. } | AgentEvent::BackupScheduled { .. }
+                ) {
+                    return Some(evt);
+                }
+            }
+            None
+        })
+        .await;
+
+        handle.backup_now("manual-1").await.expect("ask for a backup");
+        let asked = tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(evt) = events_rx.recv().await {
+                if let AgentEvent::BackupStarted { save_id, .. } = evt {
+                    return save_id;
+                }
+            }
+            "<channel closed>".to_string()
+        })
+        .await;
+
+        let _ = handle.shutdown().await;
+        let _ = tokio::time::timeout(Duration::from_secs(2), task).await;
+
+        assert!(
+            !matches!(unasked, Ok(Some(_))),
+            "moved without being asked: {unasked:?}"
+        );
+        assert_eq!(
+            asked.expect("\"back up now\" never started a backup"),
+            "manual-1"
+        );
     }
 
     /// A backup that burns its whole retry budget used to leave the slot in a

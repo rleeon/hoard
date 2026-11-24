@@ -185,6 +185,13 @@ pub struct Prefs {
     #[serde(default)]
     pub global_sync: bool,
 
+    /// "Everything by hand" ([`SyncMode::Manual`]): nothing is backed up or
+    /// restored unless the user asks. Over `global_sync` and `auto_restore`,
+    /// which it leaves off. An older app drops it on its next save and the
+    /// machine goes back to backup-only, which is the mode it can show.
+    #[serde(default)]
+    pub manual_only: bool,
+
     /// When `true`, the sidebar's automatic-mode toggle is on. The desktop
     /// app keeps two background schedulers alive: a cheap detection scan
     /// (every `automatic_scan_interval_secs`) that tracks newly installed
@@ -336,16 +343,19 @@ impl Default for Prefs {
             live_activity_visible: true,
             data_saving: default_data_saving(),
             backup_on_close: false,
+            manual_only: false,
         }
     }
 }
 
-/// The two user-facing operating modes. This is a *derived view* over the
-/// internal `auto_restore` and `global_sync` flags; the source of truth stays
-/// those two booleans so per-save presets and the existing agent plumbing keep
-/// working unchanged. The UI only ever shows / sets this binary choice; it
-/// never exposes the two internal toggles directly.
+/// The user-facing operating modes. This is a *derived view* over the
+/// internal `manual_only`, `auto_restore` and `global_sync` flags; the source of
+/// truth stays those booleans so per-save presets and the existing agent
+/// plumbing keep working unchanged. The UI only ever shows / sets this choice;
+/// it never exposes the internal toggles directly.
 ///
+/// * `Manual` → `manual_only = true`, the other two off: nothing goes up or
+///   comes down unless the user asks. Detection is not part of it.
 /// * `BackupOnly` → `global_sync = false`, `auto_restore = false`: uploads
 ///   local changes but never downloads automatically. Restoring is always a
 ///   manual action.
@@ -355,6 +365,7 @@ impl Default for Prefs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncMode {
+    Manual,
     BackupOnly,
     FullSync,
 }
@@ -366,7 +377,9 @@ impl Prefs {
     /// download/version-gate path (`auto_restore` is the older, narrower
     /// "restore on add" knob that `global_sync` subsumes).
     pub fn sync_mode(&self) -> SyncMode {
-        if self.global_sync {
+        if self.manual_only {
+            SyncMode::Manual
+        } else if self.global_sync {
             SyncMode::FullSync
         } else {
             SyncMode::BackupOnly
@@ -379,8 +392,9 @@ impl Prefs {
     /// presets (`policy.auto_restore = Some(false)`) still win as exceptions,
     /// that logic lives in the agent, not here.
     pub fn set_sync_mode(&mut self, mode: SyncMode) {
+        self.manual_only = mode == SyncMode::Manual;
         match mode {
-            SyncMode::BackupOnly => {
+            SyncMode::Manual | SyncMode::BackupOnly => {
                 self.global_sync = false;
                 self.auto_restore = false;
             }
@@ -544,6 +558,17 @@ mod tests {
         // auto_restore happens to be off; global_sync is the deciding flag.
         p.global_sync = true;
         p.auto_restore = false;
+        assert_eq!(p.sync_mode(), SyncMode::FullSync);
+
+        // Manual leaves the other two off, whatever they were, and any other
+        // mode takes it back off.
+        p.set_sync_mode(SyncMode::Manual);
+        assert!(p.manual_only);
+        assert!(!p.global_sync);
+        assert!(!p.auto_restore);
+        assert_eq!(p.sync_mode(), SyncMode::Manual);
+        p.set_sync_mode(SyncMode::FullSync);
+        assert!(!p.manual_only);
         assert_eq!(p.sync_mode(), SyncMode::FullSync);
     }
 

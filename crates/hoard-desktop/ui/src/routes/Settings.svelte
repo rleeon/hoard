@@ -29,6 +29,7 @@
     Palette,
     Activity,
     DownloadCloud,
+    Hand,
     HardDrive,
     Server,
     ServerCog,
@@ -271,7 +272,9 @@
       const updated = await api.setSyncMode(mode);
       prefs.set(updated);
     } catch (e) {
-      toastError(typeof e === "string" ? e : (e as Error).message);
+      // Structured: "the service is too old for the manual mode" comes back
+      // as a key with its own sentence.
+      showError(e);
     } finally {
       saving = null;
     }
@@ -870,7 +873,7 @@
         </h2>
         <Card>
           <div class="space-y-2">
-            {#each [{ mode: "backup_only", icon: HardDrive, title: $_("settings.mode_backup_title"), desc: $_("settings.mode_backup_desc") }, { mode: "full_sync", icon: DownloadCloud, title: $_("settings.mode_sync_title"), desc: $_("settings.mode_sync_desc") }] as opt (opt.mode)}
+            {#each [{ mode: "manual", icon: Hand, title: $_("settings.mode_manual_title"), desc: $_("settings.mode_manual_desc") }, { mode: "backup_only", icon: HardDrive, title: $_("settings.mode_backup_title"), desc: $_("settings.mode_backup_desc") }, { mode: "full_sync", icon: DownloadCloud, title: $_("settings.mode_sync_title"), desc: $_("settings.mode_sync_desc") }] as opt (opt.mode)}
               <button
                 type="button"
                 disabled={saving === "sync_mode"}

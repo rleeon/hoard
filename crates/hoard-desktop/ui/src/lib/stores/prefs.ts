@@ -44,6 +44,7 @@ export async function hydratePrefs(): Promise<void> {
       language: null,
       auto_restore: false,
       global_sync: false,
+      manual_only: false,
       automatic_mode: false,
       automatic_scan_interval_secs: 300,
       automatic_backup_interval_secs: 3600,

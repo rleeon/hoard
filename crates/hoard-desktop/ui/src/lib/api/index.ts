@@ -929,6 +929,8 @@ export type Prefs = {
    *  and non-destructive (local-newer files are parked under conflicts).
    *  Off by default. */
   global_sync: boolean;
+  /** "Everything by hand": nothing goes up or comes down on its own. */
+  manual_only?: boolean;
   /** When `true`, the sidebar's automatic-mode toggle is on. The Rust
    *  side keeps two background schedulers alive, a cheap detection scan
    *  (`automatic_scan_interval_secs`) and an expensive staggered hash sweep
@@ -972,14 +974,15 @@ export type Prefs = {
 };
 
 /** The single user-facing operating mode. Mirrors `hoard_agent::prefs::SyncMode`.
- *  Derived from / applied onto the internal `global_sync` + `auto_restore`
- *  flags, the UI only ever shows this binary choice, never the two toggles. */
-export type SyncMode = "backup_only" | "full_sync";
+ *  Derived from / applied onto the internal `manual_only`, `global_sync` and
+ *  `auto_restore` flags, the UI only ever shows this choice, never the toggles. */
+export type SyncMode = "manual" | "backup_only" | "full_sync";
 
 /** Derive the user-facing mode from a Prefs object, mirroring
- *  `Prefs::sync_mode` on the Rust side: full sync the moment `global_sync` is
- *  on, backup-only otherwise. */
+ *  `Prefs::sync_mode` on the Rust side. A service older than the manual mode
+ *  sends no `manual_only`, which reads as off. */
 export function syncModeOf(p: Prefs): SyncMode {
+  if (p.manual_only) return "manual";
   return p.global_sync ? "full_sync" : "backup_only";
 }
 
