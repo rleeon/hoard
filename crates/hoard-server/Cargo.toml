@@ -52,7 +52,7 @@ tower-http = { workspace = true }
 # `governor` is its underlying limiter, named directly only to spell out the
 # layer's middleware type in `ratelimit.rs`.
 tower_governor = "0.4"
-governor = "0.6"
+governor = "0.10"
 sqlx = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
