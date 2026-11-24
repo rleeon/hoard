@@ -3778,7 +3778,7 @@ dependencies = [
  "anyhow",
  "astral-tokio-tar",
  "async-compression",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "dbus",
  "dbus-secret-service",
@@ -3867,7 +3867,7 @@ name = "hoard-desktop"
 version = "1.3.0"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
+ "base64 0.23.1",
  "evdev",
  "futures",
  "glib",
@@ -3946,7 +3946,7 @@ dependencies = [
  "aws-sdk-s3",
  "aws-smithy-runtime-api",
  "axum",
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "clap",
  "figment",

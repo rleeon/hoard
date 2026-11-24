@@ -100,7 +100,7 @@ jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 hmac = { version = "0.12", optional = true }
 # Polar webhooks use Standard Webhooks: base64-encoded HMAC-SHA256 over
 # `id.timestamp.body`.
-base64 = "0.22"
+base64 = "0.23"
 # Account-export ZIP writer. Entries are `Stored` (game saves are already
 # compressed) so this is just the container format.
 zip = { workspace = true, optional = true }
