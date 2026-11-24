@@ -9,8 +9,8 @@
 //! mirrors the resulting state into prefs so the UI reflects reality even if
 //! the user disabled the launcher entry from outside Hoard.
 
-use hoard_agent::prefs::{Prefs, SyncMode};
-use hoard_core::ipc::{IpcError, NotificationSwitch, Request};
+use hoard_agent::prefs::{ModeChange, Prefs, ServiceLink, SyncMode};
+use hoard_core::ipc::{NotificationSwitch, Request};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -130,74 +130,32 @@ pub async fn set_global_sync(state: State<'_, AppState>, enabled: bool) -> Resul
     Ok(prefs)
 }
 
-/// Set the single user-facing operating mode (`backup_only` / `full_sync`).
-/// This is the onboarding + Settings radio: it maps the chosen [`SyncMode`]
-/// onto the internal `global_sync` / `auto_restore` flags, persists prefs, and
-/// hot-reconfigures the service's engine so the change takes effect without a
-/// restart. Per-save presets still override as exceptions.
-///
-/// We push *both* flags when either changed, mirroring what `save_prefs` does
-/// field by field: on a flip into `FullSync` the engine sweeps immediately and
-/// pulls any outdated save.
+/// Set the single user-facing operating mode (Settings' mode picker and the
+/// onboarding). What it writes and what the service is told is shared with
+/// `hoard config set sync.mode`: see [`hoard_agent::prefs::change_sync_mode`].
 #[tauri::command]
 pub async fn set_sync_mode(state: State<'_, AppState>, mode: SyncMode) -> Result<Prefs, AppError> {
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
-    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
-    let prev_auto_restore = prefs.auto_restore;
-    let prev_global_sync = prefs.global_sync;
-    let prev_mode = prefs.sync_mode();
-
-    prefs.set_sync_mode(mode);
-    prefs
-        .save(&path)
+    let current = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
+    let change = hoard_agent::prefs::change_sync_mode(&path, current, mode, &mut AppLink(&state))
+        .await
         .map_err(|e| AppError::plain(e.to_string()))?;
-
-    // First, and not best-effort like the rest: a service too old for it doesn't
-    // read the setting from the file either, and would go on backing up by
-    // itself under a screen that says nothing moves on its own. A service that
-    // is down reads it from the file when it starts.
-    if (mode == SyncMode::Manual) != (prev_mode == SyncMode::Manual) {
-        let request = Request::SetManualOnly {
-            enabled: mode == SyncMode::Manual,
-        };
-        if let Err(err) = state.daemon.request(request).await {
-            if matches!(
-                err.downcast_ref::<IpcError>(),
-                Some(IpcError::Unsupported { .. })
-            ) {
-                prefs.set_sync_mode(prev_mode);
-                prefs
-                    .save(&path)
-                    .map_err(|e| AppError::plain(e.to_string()))?;
-                return Err(AppError::new(
-                    "common.error_title",
-                    "settings.mode_manual_service_old",
-                ));
-            }
-            tracing::warn!(error = %format!("{err:#}"), "prefs: couldn't push the manual mode; the service reads it on its next start");
-        }
+    match change {
+        ModeChange::Applied { prefs, .. } => Ok(prefs),
+        ModeChange::ServiceTooOld => Err(AppError::new(
+            "common.error_title",
+            "settings.mode_manual_service_old",
+        )),
     }
+}
 
-    if prefs.global_sync != prev_global_sync {
-        push_pref(
-            &state,
-            Request::SetGlobalSync {
-                enabled: prefs.global_sync,
-            },
-        )
-        .await;
-    }
-    if prefs.auto_restore != prev_auto_restore {
-        push_pref(
-            &state,
-            Request::SetAutoRestore {
-                enabled: prefs.auto_restore,
-            },
-        )
-        .await;
-    }
+/// The service as the app reaches it, for the mode changes it shares with the CLI.
+struct AppLink<'a>(&'a AppState);
 
-    Ok(prefs)
+impl ServiceLink for AppLink<'_> {
+    async fn send(&mut self, request: Request) -> anyhow::Result<bool> {
+        self.0.daemon.request(request).await.map(|_| true)
+    }
 }
 
 /// Enable or disable **the app's** autostart entry: whether the window opens at
@@ -529,17 +487,10 @@ pub fn app_autostart_available() -> bool {
     app_autostart_supported()
 }
 
-/// Flips the sidebar's automatic-mode toggle. Persists the new value to
-/// `prefs.json`, cascades `auto_restore = true` on activation (and only on
-/// activation: turning the toggle off intentionally leaves `auto_restore`
-/// alone so the user can keep auto-restore independently), and starts or
-/// stops the background scheduler accordingly.
-///
-/// The cascade direction was a deliberate choice: turning automatic mode on
-/// implies "do everything for me", so silently enabling auto-restore is the
-/// obvious follow-through. Turning it off, on the other hand, is "don't scan
-/// periodically", and it shouldn't pull the rug out from under a user who
-/// explicitly toggled auto-restore on a week ago and forgot.
+/// Flips the sidebar's automatic-mode toggle. The prefs side, auto-restore
+/// cascade included, is shared with `hoard config set detection.auto`
+/// ([`hoard_agent::prefs::change_automatic_mode`]); what stays here is starting
+/// or stopping the app's own schedulers, the fallback for an older service.
 ///
 /// Errors are returned as `AppError` so the frontend `showError` flow
 /// handles them uniformly with the rest of the 1.5.3 command surface.
@@ -550,34 +501,13 @@ pub async fn set_automatic_mode(
     enabled: bool,
 ) -> Result<Prefs, AppError> {
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
-    let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
-    let prev_auto_restore = prefs.auto_restore;
+    let current = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
 
     tracing::info!(enabled, "automatic mode: switched from the app");
-    prefs.automatic_mode = enabled;
-    let mut auto_restore_changed = false;
-    if enabled && !prefs.auto_restore {
-        prefs.auto_restore = true;
-        auto_restore_changed = true;
-    }
-
-    prefs
-        .save(&path)
-        .map_err(|e| AppError::plain(e.to_string()))?;
-
-    // Push the new auto_restore into the service's engine if it cascaded on. We
-    // mirror the side-effect that `save_prefs` performs for the same field
-    // so toggling automatic mode behaves identically to flipping the
-    // auto-restore checkbox in Settings.
-    if auto_restore_changed && prefs.auto_restore != prev_auto_restore {
-        push_pref(
-            &state,
-            Request::SetAutoRestore {
-                enabled: prefs.auto_restore,
-            },
-        )
-        .await;
-    }
+    let (prefs, _) =
+        hoard_agent::prefs::change_automatic_mode(&path, current, enabled, &mut AppLink(&state))
+            .await
+            .map_err(|e| AppError::plain(e.to_string()))?;
 
     if enabled {
         automatic::start(

@@ -15,7 +15,7 @@
 //! (opt-out in Settings).
 
 use anyhow::{Context, Result};
-use hoard_core::ipc::{NotificationSwitch, NotificationSwitches};
+use hoard_core::ipc::{IpcError, NotificationSwitch, NotificationSwitches, Request};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -493,17 +493,18 @@ impl Prefs {
     /// make it upload-only, so a first file carries the headless values.
     pub fn load_for_cli_edit() -> Result<(Self, PathBuf)> {
         let path = Self::default_path()?;
+        Ok((Self::load_for_edit_at(&path)?, path))
+    }
+
+    fn load_for_edit_at(path: &Path) -> Result<Self> {
         if path.exists() {
-            return Ok((Self::load(&path)?, path));
+            return Self::load(path);
         }
-        Ok((
-            Self {
-                auto_restore: true,
-                global_sync: true,
-                ..Self::default()
-            },
-            path,
-        ))
+        Ok(Self {
+            auto_restore: true,
+            global_sync: true,
+            ..Self::default()
+        })
     }
 
     /// Atomically write the prefs file: temp sibling, fsync, rename over the
@@ -532,9 +533,226 @@ impl Prefs {
     }
 }
 
+// ---- switching modes from a frontend
+//
+// The app's Settings and `hoard config set` move the same switches, and what
+// one does on the way the other has to do too: these are those steps, and each
+// frontend only says how it reaches the service.
+
+/// How a frontend reaches the running service.
+#[allow(async_fn_in_trait)]
+pub trait ServiceLink {
+    /// `Ok(false)`: there is no service running, and it reads the file when it
+    /// starts.
+    async fn send(&mut self, request: Request) -> Result<bool>;
+}
+
+#[derive(Debug)]
+pub enum ModeChange {
+    /// Written. `live` says whether the running service took it now.
+    Applied { prefs: Prefs, live: bool },
+    /// The service is older than the manual mode and the file was put back as
+    /// it was: that service doesn't read the setting from the file either, and
+    /// would go on backing up by itself under a mode that says nothing does.
+    ServiceTooOld,
+}
+
+/// Move to `mode` (Settings' mode picker, `hoard config set sync.mode`).
+/// `current` is the file at `path` as the frontend reads it: the CLI with no
+/// file yet takes the headless defaults (see [`Prefs::load_for_cli_edit`]).
+pub async fn change_sync_mode(
+    path: &Path,
+    current: Prefs,
+    mode: SyncMode,
+    link: &mut impl ServiceLink,
+) -> Result<ModeChange> {
+    let before = current;
+    let mut prefs = before.clone();
+    prefs.set_sync_mode(mode);
+    prefs.save(path)?;
+
+    let mut live = true;
+    // First, and the one that can't be missed: see `ModeChange::ServiceTooOld`.
+    // A service that is down reads it from the file when it starts.
+    if prefs.manual_only != before.manual_only {
+        let request = Request::SetManualOnly {
+            enabled: prefs.manual_only,
+        };
+        match link.send(request).await {
+            Ok(taken) => live &= taken,
+            Err(err) if refused_as_unknown(&err) => {
+                before.save(path)?;
+                return Ok(ModeChange::ServiceTooOld);
+            }
+            Err(err) => {
+                tracing::warn!(error = %format!("{err:#}"), "prefs: the service didn't take the manual mode; it reads it on its next start");
+                live = false;
+            }
+        }
+    }
+    let mut pushes = Vec::new();
+    if prefs.global_sync != before.global_sync {
+        pushes.push(Request::SetGlobalSync {
+            enabled: prefs.global_sync,
+        });
+    }
+    if prefs.auto_restore != before.auto_restore {
+        pushes.push(Request::SetAutoRestore {
+            enabled: prefs.auto_restore,
+        });
+    }
+    live &= push_all(link, pushes).await;
+    Ok(ModeChange::Applied { prefs, live })
+}
+
+/// Turn the automatic mode (the periodic scan that adds new games) on or off.
+/// The service reads the switch from the file on every pass, so it is told
+/// nothing about it. Returns the prefs written and whether the running service
+/// took the change now.
+///
+/// Turning it on also turns auto-restore on: "do everything for me" has that as
+/// its obvious follow-through. Not in the manual mode, where nothing comes down
+/// by itself. Turning it off is only "don't scan periodically", and leaves
+/// auto-restore alone, so a user who turned it on by hand a week ago and forgot
+/// doesn't lose it.
+pub async fn change_automatic_mode(
+    path: &Path,
+    current: Prefs,
+    on: bool,
+    link: &mut impl ServiceLink,
+) -> Result<(Prefs, bool)> {
+    let mut prefs = current;
+    prefs.automatic_mode = on;
+    let cascade = on && !prefs.auto_restore && !prefs.manual_only;
+    if cascade {
+        prefs.auto_restore = true;
+    }
+    prefs.save(path)?;
+    let pushes = if cascade {
+        vec![Request::SetAutoRestore { enabled: true }]
+    } else {
+        Vec::new()
+    };
+    let live = push_all(link, pushes).await;
+    Ok((prefs, live))
+}
+
+/// Best effort: whatever the service misses it reads from the file when it
+/// starts.
+async fn push_all(link: &mut impl ServiceLink, requests: Vec<Request>) -> bool {
+    let mut live = true;
+    for request in requests {
+        match link.send(request).await {
+            Ok(taken) => live &= taken,
+            Err(err) => {
+                tracing::warn!(error = %format!("{err:#}"), "prefs: couldn't push a mode change to the service");
+                live = false;
+            }
+        }
+    }
+    live
+}
+
+fn refused_as_unknown(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<IpcError>(),
+        Some(IpcError::Unsupported { .. })
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A service that takes everything, or refuses the manual mode the way one
+    /// older than it does, or isn't running.
+    struct FakeService {
+        sent: Vec<Request>,
+        too_old: bool,
+        running: bool,
+    }
+
+    impl FakeService {
+        fn new() -> Self {
+            Self { sent: Vec::new(), too_old: false, running: true }
+        }
+    }
+
+    impl ServiceLink for FakeService {
+        async fn send(&mut self, request: Request) -> Result<bool> {
+            if self.too_old && matches!(request, Request::SetManualOnly { .. }) {
+                return Err(IpcError::Unsupported { op: "set_manual_only".into() }.into());
+            }
+            self.sent.push(request);
+            Ok(self.running)
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_mode_tells_the_service_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prefs.json");
+        let mut svc = FakeService::new();
+
+        // No file yet is the headless machine, which syncs both ways: all three move.
+        let current = Prefs::load_for_edit_at(&path).unwrap();
+        let change = change_sync_mode(&path, current, SyncMode::Manual, &mut svc).await.unwrap();
+        assert!(matches!(change, ModeChange::Applied { live: true, .. }));
+        assert!(matches!(svc.sent[0], Request::SetManualOnly { enabled: true }));
+        assert!(matches!(svc.sent[1], Request::SetGlobalSync { enabled: false }));
+        assert!(matches!(svc.sent[2], Request::SetAutoRestore { enabled: false }));
+        assert_eq!(Prefs::load(&path).unwrap().sync_mode(), SyncMode::Manual);
+    }
+
+    #[tokio::test]
+    async fn a_service_too_old_for_it_gets_the_file_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prefs.json");
+        let mut prefs = Prefs::default();
+        prefs.set_sync_mode(SyncMode::FullSync);
+        prefs.save(&path).unwrap();
+        let mut svc = FakeService { too_old: true, ..FakeService::new() };
+
+        let change = change_sync_mode(&path, prefs, SyncMode::Manual, &mut svc).await.unwrap();
+        assert!(matches!(change, ModeChange::ServiceTooOld));
+        assert_eq!(Prefs::load(&path).unwrap().sync_mode(), SyncMode::FullSync);
+        assert!(svc.sent.is_empty(), "nothing else was pushed: {:?}", svc.sent);
+    }
+
+    #[tokio::test]
+    async fn no_service_running_still_writes_the_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prefs.json");
+        let mut svc = FakeService { running: false, ..FakeService::new() };
+
+        let current = Prefs::load_for_edit_at(&path).unwrap();
+        let change = change_sync_mode(&path, current, SyncMode::BackupOnly, &mut svc).await.unwrap();
+        assert!(matches!(change, ModeChange::Applied { live: false, .. }));
+        assert_eq!(Prefs::load(&path).unwrap().sync_mode(), SyncMode::BackupOnly);
+    }
+
+    #[tokio::test]
+    async fn automatic_mode_turns_restore_on_except_in_manual() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("prefs.json");
+        let mut prefs = Prefs::default();
+        prefs.set_sync_mode(SyncMode::BackupOnly);
+        prefs.save(&path).unwrap();
+        let mut svc = FakeService::new();
+
+        change_automatic_mode(&path, prefs.clone(), true, &mut svc).await.unwrap();
+        let after = Prefs::load(&path).unwrap();
+        assert!(after.automatic_mode && after.auto_restore);
+        assert!(matches!(svc.sent[..], [Request::SetAutoRestore { enabled: true }]));
+
+        prefs.set_sync_mode(SyncMode::Manual);
+        prefs.save(&path).unwrap();
+        let mut svc = FakeService::new();
+        change_automatic_mode(&path, prefs, true, &mut svc).await.unwrap();
+        let after = Prefs::load(&path).unwrap();
+        assert!(after.automatic_mode && !after.auto_restore);
+        assert!(svc.sent.is_empty());
+    }
 
     #[test]
     fn sync_mode_round_trips_through_internal_flags() {
