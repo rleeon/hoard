@@ -93,7 +93,7 @@ thiserror = "2"
 # Crypto
 argon2 = "0.5"
 blake3 = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 rand = "0.8"
 base64 = "0.22"
