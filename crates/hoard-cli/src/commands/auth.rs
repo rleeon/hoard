@@ -89,13 +89,27 @@ async fn login_selfhost(token: String, server: Option<String>) -> Result<()> {
     // And to `config.toml` as well: it is the headless path and what this same
     // CLI's one-shots read with no service in front. Plain text and 0600, as
     // always; there is no keyring to poison here.
-    cfg.auth.token = Some(token);
+    cfg.auth.token = Some(token.clone());
     cfg.save(&path)?;
     if !handed {
-        // The service did not hear about it through the handover. On top of
-        // that, whatever session the app may have stored has to go: the engine
-        // prefers it, so leaving it there would make this login pointless.
-        let _ = hoard_agent::credentials::forget_unlocked();
+        // The service did not hear about it through the handover. Whatever session
+        // the app has stored is replaced with this one: the engine prefers it, so
+        // leaving the old one would make this login pointless. It used to be wiped
+        // with the sign-out marker instead, and then the engine synced with this
+        // token while the app, which reads that file, asked to sign in (23-11-2026).
+        // Written to the file only; the service lifts it into the keyring itself.
+        let creds = hoard_agent::credentials::Credentials {
+            url: cfg.server.url.clone(),
+            token,
+            user: Some(hoard_agent::credentials::UserSection {
+                user_id: me.user_id.clone(),
+                username: me.username.to_string(),
+                is_admin: me.is_admin,
+            }),
+        };
+        if let Err(e) = hoard_agent::credentials::save_unlocked(&creds) {
+            eprintln!("warning: the desktop app may still show the previous session: {e:#}");
+        }
         link::notify_session_changed().await;
     }
     println!(
