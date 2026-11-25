@@ -9,7 +9,7 @@
 //! mirrors the resulting state into prefs so the UI reflects reality even if
 //! the user disabled the launcher entry from outside Hoard.
 
-use hoard_agent::prefs::{ModeChange, Prefs, ServiceLink, SyncMode};
+use hoard_agent::prefs::{AutomaticTimer, ModeChange, Prefs, ServiceLink, SyncMode};
 use hoard_core::ipc::{NotificationSwitch, Request};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
@@ -530,14 +530,11 @@ pub async fn set_automatic_mode(
 /// fires right after saving).
 #[tauri::command]
 pub async fn set_scan_interval(app: AppHandle, secs: u64) -> Result<Prefs, AppError> {
-    if !(60..=3600).contains(&secs) {
-        return Err(AppError::plain(format!(
-            "scan interval out of range: {secs}s (expected 60..=3600)"
-        )));
-    }
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
-    prefs.automatic_scan_interval_secs = secs;
+    prefs
+        .set_automatic_interval(AutomaticTimer::Scan, secs)
+        .map_err(|e| AppError::plain(e.to_string()))?;
     prefs
         .save(&path)
         .map_err(|e| AppError::plain(e.to_string()))?;
@@ -561,14 +558,11 @@ pub async fn set_scan_interval(app: AppHandle, secs: u64) -> Result<Prefs, AppEr
 /// ceiling on a large set. Restarts the schedulers if the toggle is on.
 #[tauri::command]
 pub async fn set_backup_interval(app: AppHandle, secs: u64) -> Result<Prefs, AppError> {
-    if !(300..=86400).contains(&secs) {
-        return Err(AppError::plain(format!(
-            "backup interval out of range: {secs}s (expected 300..=86400)"
-        )));
-    }
     let path = Prefs::default_path().map_err(|e| AppError::plain(e.to_string()))?;
     let mut prefs = Prefs::load(&path).map_err(|e| AppError::plain(e.to_string()))?;
-    prefs.automatic_backup_interval_secs = secs;
+    prefs
+        .set_automatic_interval(AutomaticTimer::Backup, secs)
+        .map_err(|e| AppError::plain(e.to_string()))?;
     prefs
         .save(&path)
         .map_err(|e| AppError::plain(e.to_string()))?;

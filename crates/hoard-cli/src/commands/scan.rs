@@ -10,16 +10,31 @@
 //! Note it does *not* include the backup sweep (re-hashing each tracked save),
 //! which needs a server and tracked saves. The scan is the dominant machine-local
 //! cost and the part that is unique to ticking periodically.
+//!
+//! Two flags leave the benchmark behind. `--refresh` is the Library's scan
+//! button: the result is kept as the list the app shows, and the service runs it
+//! when it is the one that does detection. `--folder` is "add from folder", the
+//! games inside one folder the user points at.
 
-use std::time::Instant;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
-use anyhow::Result;
-use hoard_agent::detection::{self, Confidence};
+use anyhow::{bail, Result};
+use hoard_agent::detection::{self, Confidence, DetectedGame, DetectionReport};
 use hoard_agent::manifest::Os;
 use hoard_agent::state::CliState;
+use hoard_core::ipc::{Payload, Request};
 use serde::Serialize;
 
+use crate::commands::link;
 use crate::output;
+
+/// A deep sweep walks every Wine prefix and mounted drive: minutes on a big
+/// disk are normal, an hour is not.
+const SCAN_LIMIT: Duration = Duration::from_secs(30 * 60);
+
+/// One folder's walk has its own timeout in the service; this is the backstop.
+const FOLDER_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 /// One detected game.
 #[derive(Serialize)]
@@ -46,6 +61,9 @@ pub struct ScanOut {
     /// The exhaustive pass (`--deep`), which walks arbitrary Wine prefixes and
     /// Flatpak/Snap roots.
     pub deep: bool,
+    /// `--refresh`: the result is now the Library's list. Without it nothing was
+    /// written.
+    pub saved: bool,
     pub catalog_entries: usize,
     pub steam_apps_found: usize,
     pub games_detected: usize,
@@ -130,6 +148,8 @@ pub struct ExcludedOut {
 pub async fn run(
     verbose: bool,
     deep: bool,
+    refresh: bool,
+    folder: Option<PathBuf>,
     exclude: Vec<String>,
     unexclude: Vec<String>,
     list_excluded: bool,
@@ -167,24 +187,32 @@ pub async fn run(
         });
     }
 
-    let os = Os::current();
     // Load overrides so the bench mirrors what the app actually scans. The
     // tracked-save warnings read the account's saves, hence the context first.
     hoard_agent::session::set_context_offline();
     let (cli_state, _) = CliState::load_default()?;
 
+    if let Some(folder) = folder {
+        return scan_folder(folder, &cli_state).await;
+    }
+
     let start = Instant::now();
-    let mut report = if deep {
-        detection::detect_all_deep(os, &cli_state, |_done, _total| {}).await?
+    let report = if refresh {
+        refreshed(deep).await?
     } else {
-        detection::detect_all(os, &cli_state, |_done, _total| {}).await?
+        let os = Os::current();
+        let mut report = if deep {
+            detection::detect_all_deep(os, &cli_state, |_done, _total| {}).await?
+        } else {
+            detection::detect_all(os, &cli_state, |_done, _total| {}).await?
+        };
+        // The same edge filters the desktop applies, so the bench reflects what the
+        // user sees rather than a different list.
+        report.games.retain(|g| !cli_state.is_ignored(&g.slug));
+        hoard_agent::library::apply_excluded_paths(&mut report, &cli_state);
+        report
     };
     let elapsed = start.elapsed();
-
-    // The same edge filters the desktop applies, so the bench reflects what the
-    // user sees rather than a different list.
-    report.games.retain(|g| !cli_state.is_ignored(&g.slug));
-    hoard_agent::library::apply_excluded_paths(&mut report, &cli_state);
 
     let (mut high, mut medium, mut low, mut with_paths) = (0usize, 0usize, 0usize, 0usize);
     let mut needing_folder = 0usize;
@@ -202,20 +230,10 @@ pub async fn run(
         }
     }
 
-    // A game counts as tracked if a save points at one of its folders, or if
-    // one carries its slug. Both, because the two can disagree: the slug is not
-    // stable across catalog revisions, and a folder can be tracked under a
-    // hand-typed name that no longer matches the detected slug.
-    let tracked_paths: Vec<&std::path::PathBuf> =
-        cli_state.saves.values().map(|s| &s.local_path).collect();
-    let is_tracked = |g: &hoard_agent::detection::DetectedGame| {
-        cli_state.saves.values().any(|s| s.game_slug == g.slug)
-            || g.found_paths.iter().any(|p| tracked_paths.contains(&p))
-    };
-
     let out = ScanOut {
         elapsed_secs: elapsed.as_secs_f64(),
         deep,
+        saved: refresh,
         catalog_entries: report.catalog_size,
         steam_apps_found: report.steam_apps_found,
         games_detected: report.games.len(),
@@ -230,22 +248,7 @@ pub async fn run(
             report
                 .games
                 .iter()
-                .map(|g| ScanGame {
-                    slug: g.slug.clone(),
-                    display_name: g.display_name.clone(),
-                    confidence: match g.confidence {
-                        Confidence::High => "high",
-                        Confidence::Medium => "medium",
-                        Confidence::Low => "low",
-                    },
-                    paths: g
-                        .found_paths
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect(),
-                    needs_folder: g.needs_folder,
-                    tracked: is_tracked(g),
-                })
+                .map(|g| scan_game(g, &cli_state))
                 .collect()
         }),
     };
@@ -260,11 +263,107 @@ pub async fn run(
         println!("    low:             {}", out.low_confidence);
         println!("    with save paths: {}", out.with_save_paths);
         println!("    needs a folder:  {}", out.needing_folder);
+        if out.saved {
+            println!("  kept as the Library's list");
+        }
 
         if let Some(games) = &out.games {
             println!();
             print!("{}", render_table(games));
         }
+    })
+}
+
+/// One detected game as the output carries it.
+fn scan_game(g: &DetectedGame, state: &CliState) -> ScanGame {
+    ScanGame {
+        slug: g.slug.clone(),
+        display_name: g.display_name.clone(),
+        confidence: match g.confidence {
+            Confidence::High => "high",
+            Confidence::Medium => "medium",
+            Confidence::Low => "low",
+        },
+        paths: g
+            .found_paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect(),
+        needs_folder: g.needs_folder,
+        tracked: is_tracked(g, state),
+    }
+}
+
+/// A game counts as tracked if a save points at one of its folders, or if one
+/// carries its slug. Both, because the two can disagree: the slug is not stable
+/// across catalog revisions, and a folder can be tracked under a hand-typed name
+/// that no longer matches the detected slug.
+fn is_tracked(g: &DetectedGame, state: &CliState) -> bool {
+    state
+        .saves
+        .values()
+        .any(|s| s.game_slug == g.slug || g.found_paths.contains(&s.local_path))
+}
+
+/// `--refresh`: the Library's scan, kept as its list. In the service when it
+/// runs detection, so an app open meanwhile reads the same cache; here when it
+/// doesn't, the way the desktop falls back.
+async fn refreshed(deep: bool) -> Result<DetectionReport> {
+    if let Some(mut client) = link::detecting("scan").await {
+        eprintln!("scanning in the Hoard service…");
+        return match link::ask_within(&mut client, Request::Scan { deep }, SCAN_LIMIT).await? {
+            Payload::Detection { report } => Ok(serde_json::from_value(report)?),
+            other => bail!("the service answered a {other:?} to a scan"),
+        };
+    }
+    let report = hoard_agent::library::detect_filtered(deep, |_, _| {}).await?;
+    Ok(hoard_agent::library::remember_detection(report).report)
+}
+
+#[derive(Serialize)]
+pub struct FolderScanOut {
+    pub folder: String,
+    pub games: Vec<ScanGame>,
+}
+
+/// `--folder`: the games inside one folder. Reads only; tracking one is
+/// `hoard track --path`.
+async fn scan_folder(folder: PathBuf, state: &CliState) -> Result<()> {
+    if !folder.is_dir() {
+        bail!("{} isn't a folder", folder.display());
+    }
+    // The service has a working directory of its own: a relative path would be
+    // read against that one.
+    let folder = std::path::absolute(&folder)?;
+    let games: Vec<DetectedGame> = match (link::detecting("scan").await, folder.to_str()) {
+        (Some(mut client), Some(path)) => {
+            let request = Request::ScanFolder {
+                path: path.to_string(),
+            };
+            match link::ask_within(&mut client, request, FOLDER_LIMIT).await? {
+                Payload::Detected { games } => serde_json::from_value(games)?,
+                other => bail!("the service answered a {other:?} to a folder scan"),
+            }
+        }
+        // A path that isn't UTF-8 doesn't fit the JSON wire, but this process can
+        // still walk it.
+        _ => {
+            let root = folder.clone();
+            tokio::task::spawn_blocking(move || hoard_agent::library::scan_folder(&root)).await??
+        }
+    };
+    let out = FolderScanOut {
+        folder: folder.display().to_string(),
+        games: games.iter().map(|g| scan_game(g, state)).collect(),
+    };
+    output::emit(&out, |out| {
+        if out.games.is_empty() {
+            println!("no games found in {}", out.folder);
+            return;
+        }
+        println!("{} game(s) in {}:", out.games.len(), out.folder);
+        println!();
+        print!("{}", render_table(&out.games));
     })
 }
 

@@ -65,6 +65,12 @@ It is not something to track as-is: there is no path to give `hoard track`, so
 either the user picks the folder or you leave it alone. `paths` is empty for
 exactly these.
 
+When a game the user expects is missing from the scan, or found in the wrong
+place, run `hoard games diagnose <slug> --json`. It replays detection for that
+one game and lists every step with the folders it tried, the ones it kept, and
+why it dropped each of the rest. If the user knows where the game lives,
+`hoard scan --folder <path> --json` lists the games inside that folder.
+
 Do not parse the human table. Its PATHS column holds real paths, and real save
 paths contain commas (`…/unity3d/Cipher Prime Studios, Inc./…`); one path per
 line is as far as that format goes. `--json` is the contract.
@@ -88,6 +94,10 @@ exit status grouped by what to do about it:
 | 6 | Network (`network`, `storage_unreachable`): may work later |
 | 1 | Anything else |
 
+`no_service` means the Hoard service isn't running, and `engine_down` that it
+is up but not syncing (signed out, usually). Tell the user; starting the
+service (`hoard sync start`) or signing in is theirs to do.
+
 Two codes are about you rather than the user's account: `needs_choice` and
 `needs_input` mean the command wanted to ask a question and found no terminal:
 re-run it with the flags the message names, never by feeding it input.
@@ -108,6 +118,10 @@ Other things worth knowing before you act:
 - The engine is a **resident service**. Changes to what is tracked take effect
   without restarting anything.
 - A tracked folder can be **paused**: still known, not being watched.
+- To back up a save now, `hoard sync backup <save_id>` asks the service, which
+  uploads only what changed and notifies the user. It answers at once; the
+  backup carries on after. Prefer it to `hoard backup`, which uploads a folder
+  from this process and is for machines without the service.
 - Some rows exist **only in the cloud**, with no folder on this machine.
   Mutations on those fail; that is expected, not a bug to work around.
 
@@ -129,8 +143,16 @@ dangerous thing here.
    tracking. To stop watching a folder while keeping every stored version, the
    command is `hoard save untrack <save_id>`; reach for that one first.
 
+Settings are the user's call too. `hoard config set`, `hoard cloud
+max-save-size <size>`, `hoard games played --exclude`/`--include` and
+`hoard scan --refresh` change how Hoard behaves from then on: run them only when
+the user asks for that change. Lowering the per-save size cap is the one with a
+cost: a save bigger than the new cap goes up without its oldest files.
+
 Reading is free: `saves`, `save show`, `snapshots list`, `status`, `devices`,
-`scan`. Prefer reading and proposing over acting.
+`scan`, `scan --folder`, `games diagnose`, `games played` and `games catalog`
+without flags, and `cloud max-save-size` without a value. Prefer reading and
+proposing over acting.
 
 Save folder paths say what the user has installed and where. Do not send them
 anywhere or include them in anything published.

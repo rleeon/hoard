@@ -277,6 +277,36 @@ pub async fn set_max_save_size(
     parse_json(&body)
 }
 
+/// The per-save cap as `/v1/me` has it, with the plan it belongs to. The three
+/// numbers are 0 on a server that predates the setting.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct PlanSaveSize {
+    #[serde(default)]
+    pub plan: String,
+    #[serde(default)]
+    pub max_save_size_bytes: i64,
+    #[serde(default)]
+    pub save_size_min_bytes: i64,
+    #[serde(default)]
+    pub save_size_max_bytes: i64,
+}
+
+/// `GET {base}/v1/me`, read for the per-save cap and the plan.
+pub async fn save_size_cap(base: &str, token: &str) -> Result<PlanSaveSize, CloudError> {
+    let url = format!("{base}/v1/me");
+    let resp = http_client()?
+        .get(&url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| CloudError::Network(format!("Network error: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(into_error(resp).await);
+    }
+    let body = resp.text().await.unwrap_or_default();
+    parse_json(&body)
+}
+
 /// `POST {base}/v1/cloud/saves/:id/archive`: parks a save in the black box,
 /// freeing quota now, leaving it downloadable for 7 days, then a cron purges it.
 pub async fn archive_save(

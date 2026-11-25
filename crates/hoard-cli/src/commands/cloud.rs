@@ -6,10 +6,12 @@
 
 use anyhow::{anyhow, bail, Result};
 use clap::Subcommand;
+use serde::Serialize;
 
 use hoard_agent::cloud_account::{self, CloudError};
 
 use super::link;
+use crate::output;
 
 #[derive(Subcommand)]
 pub enum CloudCommand {
@@ -33,6 +35,14 @@ pub enum CloudCommand {
     Entitlements,
     /// Sync + show this account's cross-device playtime recap
     Playtime,
+    /// Show or move your per-save size cap: past it, a backup leaves out the
+    /// save's oldest files so the rest still goes up. No value shows it and the
+    /// range your plan allows; a size (`500MB`, `2GB`) moves it inside that
+    /// range; `plan` puts back the plan's own number.
+    MaxSaveSize {
+        /// New cap (`500MB`, `1.5GB`), or `plan`
+        value: Option<String>,
+    },
 }
 
 /// Map a [`CloudError`] to a printable anyhow error.
@@ -167,8 +177,106 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 println!("{:<28} {}", slug, fmt_hours(*secs));
             }
         }
+        CloudCommand::MaxSaveSize { value } => {
+            max_save_size(base, token, value.as_deref()).await?;
+        }
     }
     Ok(())
+}
+
+#[derive(Serialize)]
+pub struct SaveSizeOut {
+    pub plan: String,
+    pub max_save_size_bytes: i64,
+    /// The range this plan lets the cap move in.
+    pub min_bytes: i64,
+    pub max_bytes: i64,
+    /// This invocation moved it.
+    pub changed: bool,
+}
+
+async fn max_save_size(base: &str, token: &str, value: Option<&str>) -> Result<()> {
+    let now = cloud_account::save_size_cap(base, token)
+        .await
+        .map_err(err)?;
+    if now.save_size_max_bytes <= 0 {
+        bail!("this server has no per-save cap to move");
+    }
+    let plan = if now.plan.is_empty() {
+        "free".to_string()
+    } else {
+        now.plan.clone()
+    };
+    let mut out = SaveSizeOut {
+        plan: plan.clone(),
+        max_save_size_bytes: now.max_save_size_bytes,
+        min_bytes: now.save_size_min_bytes,
+        max_bytes: now.save_size_max_bytes,
+        changed: false,
+    };
+
+    if let Some(value) = value {
+        let wanted = match value.trim() {
+            "plan" => None,
+            raw => {
+                let Some(bytes) = parse_size(raw) else {
+                    bail!("`{raw}` isn't a size; write it as `500MB` or `2GB`, or `plan`");
+                };
+                if bytes < out.min_bytes || bytes > out.max_bytes {
+                    bail!(
+                        "{} is outside what the {plan} plan allows ({} to {})",
+                        fmt_size(bytes),
+                        fmt_size(out.min_bytes),
+                        fmt_size(out.max_bytes)
+                    );
+                }
+                Some(bytes)
+            }
+        };
+        let set = cloud_account::set_max_save_size(base, token, wanted)
+            .await
+            .map_err(err)?;
+        let applied = link::notify_plan_cap(set.max_save_size_bytes.max(0) as u64, plan).await;
+        if !output::json() {
+            eprintln!("saved ({applied})");
+        }
+        out.max_save_size_bytes = set.max_save_size_bytes;
+        out.min_bytes = set.save_size_min_bytes;
+        out.max_bytes = set.save_size_max_bytes;
+        out.changed = true;
+    }
+
+    output::emit(&out, |out| {
+        println!(
+            "per-save cap: {} (the {} plan allows {} to {})",
+            fmt_size(out.max_save_size_bytes),
+            out.plan,
+            fmt_size(out.min_bytes),
+            fmt_size(out.max_bytes)
+        );
+        println!("a bigger save goes up without its oldest files");
+    })
+}
+
+/// `500MB`, `1.5GB`, `2G`, `800MiB`. In 1024s, as the sizes are printed.
+fn parse_size(raw: &str) -> Option<i64> {
+    let raw = raw.trim();
+    let split = raw
+        .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .unwrap_or(raw.len());
+    let (number, unit) = raw.split_at(split);
+    let number: f64 = number.parse().ok()?;
+    let unit = unit.trim().to_ascii_uppercase();
+    let scale: f64 = match unit.trim_end_matches("IB").trim_end_matches('B') {
+        "K" => 1024.0,
+        "M" => 1024.0 * 1024.0,
+        "G" => 1024.0 * 1024.0 * 1024.0,
+        "T" => 1024.0 * 1024.0 * 1024.0 * 1024.0,
+        // A bare number would have to mean bytes, and nobody means 500 bytes.
+        _ => return None,
+    };
+    let bytes = number * scale;
+    (bytes.is_finite() && bytes >= 1.0).then_some(bytes.round() as i64)
 }
 
 fn fmt_feature(f: &cloud_account::FeatureState) -> String {
@@ -204,5 +312,24 @@ fn fmt_size(b: i64) -> String {
         format!("{:.2}K", b / KB)
     } else {
         format!("{}B", b as i64)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sizes_read_the_way_people_write_them() {
+        const G: i64 = 1024 * 1024 * 1024;
+        assert_eq!(parse_size("2GB"), Some(2 * G));
+        assert_eq!(parse_size("2G"), Some(2 * G));
+        assert_eq!(parse_size("2 gb"), Some(2 * G));
+        assert_eq!(parse_size("1.5GB"), Some(G + G / 2));
+        assert_eq!(parse_size("500MB"), Some(500 * 1024 * 1024));
+        assert_eq!(parse_size("800MiB"), Some(800 * 1024 * 1024));
+        assert_eq!(parse_size("500"), None, "a bare number is a typo");
+        assert_eq!(parse_size("plenty"), None);
+        assert_eq!(parse_size("0GB"), None);
     }
 }

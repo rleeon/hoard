@@ -17,6 +17,7 @@ pub mod saves;
 pub mod scan;
 pub mod service;
 pub mod status;
+pub mod sync_backup;
 pub mod track;
 pub mod tracked;
 pub mod upgrade;

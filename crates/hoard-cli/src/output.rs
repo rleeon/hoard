@@ -130,7 +130,7 @@ pub fn classify(e: &anyhow::Error) -> Classified {
     if let Some(c) = e.downcast_ref::<Coded>() {
         let exit = match c.code {
             "no_session" => 2,
-            "not_tracked" => 3,
+            "not_tracked" | "not_found" => 3,
             _ => 1,
         };
         return plain(c.code, exit);
@@ -305,13 +305,17 @@ mod tests {
         }
     }
 
-    /// A code the CLI raises itself is passed through as-is; only the two with
+    /// A code the CLI raises itself is passed through as-is; only the ones with
     /// a group of their own get a special exit status. The envelope's `message`
     /// is `{e:#}`, so the code must not leak into the text: it has its own field.
     #[test]
     fn coded_errors_get_their_group_or_the_generic_one() {
         let c = classify(&err("no_session", "sign in first"));
         assert_eq!((c.code, c.exit), ("no_session", 2));
+
+        // Same group as the server's 404, so an agent reacts the same way.
+        let c = classify(&err("not_found", "no such game"));
+        assert_eq!((c.code, c.exit), ("not_found", 3));
 
         let e = err("needs_confirmation", "pass --yes");
         let c = classify(&e);

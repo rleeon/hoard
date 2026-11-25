@@ -294,6 +294,21 @@ fn default_backup_interval_secs() -> u64 {
     3600
 }
 
+/// What automatic mode's detection scan may be set to, in seconds. It reads no
+/// file bytes, so once a minute is cheap enough.
+pub const SCAN_INTERVAL_SECS: std::ops::RangeInclusive<u64> = 60..=3600;
+
+/// What its backup sweep may be set to. It re-hashes every save's bytes, so
+/// from every 5 minutes to once a day.
+pub const BACKUP_INTERVAL_SECS: std::ops::RangeInclusive<u64> = 300..=86400;
+
+/// One of automatic mode's two timers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomaticTimer {
+    Scan,
+    Backup,
+}
+
 fn default_conflict_retention_days() -> u32 {
     14
 }
@@ -403,6 +418,34 @@ impl Prefs {
                 self.auto_restore = true;
             }
         }
+    }
+
+    /// Moves one of automatic mode's timers (Settings' sliders, `hoard config
+    /// set detection.scan_interval`). Out of range is refused rather than
+    /// clamped: a slider can't produce it, so it is a typo, and a silently
+    /// different number is worse than an error.
+    pub fn set_automatic_interval(&mut self, timer: AutomaticTimer, secs: u64) -> Result<()> {
+        let (range, field, name) = match timer {
+            AutomaticTimer::Scan => (
+                SCAN_INTERVAL_SECS,
+                &mut self.automatic_scan_interval_secs,
+                "scan",
+            ),
+            AutomaticTimer::Backup => (
+                BACKUP_INTERVAL_SECS,
+                &mut self.automatic_backup_interval_secs,
+                "backup",
+            ),
+        };
+        if !range.contains(&secs) {
+            anyhow::bail!(
+                "{name} interval out of range: {secs}s (expected {}..={})",
+                range.start(),
+                range.end()
+            );
+        }
+        *field = secs;
+        Ok(())
     }
 
     /// Where the prefs file lives. We reuse `CliConfig::state_dir` so the
@@ -663,6 +706,26 @@ fn refused_as_unknown(err: &anyhow::Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_intervals_refuse_what_the_sliders_cannot_produce() {
+        let mut p = Prefs::default();
+        p.set_automatic_interval(AutomaticTimer::Scan, 60).unwrap();
+        p.set_automatic_interval(AutomaticTimer::Backup, 86400)
+            .unwrap();
+        assert_eq!(p.automatic_scan_interval_secs, 60);
+        assert_eq!(p.automatic_backup_interval_secs, 86400);
+
+        assert!(p.set_automatic_interval(AutomaticTimer::Scan, 59).is_err());
+        assert!(p
+            .set_automatic_interval(AutomaticTimer::Backup, 299)
+            .is_err());
+        assert_eq!(
+            p.automatic_scan_interval_secs, 60,
+            "a refusal changes nothing"
+        );
+        assert_eq!(p.automatic_backup_interval_secs, 86400);
+    }
 
     /// A service that takes everything, or refuses the manual mode the way one
     /// older than it does, or isn't running.

@@ -70,14 +70,37 @@ pub async fn attached(role: &str) -> Option<Client> {
 
 /// A capped request over an established connection.
 pub async fn ask(client: &mut Client, request: Request) -> Result<Payload> {
-    tokio::time::timeout(REQUEST_TIMEOUT, client.request(request))
+    ask_within(client, request, REQUEST_TIMEOUT).await
+}
+
+/// [`ask`] for the requests that walk disks or download (a deep scan, the
+/// catalogue), with a cap of their own. The connection is the caller's alone
+/// while it waits, as the service expects of these.
+pub async fn ask_within(client: &mut Client, request: Request, limit: Duration) -> Result<Payload> {
+    tokio::time::timeout(limit, client.request(request))
         .await
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "the Hoard service didn't answer in {}s",
-                REQUEST_TIMEOUT.as_secs()
-            )
-        })?
+        .map_err(|_| anyhow::anyhow!("the Hoard service didn't answer in {}s", limit.as_secs()))?
+}
+
+/// The service, for a command only it can carry out. With none running it says
+/// how to start one instead of starting it as a side effect.
+pub async fn required(role: &str) -> Result<Client> {
+    attached(role).await.ok_or_else(|| {
+        crate::output::err(
+            "no_service",
+            "the Hoard service isn't running; start it with `hoard sync start`",
+        )
+    })
+}
+
+/// The service, when it is the one that runs detection and keeps the catalogue
+/// ([`hoard_core::ipc::CAP_DETECTION`]). `None` means do it here: there is no
+/// service, or it is older than that, which is what the desktop does too.
+pub async fn detecting(role: &str) -> Option<Client> {
+    let client = attached(role).await?;
+    client
+        .has_cap(hoard_core::ipc::CAP_DETECTION)
+        .then_some(client)
 }
 
 /// What the service knows about the update, if there is a service. Never starts
@@ -167,6 +190,34 @@ pub async fn notify_backup_on_close(enabled: bool) -> &'static str {
         "the sync service picked it up"
     } else {
         "it applies when the sync service starts"
+    }
+}
+
+/// Automatic mode's timers moved in the prefs file. The service reads them on
+/// every pass anyway; this has it start over on them now, as the app's sliders
+/// do.
+pub async fn notify_automatic_changed() -> &'static str {
+    if notify(
+        "tell the service automatic mode changed",
+        Request::AutomaticChanged,
+    )
+    .await
+    {
+        "the sync service picked it up"
+    } else {
+        "it applies when the sync service starts"
+    }
+}
+
+/// The per-save cap moved on the server. The service learns it from being
+/// refused, and a raise is never refused, so without this it would go on
+/// trimming backups to the old number for the rest of its cache's half hour.
+pub async fn notify_plan_cap(limit_bytes: u64, plan: String) -> &'static str {
+    let request = Request::SetPlanCap { limit_bytes, plan };
+    if notify("tell the service the per-save cap moved", request).await {
+        "the sync service picked it up"
+    } else {
+        "the sync service learns it on its next backup"
     }
 }
 

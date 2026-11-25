@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::Subcommand;
 
 use hoard_agent::config::CliConfig;
-use hoard_agent::prefs::{ModeChange, Prefs, ServiceLink, SyncMode};
+use hoard_agent::prefs::{AutomaticTimer, ModeChange, Prefs, ServiceLink, SyncMode};
 use hoard_core::ipc::Request;
 
 #[derive(Subcommand)]
@@ -20,7 +20,10 @@ pub enum ConfigCommand {
     Show,
     /// Set a config field. Supported: server.url; and the app's Settings
     /// switches: sync.mode (`manual`, `backup` or `sync`), detection.auto (`on`
-    /// or `off`) and backup.when (`saving` or `closing`)
+    /// or `off`), backup.when (`saving` or `closing`), and automatic mode's
+    /// timers: detection.scan_interval (how often it looks for new games, 1m to
+    /// 1h) and detection.backup_interval (how often it re-checks every save for
+    /// changes, 5m to 24h), as `90s`, `10m`, `2h` or seconds
     Set { key: String, value: String },
     /// Print the path of the config file (whether it exists or not)
     Path,
@@ -61,6 +64,14 @@ pub async fn run(cmd: ConfigCommand) -> Result<()> {
                 "backup.when = \"{}\"",
                 if prefs.backup_on_close { "closing" } else { "saving" }
             );
+            println!(
+                "detection.scan_interval = \"{}\"",
+                fmt_interval(prefs.automatic_scan_interval_secs)
+            );
+            println!(
+                "detection.backup_interval = \"{}\"",
+                fmt_interval(prefs.automatic_backup_interval_secs)
+            );
         }
         ConfigCommand::Set { key, value } if key == "backup.when" => {
             set_backup_when(&value).await?;
@@ -70,6 +81,12 @@ pub async fn run(cmd: ConfigCommand) -> Result<()> {
         }
         ConfigCommand::Set { key, value } if key == "detection.auto" => {
             set_detection_auto(&value).await?;
+        }
+        ConfigCommand::Set { key, value } if key == "detection.scan_interval" => {
+            set_interval(AutomaticTimer::Scan, &value).await?;
+        }
+        ConfigCommand::Set { key, value } if key == "detection.backup_interval" => {
+            set_interval(AutomaticTimer::Backup, &value).await?;
         }
         ConfigCommand::Set { key, value } => {
             let path = CliConfig::default_path()?;
@@ -83,7 +100,8 @@ pub async fn run(cmd: ConfigCommand) -> Result<()> {
                     cfg.server.url = hoard_agent::serverclass::normalize_server_url(&value)
                 }
                 other => bail!(
-                    "unknown key: {other} (supported: server.url, sync.mode, detection.auto, backup.when)"
+                    "unknown key: {other} (supported: server.url, sync.mode, detection.auto, \
+                     backup.when, detection.scan_interval, detection.backup_interval)"
                 ),
             }
             cfg.save(&path)?;
@@ -183,4 +201,103 @@ async fn set_backup_when(value: &str) -> Result<()> {
     let said = if enabled { "closes" } else { "saves" };
     println!("saves back up when the game {said} ({applied})");
     Ok(())
+}
+
+/// `detection.scan_interval` / `detection.backup_interval`: the sliders under
+/// automatic mode in the app's Settings, through the same rule.
+async fn set_interval(timer: AutomaticTimer, value: &str) -> Result<()> {
+    let Some(secs) = parse_interval(value) else {
+        bail!("`{value}` isn't a duration; write it as `90s`, `10m`, `2h` or a number of seconds");
+    };
+    let (mut prefs, path) = Prefs::load_for_cli_edit()?;
+    prefs.set_automatic_interval(timer, secs)?;
+    prefs.save(&path)?;
+    let what = match timer {
+        AutomaticTimer::Scan => "automatic mode looks for new games",
+        AutomaticTimer::Backup => "automatic mode re-checks every save",
+    };
+    if prefs.automatic_mode {
+        let applied = crate::commands::link::notify_automatic_changed().await;
+        println!("{what} every {} ({applied})", fmt_interval(secs));
+    } else {
+        println!(
+            "{what} every {} once it's on (`hoard config set detection.auto on`)",
+            fmt_interval(secs)
+        );
+    }
+    Ok(())
+}
+
+/// `90s`, `10m`, `2h`, `1d` or plain seconds. `1h30m` too.
+fn parse_interval(value: &str) -> Option<u64> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if let Ok(secs) = value.parse::<u64>() {
+        return Some(secs);
+    }
+    let mut total = 0u64;
+    let mut digits = String::new();
+    for c in value.chars() {
+        if c.is_ascii_digit() {
+            digits.push(c);
+            continue;
+        }
+        let n: u64 = digits.parse().ok()?;
+        digits.clear();
+        let unit = match c {
+            's' => 1,
+            'm' => 60,
+            'h' => 3600,
+            'd' => 86400,
+            _ => return None,
+        };
+        total = total.checked_add(n.checked_mul(unit)?)?;
+    }
+    // Digits left over with no unit after them (`1h30`) are a typo, not seconds.
+    digits.is_empty().then_some(total)
+}
+
+fn fmt_interval(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, secs % 3600 / 60, secs % 60);
+    let mut out = String::new();
+    if h > 0 {
+        out.push_str(&format!("{h}h"));
+    }
+    if m > 0 {
+        out.push_str(&format!("{m}m"));
+    }
+    if s > 0 || out.is_empty() {
+        out.push_str(&format!("{s}s"));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intervals_read_the_way_people_write_them() {
+        assert_eq!(parse_interval("600"), Some(600));
+        assert_eq!(parse_interval("90s"), Some(90));
+        assert_eq!(parse_interval("10m"), Some(600));
+        assert_eq!(parse_interval("2h"), Some(7200));
+        assert_eq!(parse_interval("1d"), Some(86400));
+        assert_eq!(parse_interval("1h30m"), Some(5400));
+        assert_eq!(parse_interval(" 5m "), Some(300));
+        assert_eq!(parse_interval("1h30"), None);
+        assert_eq!(parse_interval("ten minutes"), None);
+        assert_eq!(parse_interval(""), None);
+    }
+
+    #[test]
+    fn intervals_print_back_the_same_way() {
+        assert_eq!(fmt_interval(600), "10m");
+        assert_eq!(fmt_interval(3600), "1h");
+        assert_eq!(fmt_interval(5400), "1h30m");
+        assert_eq!(fmt_interval(90), "1m30s");
+        assert_eq!(fmt_interval(86400), "24h");
+    }
 }

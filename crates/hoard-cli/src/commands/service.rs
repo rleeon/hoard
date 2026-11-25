@@ -30,6 +30,17 @@ pub enum SyncCommand {
     },
     /// Show the most recent service logs
     Logs,
+    /// Back up a save now, through the sync service: the app's "Back up now".
+    /// Only what changed goes up, and the result arrives as a notification.
+    /// `--all` re-checks every save and backs up the ones that changed.
+    Backup {
+        /// Save id (UUID), see `hoard saves`
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        save_id: Option<String>,
+        /// Every save this machine syncs
+        #[arg(long)]
+        all: bool,
+    },
     /// Follow the sync service's events in this terminal
     #[command(hide = true)]
     Run {
@@ -61,6 +72,9 @@ pub async fn run(action: Option<SyncCommand>) -> Result<()> {
             // the chronicle of events is in what the client prints.
             service_logs();
             logs().await
+        }
+        Some(SyncCommand::Backup { save_id, all }) => {
+            crate::commands::sync_backup::run(save_id, all).await
         }
         // No longer the unit's `ExecStart` (that is `hoardd` since 4d): it stays
         // as the way to watch sync go by in a terminal, and as the command the

@@ -43,6 +43,15 @@ enum Commands {
         /// Pin a specific version instead of the latest (e.g. `1.0.4`)
         #[arg(long)]
         version: Option<String>,
+        /// Not now: silence the update reminders for this many hours (1 to 168).
+        /// The day the update stops being optional doesn't move.
+        #[arg(
+            long,
+            value_name = "HOURS",
+            conflicts_with = "version",
+            value_parser = clap::value_parser!(u32).range(1..=168)
+        )]
+        snooze: Option<u32>,
     },
     /// Open the desktop app (forwards to `hoard-desktop`)
     Desktop {
@@ -147,8 +156,9 @@ enum Commands {
         #[command(subcommand)]
         action: commands::cloud::CloudCommand,
     },
-    /// Benchmark the local game-detection scan (the heavy half of what Automatic
-    /// Mode runs each tick). No server needed; writes nothing.
+    /// Find the installed games and their save folders: the detection scan, the
+    /// heavy half of what Automatic Mode runs each tick. No server needed, and
+    /// it writes nothing unless `--refresh`. `--folder` looks inside one folder.
     Scan {
         /// List every detected game, not just the summary counts. Implied by
         /// --json, which always carries the list.
@@ -159,6 +169,16 @@ enum Commands {
         /// roots, deeper walks. Slower; mirrors the Library deep-scan tile.
         #[arg(long)]
         deep: bool,
+        /// Keep the result as the Library's list, which is what the app's scan
+        /// button does. The sync service runs it when it does detection.
+        /// Without this flag the scan writes nothing.
+        #[arg(long)]
+        refresh: bool,
+        /// Look for games inside this one folder instead of the whole machine
+        /// (the app's "add from folder"). Reads only; track one with
+        /// `hoard track --path`.
+        #[arg(long, value_name = "PATH", conflicts_with_all = ["deep", "refresh", "list_excluded"])]
+        folder: Option<PathBuf>,
         /// Stop offering this folder (and anything under it) in future scans.
         /// Repeatable. Excluding by folder is what sticks when a phase-4
         /// find keeps coming back under a different name.
@@ -343,6 +363,18 @@ fn supports_json(cmd: &Commands) -> bool {
                 | commands::saves::SaveCommand::Untrack { .. }
         ),
         Commands::Snapshots { action } => matches!(action, SnapshotCommand::List { .. }),
+        Commands::Sync {
+            action: Some(commands::service::SyncCommand::Backup { .. }),
+        } => true,
+        Commands::Games { action } => matches!(
+            action,
+            commands::games::GameCommand::Diagnose { .. }
+                | commands::games::GameCommand::Played { .. }
+                | commands::games::GameCommand::Catalog { .. }
+        ),
+        Commands::Cloud { action } => {
+            matches!(action, commands::cloud::CloudCommand::MaxSaveSize { .. })
+        }
         _ => false,
     }
 }
@@ -357,7 +389,8 @@ async fn dispatch(cli: Cli) -> Result<()> {
             "json_unsupported",
             "this command has no --json output yet. The ones that do: saves, \
              doctor, status, devices, notifications, whoami, scan, restore, \
-             save list, save show, save untrack, snapshots list.",
+             save list, save show, save untrack, snapshots list, sync backup, \
+             games diagnose, games played, games catalog, cloud max-save-size.",
         ));
     }
 
@@ -375,7 +408,11 @@ async fn dispatch(cli: Cli) -> Result<()> {
             };
             commands::install::run(want, version, from).await
         }
-        Commands::Upgrade { version } => commands::upgrade::run(version).await,
+        Commands::Upgrade {
+            snooze: Some(hours),
+            ..
+        } => commands::upgrade::snooze(hours).await,
+        Commands::Upgrade { version, .. } => commands::upgrade::run(version).await,
         Commands::Desktop { args } => commands::launch::run("hoard-desktop", &args),
         Commands::Server { args } => commands::launch::run("hoard-server", &args),
         Commands::Sync { action } => commands::service::run(action).await,
@@ -415,10 +452,23 @@ async fn dispatch(cli: Cli) -> Result<()> {
         Commands::Scan {
             verbose,
             deep,
+            refresh,
+            folder,
             exclude,
             unexclude,
             list_excluded,
-        } => commands::scan::run(verbose, deep, exclude, unexclude, list_excluded).await,
+        } => {
+            commands::scan::run(
+                verbose,
+                deep,
+                refresh,
+                folder,
+                exclude,
+                unexclude,
+                list_excluded,
+            )
+            .await
+        }
         Commands::Save { action } => commands::saves::run(action).await,
         Commands::Snapshots { action } => snapshots_dispatch(action).await,
         Commands::Backup {

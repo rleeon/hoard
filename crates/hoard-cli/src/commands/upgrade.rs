@@ -75,6 +75,29 @@ pub async fn run(version: Option<String>) -> Result<()> {
     }
 }
 
+/// `hoard upgrade --snooze`: the app's "Not now". The service owns the updater,
+/// so it is the one told.
+pub async fn snooze(hours: u32) -> Result<()> {
+    let mut client = crate::commands::link::required("upgrade").await?;
+    let state = match crate::commands::link::ask(
+        &mut client,
+        hoard_core::ipc::Request::SnoozeUpdate { hours },
+    )
+    .await?
+    {
+        hoard_core::ipc::Payload::Update(state) => state,
+        other => bail!("the service answered a {other:?} to a snooze"),
+    };
+    println!("update reminders silenced for {hours} h");
+    if let Some(deadline) = state.deadline {
+        let day = deadline
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|_| deadline.to_string());
+        println!("it still stops being optional on {day}");
+    }
+    Ok(())
+}
+
 /// The normal path: the service already knows what there is and has it
 /// downloaded.
 async fn through_the_service(current: &str, state: UpdateState) -> Result<()> {
