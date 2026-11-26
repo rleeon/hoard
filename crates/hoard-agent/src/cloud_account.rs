@@ -226,11 +226,32 @@ pub struct ArchiveResult {
     pub freed_bytes: i64,
 }
 
-/// `GET {base}/v1/cloud/storage/games`.
+/// `GET {base}/v1/cloud/storage/games`: every save with what archiving it would
+/// free. The heaviest thing the server works out for an account (15 s for one
+/// with 34 saves on 2026-11-26): ask for it only to show those figures.
 pub async fn storage_games(base: &str, token: &str) -> Result<StorageGames, CloudError> {
-    let url = format!("{base}/v1/cloud/storage/games");
+    fetch_storage_games(&format!("{base}/v1/cloud/storage/games"), token).await
+}
+
+/// The saves and their `archived` flags with nothing worked out (`list_only`),
+/// or the archived ones alone (`archived_only`). An older server ignores the
+/// flag and answers in full, which carries the same fields.
+pub async fn storage_games_list(
+    base: &str,
+    token: &str,
+    archived_only: bool,
+) -> Result<StorageGames, CloudError> {
+    let flag = if archived_only {
+        "archived_only"
+    } else {
+        "list_only"
+    };
+    fetch_storage_games(&format!("{base}/v1/cloud/storage/games?{flag}=true"), token).await
+}
+
+async fn fetch_storage_games(url: &str, token: &str) -> Result<StorageGames, CloudError> {
     let resp = http_client()?
-        .get(&url)
+        .get(url)
         .bearer_auth(token)
         .send()
         .await

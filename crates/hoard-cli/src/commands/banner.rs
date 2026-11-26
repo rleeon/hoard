@@ -265,28 +265,36 @@ pub async fn show(full: bool) -> Result<()> {
     // service. Best-effort: a failure leaves the dot green.
     let cli_update = update_line().await;
 
-    // Session: Cloud wins over self-host (same as when resolving). Best-effort,
-    // no network.
+    // Session, in the order the resolver tries them: Hoard One, then a
+    // self-hosted sign-in from the app (kept by the service, not in
+    // `config.toml`), then the config's token. No network: the service is local
+    // and asking it starts nothing.
     let cloud = matches!(hoard_agent::cloud_auth::load_session(), Ok(Some(_)));
     let cfg = CliConfig::load_default().ok();
+    let service_session = if cloud {
+        None
+    } else {
+        crate::commands::link::borrow_server_session().await
+    };
     let has_token = cfg
         .as_ref()
         .map(|(c, _)| c.auth.token.as_deref().is_some_and(|t| !t.is_empty()))
         .unwrap_or(false);
     let (session_on, session_label) = if cloud {
-        (true, "Cloud".to_string())
-    } else if has_token {
+        (true, "Hoard One".to_string())
+    } else if service_session.is_some() || has_token {
         (true, "self-host".to_string())
     } else {
         (false, "signed out".to_string())
     };
 
-    // Server: probe the one you'll actually use (Cloud if there's a Cloud
-    // session, otherwise the self-host URL from your config) via `/v1/health`.
-    // That way the version and status hold whether it's in Docker, on bare metal
-    // or on another machine; we don't depend on a local binary being installed.
+    // Server: probe the one that session uses via `/v1/health`. That way the
+    // version and status hold whether it's in Docker, on bare metal or on another
+    // machine; we don't depend on a local binary being installed.
     let server_url = if cloud {
         Some(hoard_agent::cloud_auth::cloud_base_url())
+    } else if let Some(session) = &service_session {
+        Some(session.server_url.clone())
     } else {
         cfg.as_ref().map(|(c, _)| c.server.url.clone())
     };
@@ -295,7 +303,7 @@ pub async fn show(full: bool) -> Result<()> {
         None => (false, "—".to_string(), None),
     };
     let server_status = match (server_on, server_mode.as_deref()) {
-        (true, Some("cloud")) => "online · Cloud".to_string(),
+        (true, Some("cloud")) => "online · Hoard One".to_string(),
         (true, Some(m)) => format!("online · {m}"),
         (true, None) => "online".to_string(),
         (false, _) if server_url.is_none() => "no server".to_string(),
@@ -358,10 +366,10 @@ pub async fn show(full: bool) -> Result<()> {
             cmd_line("hoard server", "start the self-host server", color)
         );
         println!();
-        println!("  Cloud & saves");
+        println!("  Account & saves");
         println!(
             "{}",
-            cmd_line("hoard login", "sign in (Cloud, no browser)", color)
+            cmd_line("hoard login", "sign in (Hoard One or self-host)", color)
         );
         println!("{}", cmd_line("hoard logout", "sign out", color));
         println!(

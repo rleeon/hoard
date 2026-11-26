@@ -88,7 +88,7 @@ exit status grouped by what to do about it:
 | Exit | Meaning |
 |---|---|
 | 2 | Not signed in (`no_session`, `unauthorized`): tell the user to run `hoard login`; do not attempt it yourself |
-| 3 | It isn't there (`not_found`, `not_tracked`): re-read `hoard saves --json`, do not retry with a guessed id |
+| 3 | It isn't there (`not_found`, `not_tracked`): re-read the list the id or slug came from (`hoard saves --json`, `hoard games search`, `hoard games played --json`); do not retry with a guessed one |
 | 4 | `rate_limited`: the envelope carries `retry_after_seconds`; wait that long, exactly once, and don't loop |
 | 5 | Storage limit (`quota_exceeded`, `too_large`, `archived`): will fail identically until the user frees space or upgrades |
 | 6 | Network (`network`, `storage_unreachable`): may work later |
@@ -118,10 +118,11 @@ Other things worth knowing before you act:
 - The engine is a **resident service**. Changes to what is tracked take effect
   without restarting anything.
 - A tracked folder can be **paused**: still known, not being watched.
-- To back up a save now, `hoard sync backup <save_id>` asks the service, which
-  uploads only what changed and notifies the user. It answers at once; the
-  backup carries on after. Prefer it to `hoard backup`, which uploads a folder
-  from this process and is for machines without the service.
+- To back up a save now, `hoard sync backup <save_id>` asks the service. If
+  the save changed since its last version, a new one goes up and the user gets
+  a notification; if not, nothing happens. It answers at once; the backup
+  carries on after. Prefer it to `hoard backup`, which uploads a folder from
+  this process and is for machines without the service.
 - Some rows exist **only in the cloud**, with no folder on this machine.
   Mutations on those fail; that is expected, not a bug to work around.
 
@@ -144,15 +145,17 @@ dangerous thing here.
    command is `hoard save untrack <save_id>`; reach for that one first.
 
 Settings are the user's call too. `hoard config set`, `hoard cloud
-max-save-size <size>`, `hoard games played --exclude`/`--include` and
-`hoard scan --refresh` change how Hoard behaves from then on: run them only when
-the user asks for that change. Lowering the per-save size cap is the one with a
+max-save-size <size>`, `hoard games played --exclude`/`--include`,
+`hoard scan --refresh`, `hoard scan --exclude`/`--unexclude`,
+`hoard notifications on`/`off`, `hoard sync autostart on`/`off` and
+`hoard upgrade --snooze` change how Hoard behaves from then on: run them only
+when the user asks for that change. Lowering the per-save size cap is the one with a
 cost: a save bigger than the new cap goes up without its oldest files.
 
-Reading is free: `saves`, `save show`, `snapshots list`, `status`, `devices`,
-`scan`, `scan --folder`, `games diagnose`, `games played` and `games catalog`
-without flags, and `cloud max-save-size` without a value. Prefer reading and
-proposing over acting.
+Reading is free: `saves`, `save show`, `snapshots list`, `status`,
+`sync status`, `devices`, `scan`, `scan --folder`, `games diagnose`,
+`games played` and `games catalog` without flags, and `cloud max-save-size`
+without a value. Prefer reading and proposing over acting.
 
 Save folder paths say what the user has installed and where. Do not send them
 anywhere or include them in anything published.

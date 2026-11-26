@@ -162,13 +162,13 @@ pub async fn run(
     for p in &exclude {
         hoard_agent::library::exclude_path(std::path::Path::new(p.trim()))?;
         if !output::json() {
-            println!("Excluded {p}");
+            println!("excluded {p}");
         }
     }
     for p in &unexclude {
         hoard_agent::library::unexclude_path(std::path::Path::new(p.trim()))?;
         if !output::json() {
-            println!("No longer excluded: {p}");
+            println!("no longer excluded: {p}");
         }
     }
     if list_excluded {
@@ -178,7 +178,7 @@ pub async fn run(
         };
         return output::emit(&out, |out| {
             if out.excluded.is_empty() {
-                println!("No folders are excluded from scanning.");
+                println!("no folders are excluded from scanning");
             } else {
                 for p in &out.excluded {
                     println!("{p}");

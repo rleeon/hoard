@@ -309,6 +309,22 @@ pub enum AutomaticTimer {
     Backup,
 }
 
+/// An interval the way people write it: `10m`, `1h30m`, `24h`.
+pub fn fmt_interval(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, secs % 3600 / 60, secs % 60);
+    let mut out = String::new();
+    if h > 0 {
+        out.push_str(&format!("{h}h"));
+    }
+    if m > 0 {
+        out.push_str(&format!("{m}m"));
+    }
+    if s > 0 || out.is_empty() {
+        out.push_str(&format!("{s}s"));
+    }
+    out
+}
+
 fn default_conflict_retention_days() -> u32 {
     14
 }
@@ -439,9 +455,10 @@ impl Prefs {
         };
         if !range.contains(&secs) {
             anyhow::bail!(
-                "{name} interval out of range: {secs}s (expected {}..={})",
-                range.start(),
-                range.end()
+                "the {name} interval goes from {} to {}, and {} is outside that",
+                fmt_interval(*range.start()),
+                fmt_interval(*range.end()),
+                fmt_interval(secs)
             );
         }
         *field = secs;
@@ -716,6 +733,14 @@ mod tests {
         assert_eq!(p.automatic_scan_interval_secs, 60);
         assert_eq!(p.automatic_backup_interval_secs, 86400);
 
+        let refused = p
+            .set_automatic_interval(AutomaticTimer::Scan, 7200)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            refused,
+            "the scan interval goes from 1m to 1h, and 2h is outside that"
+        );
         assert!(p.set_automatic_interval(AutomaticTimer::Scan, 59).is_err());
         assert!(p
             .set_automatic_interval(AutomaticTimer::Backup, 299)
@@ -725,6 +750,15 @@ mod tests {
             "a refusal changes nothing"
         );
         assert_eq!(p.automatic_backup_interval_secs, 86400);
+    }
+
+    #[test]
+    fn intervals_print_the_way_people_write_them() {
+        assert_eq!(fmt_interval(600), "10m");
+        assert_eq!(fmt_interval(3600), "1h");
+        assert_eq!(fmt_interval(5400), "1h30m");
+        assert_eq!(fmt_interval(90), "1m30s");
+        assert_eq!(fmt_interval(86400), "24h");
     }
 
     /// A service that takes everything, or refuses the manual mode the way one

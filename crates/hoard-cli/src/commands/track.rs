@@ -1,6 +1,6 @@
 //! `hoard track <game>`: detects a game, creates its save on the server and
-//! remembers the local path in `state.json`. Populates what `hoard daemon` and
-//! `hoard sync` then watch. It is the headless equivalent of the desktop's
+//! remembers the local path in `state.json`. Populates what the sync service
+//! then watches. It is the headless equivalent of the desktop's
 //! `add_game_to_tracking`: same flow (detection, `create_save` with re-link on
 //! 409, `CliState.saves.insert`), no GUI.
 

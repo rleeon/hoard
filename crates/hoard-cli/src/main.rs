@@ -2,7 +2,7 @@ mod commands;
 mod output;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use hoard_agent::api;
 use std::path::PathBuf;
 use tracing_appender::non_blocking::WorkerGuard;
@@ -67,7 +67,8 @@ enum Commands {
     },
     /// Manage the background sync service: the resident automatic sync (the app
     /// without a window) run under your OS service manager (systemd --user,
-    /// launchd, Task Scheduler). `hoard sync start|stop|status`.
+    /// launchd, Task Scheduler). `hoard sync start|stop|status`; `hoard sync`
+    /// alone is `hoard sync status`.
     Sync {
         #[command(subcommand)]
         action: Option<commands::service::SyncCommand>,
@@ -75,8 +76,8 @@ enum Commands {
     /// (deprecated) shows the status panel; the daemon is now `hoard sync`
     #[command(hide = true)]
     Daemon,
-    /// Detect a game, create its save and remember the path (what `daemon`/`sync`
-    /// then watch)
+    /// Detect a game, create its save and remember the path (what the sync
+    /// service then watches)
     Track {
         /// Game name or slug (optional if --slug is given)
         query: Option<String>,
@@ -95,7 +96,8 @@ enum Commands {
     },
     /// List the saves this machine tracks (local, no network)
     Saves,
-    /// Show server status (uses /v1/health)
+    /// Show the server's status (uses /v1/health); the sync service's is
+    /// `hoard sync status`
     Status,
     /// List the machines on this account: which are on and what they're playing
     Devices,
@@ -111,14 +113,14 @@ enum Commands {
         #[command(subcommand)]
         command: Option<commands::notifications::NotificationsCommand>,
     },
-    /// Configuration file management
+    /// See and change settings: the config file and the app's Settings switches
     Config {
         #[command(subcommand)]
         action: commands::config::ConfigCommand,
     },
     /// Sign in. With no flags it asks whether you want Hoard One or a
     /// self-hosted server. `--token` goes straight to self-host; `--email`
-    /// forces the Cloud email/code path.
+    /// forces Hoard One's email/code path.
     Login {
         /// Self-host bearer token (`hoard_v1_<hex>`, from `hoard-admin token
         /// create`). Skips the interactive menu and signs in to self-host.
@@ -128,14 +130,14 @@ enum Commands {
         /// config). E.g. `http://ubserver:12421`.
         #[arg(long)]
         server: Option<String>,
-        /// Force the Cloud email + password / emailed-code path instead of phone
-        /// pairing, so you pick which account to sign in as.
+        /// Force Hoard One's email + password / emailed-code path instead of
+        /// phone pairing, so you pick which account to sign in as.
         #[arg(long)]
         email: bool,
     },
-    /// Sign out (Cloud and self-host)
+    /// Sign out (Hoard One and self-host)
     Logout,
-    /// Show the current session (Cloud or self-host)
+    /// Show the current session (Hoard One or self-host)
     Whoami,
     /// Set up an AI assistant to drive Hoard: prints the skill file that
     /// teaches it the commands, the safety rules and how to keep itself
@@ -146,18 +148,20 @@ enum Commands {
         #[arg(long)]
         skill: bool,
     },
-    /// Browse the game catalog
+    /// Games: search the catalog, see why detection finds or misses one, the
+    /// played list, and the catalog in use
     Games {
         #[command(subcommand)]
         action: commands::games::GameCommand,
     },
-    /// Hoard One account: export, storage, entitlements, playtime
+    /// Hoard One account: storage, archive and reactivate, export,
+    /// entitlements, playtime, per-save size cap
     Cloud {
         #[command(subcommand)]
         action: commands::cloud::CloudCommand,
     },
     /// Find the installed games and their save folders: the detection scan, the
-    /// heavy half of what Automatic Mode runs each tick. No server needed, and
+    /// heavy half of what automatic mode runs each tick. No server needed, and
     /// it writes nothing unless `--refresh`. `--folder` looks inside one folder.
     Scan {
         /// List every detected game, not just the summary counts. Implied by
@@ -191,19 +195,22 @@ enum Commands {
         #[arg(long)]
         list_excluded: bool,
     },
-    /// Manage save namespaces
+    /// Manage saves: create, list, show, pause, untrack, delete, and each one's
+    /// folders, file types and backup timing
     Save {
         #[command(subcommand)]
         action: commands::saves::SaveCommand,
     },
-    /// Manage snapshots (list / delete / undelete)
+    /// Stored versions: list, delete, undelete, and how many to keep
+    /// (max-versions)
     Snapshots {
         #[command(subcommand)]
         action: SnapshotCommand,
     },
-    /// Upload a directory as a new snapshot
+    /// Upload a directory as a new version
     Backup {
-        /// Save id (UUID), see `hoard save list`
+        /// Save id (UUID), see `hoard saves`. For a save this machine doesn't
+        /// track, `hoard save list` has it; pass `--from` too
         save_id: String,
         /// Source directory to back up. Required unless previously remembered.
         #[arg(long)]
@@ -212,11 +219,11 @@ enum Commands {
         #[arg(long)]
         remember: bool,
     },
-    /// Restore a snapshot to disk
+    /// Restore a stored version to disk
     Restore {
-        /// Save id (UUID)
+        /// Save id (UUID), see `hoard saves`
         save_id: String,
-        /// Snapshot version number; defaults to latest
+        /// Version number; defaults to the latest
         #[arg(long)]
         version: Option<i64>,
         /// Destination directory (or use the remembered local_path if omitted)
@@ -231,7 +238,7 @@ enum Commands {
         /// Show what would change in the folder and stop, without restoring
         #[arg(long)]
         dry_run: bool,
-        /// Also write the snapshot's config files (.ini, .cfg, .toml, settings)
+        /// Also write the version's config files (.ini, .cfg, .toml, settings)
         /// over this machine's. Off by default: those files carry the other
         /// machine's resolution, GPU and paths, and games crash on them.
         #[arg(long, alias = "allow-config")]
@@ -245,14 +252,14 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum SnapshotCommand {
-    /// List snapshots for a save
+    /// List a save's stored versions
     List {
         save_id: String,
-        /// Include soft-deleted snapshots (in trash)
+        /// Include soft-deleted versions (in trash)
         #[arg(long)]
         all: bool,
     },
-    /// Soft-delete a snapshot (moves it to trash; recover with `undelete`).
+    /// Soft-delete a version (moves it to trash; recover with `undelete`).
     /// Hoard One has no trash: there the version is deleted for good, and the
     /// whole save with it if it was the last one.
     Delete {
@@ -261,7 +268,7 @@ enum SnapshotCommand {
         #[arg(long)]
         yes: bool,
     },
-    /// Restore a soft-deleted snapshot back to active state (self-hosted only)
+    /// Bring a soft-deleted version back out of the trash (self-hosted only)
     Undelete { save_id: String, version: i64 },
     /// Show or set your cap on stored versions per save. No value shows it, a
     /// number sets it, `off` means unlimited. The server prunes immediately.
@@ -284,7 +291,13 @@ enum SnapshotCommand {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    // What `Cli::parse` does, keeping the matches: they spell the command the
+    // way the user typed it, which is what the `--json` list is written in.
+    let matches = Cli::command().get_matches();
+    let cli = Cli::from_arg_matches(&matches)
+        .map_err(|e| e.format(&mut Cli::command()))
+        .unwrap_or_else(|e| e.exit());
+    let path = command_path(&matches);
     // Before anything can print: every emitter reads this.
     output::set_json(cli.json);
 
@@ -292,7 +305,7 @@ async fn main() -> Result<()> {
     // service's log file flushes on exit.
     let _file_guard = init_tracing(&cli);
 
-    if let Err(e) = dispatch(cli).await {
+    if let Err(e) = dispatch(cli, &path).await {
         let exit = output::emit_error(&e);
         std::process::exit(exit);
     }
@@ -346,51 +359,61 @@ fn init_tracing(cli: &Cli) -> Option<WorkerGuard> {
 /// the caller parses that as JSON, fails, and has no way to tell a malformed
 /// answer from a command that was never going to answer. So the ones that cannot,
 /// say so.
-fn supports_json(cmd: &Commands) -> bool {
-    match cmd {
-        Commands::Saves
-        | Commands::Status
-        | Commands::Devices
-        | Commands::Doctor
-        | Commands::Notifications { .. }
-        | Commands::Whoami
-        | Commands::Scan { .. }
-        | Commands::Restore { .. } => true,
-        Commands::Save { action } => matches!(
-            action,
-            commands::saves::SaveCommand::List { .. }
-                | commands::saves::SaveCommand::Show { .. }
-                | commands::saves::SaveCommand::Untrack { .. }
-        ),
-        Commands::Snapshots { action } => matches!(action, SnapshotCommand::List { .. }),
-        Commands::Sync {
-            action: Some(commands::service::SyncCommand::Backup { .. }),
-        } => true,
-        Commands::Games { action } => matches!(
-            action,
-            commands::games::GameCommand::Diagnose { .. }
-                | commands::games::GameCommand::Played { .. }
-                | commands::games::GameCommand::Catalog { .. }
-        ),
-        Commands::Cloud { action } => {
-            matches!(action, commands::cloud::CloudCommand::MaxSaveSize { .. })
-        }
-        _ => false,
-    }
+///
+/// One list, read both by the check and by the refusal that names the ones that
+/// answer, so the two cannot drift apart. An entry covers its subcommands too:
+/// `notifications` is also `notifications off updates`.
+const JSON_COMMANDS: &[&str] = &[
+    "saves",
+    "doctor",
+    "status",
+    "devices",
+    "notifications",
+    "whoami",
+    "scan",
+    "restore",
+    "save list",
+    "save show",
+    "save untrack",
+    "snapshots list",
+    "sync backup",
+    "games diagnose",
+    "games played",
+    "games catalog",
+    "cloud max-save-size",
+];
+
+fn supports_json(path: &str) -> bool {
+    JSON_COMMANDS.iter().any(|cmd| {
+        path.strip_prefix(cmd)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+    })
 }
 
-async fn dispatch(cli: Cli) -> Result<()> {
+/// The subcommands as typed, `save list` for `hoard save list --json`. Empty for
+/// bare `hoard`.
+fn command_path(matches: &clap::ArgMatches) -> String {
+    let mut words = Vec::new();
+    let mut level = matches;
+    while let Some((name, sub)) = level.subcommand() {
+        words.push(name);
+        level = sub;
+    }
+    words.join(" ")
+}
+
+async fn dispatch(cli: Cli, path: &str) -> Result<()> {
     let Some(command) = cli.command else {
         return commands::banner::show(true).await;
     };
 
-    if output::json() && !supports_json(&command) {
+    if output::json() && !supports_json(path) {
         return Err(output::err(
             "json_unsupported",
-            "this command has no --json output yet. The ones that do: saves, \
-             doctor, status, devices, notifications, whoami, scan, restore, \
-             save list, save show, save untrack, snapshots list, sync backup, \
-             games diagnose, games played, games catalog, cloud max-save-size.",
+            format!(
+                "this command has no --json output yet. The ones that do: {}.",
+                JSON_COMMANDS.join(", ")
+            ),
         ));
     }
 
@@ -648,7 +671,7 @@ async fn list_snapshots(
 
     output::emit(&rows, |rows| {
         if rows.is_empty() {
-            println!("(no snapshots)");
+            println!("(no versions)");
             return;
         }
         // The machine goes in the table for the same reason it goes in the
@@ -696,7 +719,6 @@ fn fmt_bytes(b: u64) -> String {
 mod tests {
     use super::*;
     use clap::error::ErrorKind;
-    use clap::CommandFactory;
 
     fn parse(argv: &[&str]) -> Cli {
         let full = std::iter::once("hoard").chain(argv.iter().copied());
@@ -825,28 +847,39 @@ mod tests {
         parse(&["notifications", "off", "updates", "game-activity"]);
     }
 
+    fn path_of(argv: &[&str]) -> String {
+        let full = std::iter::once("hoard").chain(argv.iter().copied());
+        match Cli::command().try_get_matches_from(full) {
+            Ok(matches) => command_path(&matches),
+            Err(err) => panic!("`hoard {}` should parse: {err}", argv.join(" ")),
+        }
+    }
+
     /// The `--json` promise per command: the ones listed answer with an
     /// envelope, every other one refuses up front instead of printing a human
     /// table that the caller then fails to parse.
     #[test]
     fn json_support_is_declared_per_command() {
         let answers = [
-            vec!["saves"],
-            vec!["status"],
+            vec!["saves", "--json"],
+            vec!["--json", "status"],
             vec!["devices"],
             vec!["doctor"],
             vec!["whoami"],
-            vec!["scan"],
+            vec!["scan", "--folder", "/tmp"],
             vec!["notifications"],
+            vec!["notifications", "off", "updates"],
             vec!["restore", "some-save"],
             vec!["save", "list"],
             vec!["save", "show", "some-save"],
             vec!["save", "untrack", "some-save"],
             vec!["snapshots", "list", "some-save"],
+            vec!["sync", "backup", "--all"],
+            vec!["games", "played"],
+            vec!["cloud", "max-save-size"],
         ];
         for argv in answers {
-            let cmd = parse(&argv).command.unwrap();
-            assert!(supports_json(&cmd), "`hoard {}`", argv.join(" "));
+            assert!(supports_json(&path_of(&argv)), "`hoard {}`", argv.join(" "));
         }
 
         let refuses = [
@@ -856,6 +889,7 @@ mod tests {
             vec!["logout"],
             vec!["agents"],
             vec!["sync"],
+            vec!["sync", "status"],
             vec!["backup", "some-save"],
             vec!["save", "delete", "some-save"],
             vec!["save", "pause", "some-save"],
@@ -863,9 +897,47 @@ mod tests {
             vec!["snapshots", "max-versions"],
         ];
         for argv in refuses {
-            let cmd = parse(&argv).command.unwrap();
-            assert!(!supports_json(&cmd), "`hoard {}`", argv.join(" "));
+            assert!(
+                !supports_json(&path_of(&argv)),
+                "`hoard {}`",
+                argv.join(" ")
+            );
         }
+        // A word that starts like a listed one is not that one.
+        assert!(!supports_json("save showcase"));
+        assert!(!supports_json("savesync"));
+        assert!(!supports_json(""), "bare `hoard` paints the panel");
+    }
+
+    /// The refusal names the commands that answer, so a misspelt entry would send
+    /// an agent to a command that doesn't exist.
+    #[test]
+    fn every_json_command_is_a_real_command() {
+        for entry in JSON_COMMANDS {
+            let mut cmd = Cli::command();
+            for word in entry.split(' ') {
+                cmd = match cmd.find_subcommand(word) {
+                    Some(sub) => sub.clone(),
+                    None => panic!("`hoard {entry}` is in JSON_COMMANDS but not a command"),
+                };
+            }
+        }
+    }
+
+    /// `hoard sync` alone and `hoard sync status` print the same thing;
+    /// `hoard --help` has long promised the second.
+    #[test]
+    fn sync_status_is_a_subcommand() {
+        assert!(matches!(
+            parse(&["sync", "status"]).command,
+            Some(Commands::Sync {
+                action: Some(commands::service::SyncCommand::Status)
+            })
+        ));
+        assert!(matches!(
+            parse(&["sync"]).command,
+            Some(Commands::Sync { action: None })
+        ));
     }
 
     /// `snapshots list --json` is the contract. The insight fields come and go

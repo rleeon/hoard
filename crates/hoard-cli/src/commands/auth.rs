@@ -346,9 +346,9 @@ pub async fn logout() -> Result<()> {
 
     match (had_cloud, had_selfhost) {
         (false, false) => println!("no active session"),
-        (true, false) => println!("Cloud session closed"),
+        (true, false) => println!("Hoard One session closed"),
         (false, true) => println!("self-host session closed"),
-        (true, true) => println!("Cloud and self-host sessions closed"),
+        (true, true) => println!("Hoard One and self-host sessions closed"),
     }
     Ok(())
 }
@@ -381,7 +381,7 @@ pub async fn whoami() -> Result<()> {
         // session (ADR 0021, part A).
         let active = link::resolve_session().await?;
         let Some(sess) = active.cloud else {
-            bail!("the stored Cloud session is unreadable, run `hoard login`");
+            bail!("the stored Hoard One session is unreadable, run `hoard login`");
         };
         let me = cloud_auth::fetch_me(&sess.server_url, &sess.access).await?;
         WhoamiOut::Cloud {

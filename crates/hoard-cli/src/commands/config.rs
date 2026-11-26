@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use clap::Subcommand;
 
 use hoard_agent::config::CliConfig;
-use hoard_agent::prefs::{AutomaticTimer, ModeChange, Prefs, ServiceLink, SyncMode};
+use hoard_agent::prefs::{fmt_interval, AutomaticTimer, ModeChange, Prefs, ServiceLink, SyncMode};
 use hoard_core::ipc::Request;
 
 #[derive(Subcommand)]
@@ -49,7 +49,12 @@ pub async fn run(cmd: ConfigCommand) -> Result<()> {
             println!("wrote {}", path.display());
         }
         ConfigCommand::Show => {
-            let (cfg, path) = CliConfig::load_default()?;
+            let (mut cfg, path) = CliConfig::load_default()?;
+            // The self-hosted token is a password: this output lands in
+            // scrollback, screenshots and whatever an assistant reads.
+            if cfg.auth.token.as_deref().is_some_and(|t| !t.is_empty()) {
+                cfg.auth.token = Some("<hidden>".to_string());
+            }
             println!("# {}", path.display());
             print!("{}", toml::to_string_pretty(&cfg)?);
             let (prefs, path) = Prefs::load_for_cli_edit()?;
@@ -259,21 +264,6 @@ fn parse_interval(value: &str) -> Option<u64> {
     digits.is_empty().then_some(total)
 }
 
-fn fmt_interval(secs: u64) -> String {
-    let (h, m, s) = (secs / 3600, secs % 3600 / 60, secs % 60);
-    let mut out = String::new();
-    if h > 0 {
-        out.push_str(&format!("{h}h"));
-    }
-    if m > 0 {
-        out.push_str(&format!("{m}m"));
-    }
-    if s > 0 || out.is_empty() {
-        out.push_str(&format!("{s}s"));
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,14 +280,5 @@ mod tests {
         assert_eq!(parse_interval("1h30"), None);
         assert_eq!(parse_interval("ten minutes"), None);
         assert_eq!(parse_interval(""), None);
-    }
-
-    #[test]
-    fn intervals_print_back_the_same_way() {
-        assert_eq!(fmt_interval(600), "10m");
-        assert_eq!(fmt_interval(3600), "1h");
-        assert_eq!(fmt_interval(5400), "1h30m");
-        assert_eq!(fmt_interval(90), "1m30s");
-        assert_eq!(fmt_interval(86400), "24h");
     }
 }

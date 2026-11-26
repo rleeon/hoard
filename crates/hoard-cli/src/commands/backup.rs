@@ -123,7 +123,7 @@ pub async fn run(save_id: String, source: Option<PathBuf>, remember: bool) -> Re
     pb.finish_with_message("uploaded");
 
     println!(
-        "snapshot v{} created ({} files, {})",
+        "v{} created ({} files, {})",
         outcome.snapshot.version_num,
         outcome.snapshot.file_count,
         fmt_bytes(outcome.snapshot.total_size_bytes as u64)

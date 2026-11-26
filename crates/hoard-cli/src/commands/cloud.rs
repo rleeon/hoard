@@ -1,4 +1,4 @@
-//! `hoard cloud`: the Hoard Cloud account from the terminal. Parity with what the
+//! `hoard cloud`: the Hoard One account from the terminal. Parity with what the
 //! desktop offers on its account screen: export, the black box (storage, archive,
 //! reactivate), Pro entitlements and the playtime recap. All the logic lives in
 //! [`hoard_agent::cloud_account`]; here we only resolve the Cloud session and
@@ -67,18 +67,18 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 .await
                 .map_err(err)?;
             println!(
-                "plan {} · {} / {} usados{}",
+                "plan {} · {} / {} used{}",
                 sg.plan,
                 fmt_size(sg.used_bytes as i64),
                 fmt_size(sg.limit_bytes as i64),
                 if sg.over_bytes > 0 {
-                    format!(" · {} por encima", fmt_size(sg.over_bytes as i64))
+                    format!(" · {} over", fmt_size(sg.over_bytes as i64))
                 } else {
                     String::new()
                 }
             );
             if sg.games.is_empty() {
-                println!("(sin partidas)");
+                println!("(no saves)");
                 return Ok(());
             }
             println!(
@@ -86,7 +86,7 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 "ID", "GAME", "LABEL", "FREEABLE"
             );
             for g in sg.games {
-                let label = if g.archived { "archivada" } else { &g.label };
+                let label = if g.archived { "archived" } else { &g.label };
                 println!(
                     "{:<38} {:<24} {:<12} {:>10}",
                     g.save_id,
@@ -98,25 +98,30 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
         }
         CloudCommand::Export => {
             let job = cloud_account::export_all(base, token).await.map_err(err)?;
-            println!("export lanzado: job {} ({})", job.job_id, job.status);
-            println!("sondea el estado con `hoard cloud export-status`");
+            println!("export started: job {} ({})", job.job_id, job.status);
+            println!("check on it with `hoard cloud export-status`");
         }
         CloudCommand::ExportStatus => {
             let st = cloud_account::export_status(base, token)
                 .await
                 .map_err(err)?;
             match st.status {
-                None => println!("(nunca has solicitado un export)"),
+                None => println!("(no export requested yet)"),
                 Some(status) => {
-                    println!("estado: {status}");
+                    let expiry = if status == "expired" {
+                        "expired"
+                    } else {
+                        "expires"
+                    };
+                    println!("status: {status}");
                     if let Some(sz) = st.size_bytes {
                         println!("size: {}", fmt_size(sz));
                     }
                     if let Some(url) = st.download_url {
-                        println!("descarga: {url}");
+                        println!("download: {url}");
                     }
                     if let Some(exp) = st.expires_at {
-                        println!("caduca: {exp}");
+                        println!("{expiry}: {exp}");
                     }
                     if let Some(e) = st.error {
                         println!("error: {e}");
@@ -129,7 +134,7 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 .await
                 .map_err(err)?;
             println!(
-                "archivada {} · liberados {} · se purga el {}",
+                "archived {} · freed {} · purged on {}",
                 r.save_id,
                 fmt_size(r.freed_bytes),
                 r.purge_after
@@ -139,7 +144,7 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
             cloud_account::reactivate_save(base, token, &save_id)
                 .await
                 .map_err(err)?;
-            println!("reactivada {save_id}");
+            println!("reactivated {save_id}");
         }
         CloudCommand::Entitlements => {
             let ent = cloud_account::entitlements(base, token)
@@ -168,7 +173,7 @@ pub async fn run(cmd: CloudCommand) -> Result<()> {
                 .map_err(err)?;
             println!("total: {}", fmt_hours(sum.total_secs));
             if sum.by_game.is_empty() {
-                println!("(sin partidas registradas)");
+                println!("(no playtime recorded)");
                 return Ok(());
             }
             let mut games: Vec<(&String, &u64)> = sum.by_game.iter().collect();
@@ -283,9 +288,9 @@ fn fmt_feature(f: &cloud_account::FeatureState) -> String {
     use cloud_account::FeatureState::*;
     match f {
         Entitled => "entitled".into(),
-        TrialAvailable { days } => format!("trial disponible ({days}d)"),
-        Trial { expires_at } => format!("trial (caduca {expires_at})"),
-        TrialExpired => "bloqueada".into(),
+        TrialAvailable { days } => format!("trial available ({days}d)"),
+        Trial { expires_at } => format!("trial (expires {expires_at})"),
+        TrialExpired => "locked".into(),
     }
 }
 

@@ -4,7 +4,6 @@ use anyhow::{bail, Result};
 use clap::Subcommand;
 use serde::Serialize;
 
-use hoard_agent::api::ApiError;
 use hoard_agent::detection::DetectionTrace;
 use hoard_agent::library::PlaytimeGameInfo;
 use hoard_agent::manifest::Os;
@@ -109,8 +108,10 @@ async fn show(slug: String) -> Result<()> {
     let g = match catalog_client().await? {
         Some(client) => client.get_game(&slug).await?,
         None => catalog::game(&slug).ok_or_else(|| {
-            anyhow::Error::new(ApiError::NotFound)
-                .context(format!("no game {slug} in the catalogue"))
+            output::err(
+                "not_found",
+                format!("no game {slug} in the catalog; `hoard games search` finds the slug"),
+            )
         })?,
     };
     println!("slug:    {}", g.slug);
@@ -171,6 +172,23 @@ async fn diagnose(slug: String) -> Result<()> {
             detection::diagnose(&slug, Os::current(), &state).await
         }
     };
+    // A slug nobody has heard of is not a detection problem. Unless a folder was
+    // set for it by hand: then it is a custom game and its trace says something.
+    let unknown = trace.attempts.iter().any(|step| {
+        step.dropped
+            .iter()
+            .any(|d| d.reason == detection::NOT_IN_CATALOG)
+    });
+    let nothing_found = trace
+        .attempts
+        .iter()
+        .all(|step| step.expanded.is_empty() && step.kept.is_empty());
+    if unknown && nothing_found {
+        return Err(output::err(
+            "not_found",
+            format!("no game {slug} in the catalog; `hoard games search` finds the slug"),
+        ));
+    }
     let out = TraceOut {
         slug: trace.slug,
         steps: trace
@@ -250,7 +268,7 @@ async fn played(exclude: Vec<String>, include: Vec<String>) -> Result<()> {
             if !games.iter().any(|g| &g.slug == slug) {
                 return Err(output::err(
                     "not_found",
-                    format!("{slug} isn't in the list; `hoard games played` shows it"),
+                    format!("{slug} isn't among the played games; `hoard games played` lists them"),
                 ));
             }
         }
@@ -294,7 +312,7 @@ async fn played(exclude: Vec<String>, include: Vec<String>) -> Result<()> {
             println!("no online games without a save are installed here");
             return;
         }
-        println!("{:<32} {:<32} HOURS", "SLUG", "NAME");
+        println!("{:<32} {:<32} PLAYTIME", "SLUG", "NAME");
         for g in &out.games {
             println!(
                 "{:<32} {:<32} {}",
@@ -377,13 +395,15 @@ async fn catalog_status(refresh: bool) -> Result<()> {
         refreshed: refresh,
     };
     output::emit(&out, |out| {
-        let when = out.updated_at.as_deref().unwrap_or("never refreshed");
         let source = if out.downloaded {
             "downloaded"
         } else {
             "shipped with this build"
         };
-        println!("{} games · {source} · updated {when}", out.games);
+        match out.updated_at.as_deref() {
+            Some(when) => println!("{} games · {source} · updated {when}", out.games),
+            None => println!("{} games · {source} · never refreshed", out.games),
+        }
     })
 }
 

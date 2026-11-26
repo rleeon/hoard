@@ -1,5 +1,5 @@
-//! `hoard saves`: the saves this machine tracks, meaning what `daemon` and `sync`
-//! watch. Purely local: it reads `contexts/<id>.json` of the active context (Cloud
+//! `hoard saves`: the saves this machine tracks, meaning what the sync service
+//! watches. Purely local: it reads `contexts/<id>.json` of the active context (Cloud
 //! or self-host) and never touches the network, so it works offline and is
 //! instant.
 

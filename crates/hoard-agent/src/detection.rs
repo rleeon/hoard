@@ -2398,6 +2398,10 @@ pub struct DetectionTrace {
     pub attempts: Vec<TraceStep>,
 }
 
+/// The reason a [`diagnose`] gives when the slug isn't in the catalog, so a
+/// caller can tell a game nobody has heard of from one detection missed.
+pub const NOT_IN_CATALOG: &str = "slug not in catalog";
+
 /// Reproduce the detection pipeline for a single slug, recording every
 /// step into a [`DetectionTrace`] instead of building a report. Used by
 /// the desktop app's hidden diagnostics panel: the answer to "why
@@ -2453,7 +2457,7 @@ pub async fn diagnose(slug: &str, os: Os, state: &CliState) -> DetectionTrace {
             kept: Vec::new(),
             dropped: vec![DroppedPath {
                 path: slug.into(),
-                reason: "slug not in catalog".into(),
+                reason: NOT_IN_CATALOG.into(),
             }],
         });
         return DetectionTrace {

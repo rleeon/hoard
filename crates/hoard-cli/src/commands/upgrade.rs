@@ -88,7 +88,7 @@ pub async fn snooze(hours: u32) -> Result<()> {
         hoard_core::ipc::Payload::Update(state) => state,
         other => bail!("the service answered a {other:?} to a snooze"),
     };
-    println!("update reminders silenced for {hours} h");
+    println!("update reminders silenced for {hours}h");
     if let Some(deadline) = state.deadline {
         let day = deadline
             .format(&time::format_description::well_known::Rfc3339)

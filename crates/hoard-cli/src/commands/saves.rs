@@ -56,16 +56,18 @@ pub struct SaveInfo {
 
 #[derive(Subcommand)]
 pub enum SaveCommand {
-    /// Create a new save namespace for a game
+    /// Create a new save for a game on the server
     Create {
         /// Game slug (use `hoard games search` to find one)
         #[arg(long)]
         game: String,
-        /// Label for this save (e.g. "main", "speedrun"). Defaults to "default".
-        #[arg(long, default_value = "default")]
+        /// Label for this save (e.g. "main", "speedrun"). Defaults to "main",
+        /// like `hoard track` and the app
+        #[arg(long, default_value = "main")]
         label: String,
     },
-    /// List your saves
+    /// List this account's saves on the server (`hoard saves` lists the ones
+    /// this machine tracks)
     List {
         /// Filter by game slug
         #[arg(long)]
@@ -73,7 +75,7 @@ pub enum SaveCommand {
     },
     /// Show details for a save
     Show { id: String },
-    /// Delete a save (and all its snapshots)
+    /// Delete a save (and all its versions)
     Delete {
         id: String,
         #[arg(long)]
@@ -379,7 +381,7 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
                 if let Some(state) = s.state {
                     println!("state:     {state}");
                 }
-                println!("snapshots: {}", s.snapshot_count.unwrap_or(0));
+                println!("versions:  {}", s.snapshot_count.unwrap_or(0));
                 match s.latest_version_num {
                     Some(v) => println!("latest:    v{v}"),
                     None => println!("latest:    —"),
@@ -403,7 +405,7 @@ pub async fn run(cmd: SaveCommand) -> Result<()> {
             }
             if !yes {
                 use std::io::Write;
-                print!("delete save {} and ALL its snapshots? [y/N] ", id);
+                print!("delete save {} and ALL its versions? [y/N] ", id);
                 std::io::stdout().flush()?;
                 let mut buf = String::new();
                 std::io::stdin().read_line(&mut buf)?;
@@ -496,7 +498,7 @@ async fn cloud_saves(client: &ApiClient, cloud: &CloudEndpoint) -> Result<Vec<Sa
         .into_iter()
         .map(cloud_row)
         .collect();
-    let storage = cloud_account::storage_games(&cloud.server_url, &cloud.access)
+    let storage = cloud_account::storage_games_list(&cloud.server_url, &cloud.access, false)
         .await
         .map_err(|e| anyhow!(e.message()))?;
     for g in storage.games {

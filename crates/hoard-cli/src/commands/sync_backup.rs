@@ -6,11 +6,15 @@
 //! and the engine's own rules apply: the file types ticked for the save, its
 //! second folders, the plan's per-save cap, the budget for copies made by hand.
 //!
-//! Fire and forget, like the button. The result arrives as a notification (a
-//! copy someone asked for always notifies) and in `hoard sync run`.
+//! Fire and forget, like the button. If the save changed since its last version,
+//! a new one goes up and a notification says so (a copy someone asked for
+//! notifies even with success notices off); if it didn't, nothing is uploaded
+//! and nothing is said. `--all` is the button pressed on every save, not
+//! automatic mode's sweep: the sweep's copies are automatic ones, which count
+//! against the other budget and stay quiet, and in "everything by hand" the
+//! engine holds them altogether.
 
 use anyhow::{bail, Result};
-use hoard_agent::prefs::Prefs;
 use hoard_agent::session;
 use hoard_agent::state::CliState;
 use hoard_core::ipc::{DaemonStatus, Payload, Request};
@@ -21,11 +25,8 @@ use crate::output;
 
 #[derive(Serialize)]
 pub struct BackupRequested {
-    /// The saves the service was asked to back up, one by one.
+    /// The saves the service was asked to back up.
     pub save_ids: Vec<String>,
-    /// `--all` went out as the engine's sweep instead: every save re-checked,
-    /// the changed ones backed up.
-    pub sweep: bool,
 }
 
 pub async fn run(save_id: Option<String>, all: bool) -> Result<()> {
@@ -51,81 +52,58 @@ pub async fn run(save_id: Option<String>, all: bool) -> Result<()> {
     session::set_context_offline();
     let (state, _) = CliState::load_default()?;
 
-    let out = match save_id {
+    let save_ids = match save_id {
         Some(id) => {
             let id = id.trim().to_string();
             check_watched(&status, &state, &id)?;
-            link::ask(
-                &mut client,
-                Request::BackupNow {
-                    save_id: id.clone(),
-                },
-            )
-            .await?;
-            BackupRequested {
-                save_ids: vec![id],
-                sweep: false,
-            }
+            vec![id]
         }
-        None if all => {
-            let (prefs, _) = Prefs::load_for_cli_edit()?;
-            if prefs.manual_only {
-                // In "everything by hand" the engine holds every upload nobody asked
-                // for, the sweep's included: there it would find the changes and
-                // leave them on disk. Asking save by save is the one way through.
-                let ids: Vec<String> = status
-                    .slots
-                    .iter()
-                    .map(|slot| slot.save_id.clone())
-                    .filter(|id| state.saves.contains_key(id))
-                    .collect();
-                for id in &ids {
-                    link::ask(
-                        &mut client,
-                        Request::BackupNow {
-                            save_id: id.clone(),
-                        },
-                    )
-                    .await?;
-                }
-                BackupRequested {
-                    save_ids: ids,
-                    sweep: false,
-                }
-            } else {
-                let window_secs = prefs.automatic_backup_interval_secs;
-                link::ask(&mut client, Request::SweepAll { window_secs }).await?;
-                BackupRequested {
-                    save_ids: Vec::new(),
-                    sweep: true,
-                }
-            }
-        }
+        // Every slot the service watches that is one of this account's saves:
+        // hours-only games have a slot too, and nothing to back up.
+        None if all => status
+            .slots
+            .iter()
+            .map(|slot| slot.save_id.clone())
+            .filter(|id| state.saves.contains_key(id))
+            .collect(),
         None => bail!("say which save (`hoard sync backup <save_id>`) or pass --all"),
     };
+    for id in &save_ids {
+        link::ask(
+            &mut client,
+            Request::BackupNow {
+                save_id: id.clone(),
+            },
+        )
+        .await?;
+    }
+    let out = BackupRequested { save_ids };
 
     output::emit(&out, |out| {
-        if out.sweep {
-            println!(
-                "the Hoard service is checking every save and backing up the ones that changed"
-            );
-        } else if out.save_ids.is_empty() {
+        if out.save_ids.is_empty() {
             println!("the Hoard service isn't syncing any save on this machine");
             return;
-        } else {
-            for id in &out.save_ids {
-                let name = status
-                    .slots
-                    .iter()
-                    .find(|slot| &slot.save_id == id)
-                    .map(|slot| slot.display_name.as_str())
-                    .unwrap_or(id);
-                println!("backing up {name}");
-            }
         }
-        println!(
-            "only what changed goes up; you'll get a notification, or watch it with `hoard sync run`"
-        );
+        for id in &out.save_ids {
+            let name = status
+                .slots
+                .iter()
+                .find(|slot| &slot.save_id == id)
+                .map(|slot| slot.display_name.as_str())
+                .unwrap_or(id);
+            println!("backing up {name}");
+        }
+        if out.save_ids.len() == 1 {
+            println!(
+                "if it changed since its last version, a new one goes up and you'll get \
+                 a notification; if not, nothing is uploaded"
+            );
+        } else {
+            println!(
+                "each one that changed since its last version gets a new one and a \
+                 notification; the rest are left as they are"
+            );
+        }
     })
 }
 

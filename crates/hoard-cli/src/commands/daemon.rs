@@ -14,14 +14,16 @@
 //! (The gap between the `Welcome` and the `Subscribe` does travel: the cursor is
 //! the `Welcome`'s, not the moment of subscribing.)
 //!
-//! ## Stopping this stops sync, and stopping sync stops this
+//! ## Stopping this stops the sync it started, and stopping sync stops this
 //!
-//! On a signal we send `Shutdown` over IPC. It is the exception to "closing a
-//! client never kills the engine", and it is still deliberate: whoever types
-//! `hoard sync run` and cuts it asked to stop syncing. Until Slice 4d this
-//! process *was* the unit's `ExecStart`, so units installed by earlier versions
-//! still depend on it (from 4d the unit points at `hoardd`, which handles the
-//! signal itself).
+//! On a signal we send `Shutdown` over IPC, but only when this command brought
+//! the service up. Units installed by earlier versions have this command as
+//! their `ExecStart` (from 4d the unit points at `hoardd`, which handles the
+//! signal itself), and for them a stop has to stop the sync they started. A
+//! service that was already running belongs to whoever started it, the app
+//! usually: cutting a terminal that was only watching must not switch sync off
+//! for the window too. That one keeps running, and gets back the two settings
+//! `--backup-only` changed.
 //!
 //! And the other way round, since 4d: if the service says goodbye
 //! ([`hoard_core::ipc::ServerFrame::Goodbye`]) this command *ends* rather than
@@ -114,7 +116,10 @@ pub(crate) fn tail_last_n_lines(path: &Path, n: usize) -> Result<Vec<String>> {
 /// told to stop. `backup_only` asks the engine not to restore and not to open the
 /// pull paths, so it only uploads and never writes to your disk.
 pub async fn run(backup_only: bool) -> Result<()> {
-    let mut commands = link::ensure("commands").await?;
+    let (mut commands, started_here) = match link::attached("commands").await {
+        Some(client) => (client, false),
+        None => (link::ensure("commands").await?, true),
+    };
     let welcome = commands.welcome().clone();
     println!(
         "hoard sync · service {} · pid {}",
@@ -128,18 +133,25 @@ pub async fn run(backup_only: bool) -> Result<()> {
 
     if backup_only {
         // A flag from this process over an engine that belongs to another: it
-        // applies as soon as there is an engine and is undone on stop, since we
-        // stop the service on the way out.
+        // applies as soon as there is an engine and is undone on the way out,
+        // by the stop or by `restore_sync_settings`.
         tokio::spawn(apply_backup_only());
         println!("  backup only: never restores or writes to your disk");
     }
-    println!("Ctrl-C (or `hoard sync stop`) to stop.\n");
+    if started_here {
+        println!("Ctrl-C (or `hoard sync stop`) to stop.\n");
+    } else {
+        println!(
+            "Ctrl-C to stop following; the service keeps running (`hoard sync stop` stops it).\n"
+        );
+    }
 
-    // Two ways to end, and only one of them stops the service. If we are stopped
-    // (Ctrl-C, or the `systemctl --user stop` of an inherited unit still pointing
-    // at this command) the user asked to stop syncing; if it is the service that
-    // stops, it is already stopped and there is nothing to ask it.
-    let stop_the_service = tokio::select! {
+    // Two ways to end, and only one of them can stop the service. If we are
+    // stopped (Ctrl-C, or the `systemctl --user stop` of an inherited unit still
+    // pointing at this command) and we started it, the user asked to stop
+    // syncing; if it is the service that stops, it is already stopped and there
+    // is nothing to ask it.
+    let signalled = tokio::select! {
         _ = shutdown_signal() => true,
         // Only returns when the service says goodbye; a dropped connection
         // retries on its own, because the service can restart (an update) with
@@ -147,11 +159,54 @@ pub async fn run(backup_only: bool) -> Result<()> {
         _ = follow() => false,
     };
 
-    if stop_the_service {
+    if signalled && started_here {
         println!("\nstopping the Hoard service…");
         stop_service().await;
+    } else if signalled && backup_only {
+        restore_sync_settings().await;
     }
     Ok(())
+}
+
+/// Hands a service we didn't start back the way its owner set it: the two
+/// switches `--backup-only` turned off go back to what the app's Settings say.
+async fn restore_sync_settings() {
+    let prefs = match hoard_agent::prefs::Prefs::load_for_cli_edit() {
+        Ok((prefs, _)) => prefs,
+        Err(err) => {
+            eprintln!(
+                "warning: couldn't read your sync settings ({err:#}); the service stays \
+                 in backup-only mode until it restarts"
+            );
+            return;
+        }
+    };
+    let Some(mut client) = link::attached("backup-only").await else {
+        return;
+    };
+    let sent = link::ask(
+        &mut client,
+        Request::SetAutoRestore {
+            enabled: prefs.auto_restore,
+        },
+    )
+    .await
+    .and(
+        link::ask(
+            &mut client,
+            Request::SetGlobalSync {
+                enabled: prefs.global_sync,
+            },
+        )
+        .await,
+    );
+    match sent {
+        Ok(_) => println!("\nbackup-only mode off; the Hoard service keeps running."),
+        Err(err) => eprintln!(
+            "warning: couldn't take the service out of backup-only mode ({err:#}); \
+             `hoard sync restart` does"
+        ),
+    }
 }
 
 /// The engine's status line inside the service. An engine that is down *with a

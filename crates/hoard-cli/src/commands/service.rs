@@ -16,6 +16,9 @@ use crate::commands::daemon;
 
 #[derive(clap::Subcommand)]
 pub enum SyncCommand {
+    /// Show the service's status: the panel, what the service is doing, and the
+    /// service manager's view of it. `hoard sync` alone prints the same
+    Status,
     /// Install and start the sync service (runs now and at every login/boot)
     Start,
     /// Stop the service and remove it from autostart
@@ -31,8 +34,9 @@ pub enum SyncCommand {
     /// Show the most recent service logs
     Logs,
     /// Back up a save now, through the sync service: the app's "Back up now".
-    /// Only what changed goes up, and the result arrives as a notification.
-    /// `--all` re-checks every save and backs up the ones that changed.
+    /// If it changed since its last version, a new one goes up and a
+    /// notification says so; if not, nothing is uploaded. `--all` does the same
+    /// for every save this machine syncs.
     Backup {
         /// Save id (UUID), see `hoard saves`
         #[arg(required_unless_present = "all", conflicts_with = "all")]
@@ -41,7 +45,8 @@ pub enum SyncCommand {
         #[arg(long)]
         all: bool,
     },
-    /// Follow the sync service's events in this terminal
+    /// Follow the sync service's events in this terminal. Ctrl-C stops the
+    /// service only if this command started it
     #[command(hide = true)]
     Run {
         /// Back up only: never restore or write to disk (global-sync off)
@@ -53,7 +58,7 @@ pub enum SyncCommand {
 /// `hoard sync [action]`. No action prints the status (like `systemctl status`).
 pub async fn run(action: Option<SyncCommand>) -> Result<()> {
     match action {
-        None => {
+        None | Some(SyncCommand::Status) => {
             // Paint the overall status panel first, then the service detail
             // below it: the banner gives cli, server, session and sync at a
             // glance.

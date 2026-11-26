@@ -512,7 +512,7 @@ pub async fn borrow_cloud_token(rejected: Option<String>) -> Result<Option<Cloud
                 err.downcast_ref::<IpcError>(),
                 Some(IpcError::CloudSessionExpired { .. })
             ) {
-                return Err(err.context("the Hoard service couldn't renew the Cloud session"));
+                return Err(err.context("the Hoard service couldn't renew the Hoard One session"));
             }
             // Transient (network, a grumpy GoTrue): the token on disk may still
             // be good, so try with it rather than abort.
