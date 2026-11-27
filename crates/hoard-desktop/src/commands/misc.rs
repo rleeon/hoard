@@ -125,6 +125,14 @@ fn opener(target: &std::ffi::OsStr) -> tokio::process::Command {
                     c.env_remove("XDG_DATA_DIRS");
                 }
             }
+            // The rest of what the GTK hook exports points into the bundle too.
+            // A Flatpak browser never sees it, but a native GTK one (DroidDeck's
+            // Firefox, #115) loads the bundle's input-method modules and our
+            // forced light theme. The hook keeps no copy of the session's value,
+            // so dropping them is as close to the host as we can get.
+            for var in APPIMAGE_GTK {
+                c.env_remove(var);
+            }
         }
         c
     };
@@ -139,26 +147,35 @@ fn opener(target: &std::ffi::OsStr) -> tokio::process::Command {
     cmd
 }
 
+#[cfg(target_os = "linux")]
+const APPIMAGE_GTK: &[&str] = &[
+    "GTK_EXE_PREFIX",
+    "GTK_IM_MODULE_FILE",
+    "GTK_DATA_PREFIX",
+    "GTK_THEME",
+    "GI_TYPELIB_PATH",
+];
+
 /// `XDG_DATA_DIRS` as the session had it before the AppImage launched us, or
 /// `None` when it had none.
 ///
 /// Nothing saves the original, but what the AppImage does to it is
 /// reversible: `AppRun` prepends `$APPDIR/usr/share/` and the linuxdeploy GTK
-/// hook prepends `$APPDIR/usr/share:/usr/share:`. Dropping the `$APPDIR` entries
-/// and keeping each directory's last occurrence takes the injected `/usr/share`
-/// back out while the session's own copy, at the end, stays where it was.
+/// hook prepends `$APPDIR/usr/share:/usr/share:`. So the session's value is
+/// whatever follows the leading `$APPDIR` entries and the hook's `/usr/share`.
+/// Deduplicating instead could not tell that `/usr/share` from the session's
+/// own, and with no session value it handed the browser `/usr/share` alone,
+/// dropping `/usr/local/share` from the defaults.
 #[cfg(any(target_os = "linux", test))]
 fn host_data_dirs(dirs: &str, appdir: &std::path::Path) -> Option<String> {
-    let entries: Vec<&str> = dirs
-        .split(':')
-        .filter(|d| !d.is_empty() && !std::path::Path::new(d).starts_with(appdir))
-        .collect();
-    let mut host: Vec<&str> = Vec::new();
-    for (i, dir) in entries.iter().enumerate() {
-        if !entries[i + 1..].contains(dir) {
-            host.push(dir);
-        }
+    let ours = |d: &&str| std::path::Path::new(d).starts_with(appdir);
+    let entries: Vec<&str> = dirs.split(':').filter(|d| !d.is_empty()).collect();
+    let lead = entries.iter().take_while(|d| ours(d)).count();
+    let mut rest = &entries[lead..];
+    if lead > 0 && rest.first().is_some_and(|d| d.trim_end_matches('/') == "/usr/share") {
+        rest = &rest[1..];
     }
+    let host: Vec<&str> = rest.iter().copied().filter(|d| !ours(d)).collect();
     (!host.is_empty()).then(|| host.join(":"))
 }
 
@@ -184,9 +201,28 @@ mod tests {
 
     #[test]
     fn no_session_value_means_none() {
-        // The GTK hook over an unset variable leaves a trailing `:`.
-        let inside = format!("{APPDIR}/usr/share/:{APPDIR}/usr/share:");
+        // The GTK hook over an unset variable: its `/usr/share` and a trailing `:`.
+        let inside = format!("{APPDIR}/usr/share/:{APPDIR}/usr/share:/usr/share:");
         assert_eq!(host_data_dirs(&inside, Path::new(APPDIR)), None);
+    }
+
+    #[test]
+    fn a_session_of_just_usr_share_keeps_it() {
+        let inside = format!("{APPDIR}/usr/share/:{APPDIR}/usr/share:/usr/share:/usr/share");
+        assert_eq!(
+            host_data_dirs(&inside, Path::new(APPDIR)).as_deref(),
+            Some("/usr/share")
+        );
+    }
+
+    #[test]
+    fn the_session_order_is_kept_verbatim() {
+        let session = "/usr/share:/opt/extra/share:/usr/local/share";
+        let inside = format!("{APPDIR}/usr/share:/usr/share:{session}");
+        assert_eq!(
+            host_data_dirs(&inside, Path::new(APPDIR)).as_deref(),
+            Some(session)
+        );
     }
 
     #[test]
