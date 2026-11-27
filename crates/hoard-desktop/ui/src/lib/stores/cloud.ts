@@ -191,12 +191,43 @@ export async function openExternal(url: string): Promise<void> {
   await invoke("open_external", { url });
 }
 
+/** The sign-in link to finish by hand, when the browser did not open (`failed`,
+ *  with the opener's error) or never came back. `App.svelte` shows it. */
+export type ManualSignIn = { url: string; failed: boolean; detail: string | null };
+export const manualSignIn = writable<ManualSignIn | null>(null);
+
+/** How long a sign-in waits on the browser before offering the link. A browser
+ *  that died after the opener reported success looks exactly like one that
+ *  never opened (DroidDeck, #115), and so does one behind the window. Long
+ *  enough for a normal sign-in to finish first; if it doesn't, the dialog
+ *  closes itself when the sign-in lands. */
+const BROWSER_GRACE_MS = 20_000;
+let browserGrace: ReturnType<typeof setTimeout> | null = null;
+
 /** Open the OAuth login URL in the system browser. The browser flow ends
  *  with a `hoard://auth/callback#access_token=…&refresh_token=…` deep link
- *  back into the app; the listener in `initCloudDeepLink()` picks it up. */
-export async function startCloudLogin(): Promise<void> {
+ *  back into the app; the listener in `initCloudDeepLink()` picks it up.
+ *  Resolves `false` when the browser could not be opened and the link is
+ *  being offered instead. */
+export async function startCloudLogin(): Promise<boolean> {
   const url = await invoke<string>("cloud_login_url");
-  await openExternal(url);
+  if (browserGrace) clearTimeout(browserGrace);
+  browserGrace = null;
+  try {
+    await openExternal(url);
+  } catch (e) {
+    manualSignIn.set({
+      url,
+      failed: true,
+      detail: typeof e === "string" ? e : (e as Error).message,
+    });
+    return false;
+  }
+  browserGrace = setTimeout(() => {
+    browserGrace = null;
+    if (!get(internal).account) manualSignIn.set({ url, failed: false, detail: null });
+  }, BROWSER_GRACE_MS);
+  return true;
 }
 
 /** Complete a sign-in from a parsed deep-link payload. The `callbackState` is
@@ -207,6 +238,10 @@ export async function completeCloudLogin(
   refreshToken: string,
   callbackState: string,
 ): Promise<CloudAccount> {
+  // The browser leg came back, whatever happens next: no link to offer.
+  if (browserGrace) clearTimeout(browserGrace);
+  browserGrace = null;
+  manualSignIn.set(null);
   internal.update(($s) => ({ ...$s, loading: true }));
   try {
     const account = await invoke<CloudAccount>("cloud_complete_login", {

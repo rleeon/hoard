@@ -161,8 +161,7 @@
     if (busyAction) return;
     busyAction = "signin";
     try {
-      await startCloudLogin();
-      toastInfo($_("account.opened_browser"));
+      if (await startCloudLogin()) toastInfo($_("account.opened_browser"));
     } catch (e) {
       toastError(typeof e === "string" ? e : (e as Error).message);
     } finally {

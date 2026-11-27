@@ -47,9 +47,51 @@ pub async fn open_external(url: String) -> Result<(), String> {
         c
     };
 
-    cmd.spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not open browser: {e}"))
+    // Waited on, so a failure reaches the caller. Started and forgotten, it hid
+    // every one: on DroidDeck (#115) "Continue to sign in" did nothing visible
+    // and left nothing in the log, and the sign-in had no way to offer the link.
+    let site = site_of(&url);
+    let mut child = cmd.spawn().map_err(|e| {
+        tracing::warn!(%site, error = %e, "browser opener did not start");
+        format!("could not open browser: {e}")
+    })?;
+    match tokio::time::timeout(OPENER_WAIT, child.wait()).await {
+        Ok(Ok(status)) if status.success() => {
+            tracing::info!(%site, "browser opener done");
+            Ok(())
+        }
+        Ok(Ok(status)) => {
+            tracing::warn!(%site, %status, "browser opener failed");
+            Err(format!("the browser opener failed ({status})"))
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(%site, error = %e, "browser opener lost");
+            Err(format!("could not open browser: {e}"))
+        }
+        Err(_) => {
+            tracing::info!(%site, "browser opener still running, taken as opened");
+            Ok(())
+        }
+    }
+}
+
+/// How long the opener gets to say whether it worked. `xdg-open`, `open` and
+/// rundll32 hand the address over and return in well under a second. One still
+/// running past this is the browser itself in the foreground (what `xdg-open`
+/// does outside GNOME and KDE), so it is left alone and counted as opened; the
+/// sign-in's own wait covers a browser that never shows.
+const OPENER_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+/// What the log may say about an address: scheme and host. Never the query (the
+/// sign-in URL carries the CSRF nonce) nor a mailto recipient.
+fn site_of(url: &str) -> &str {
+    match url.split_once("://") {
+        Some((scheme, rest)) => {
+            let host = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            &url[..scheme.len() + 3 + host]
+        }
+        None => url.split(':').next().unwrap_or_default(),
+    }
 }
 
 /// Show a folder in the system's file manager: where a version downloaded
@@ -223,6 +265,16 @@ mod tests {
             host_data_dirs(&inside, Path::new(APPDIR)).as_deref(),
             Some(session)
         );
+    }
+
+    #[test]
+    fn the_log_sees_only_the_site() {
+        assert_eq!(
+            super::site_of("https://hoard.services/login?desktop=1&port=41234&state=abc"),
+            "https://hoard.services"
+        );
+        assert_eq!(super::site_of("https://hoard.services"), "https://hoard.services");
+        assert_eq!(super::site_of("mailto:someone@example.com"), "mailto");
     }
 
     #[test]

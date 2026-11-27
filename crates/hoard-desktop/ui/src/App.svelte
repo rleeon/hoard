@@ -102,6 +102,7 @@
   import { tapVersion } from "./lib/stores/versionTap";
   import Modal from "./lib/components/Modal.svelte";
   import DeviceLimitModal from "./lib/components/DeviceLimitModal.svelte";
+  import ManualSignInModal from "./lib/components/ManualSignInModal.svelte";
   import HylianUser from "./lib/components/HylianUser.svelte";
   import MarioStar from "./lib/components/MarioStar.svelte";
   import QuestionBlock from "./lib/components/QuestionBlock.svelte";
@@ -123,6 +124,7 @@
     hydrateCloud,
     initCloudDeepLink,
     initCloudSessionWatch,
+    manualSignIn,
     planLabel,
     refreshCloud,
     exportAllCloudData,
@@ -1290,6 +1292,13 @@
     deviceLimit = null;
     debugDeviceLimit.set(null);
   }}
+/>
+
+<ManualSignInModal
+  url={$manualSignIn?.url ?? null}
+  failed={$manualSignIn?.failed ?? false}
+  detail={$manualSignIn?.detail ?? null}
+  onClose={() => manualSignIn.set(null)}
 />
 
 {#if DEBUG_TOOLS}
