@@ -863,13 +863,20 @@ pub async fn cloud_create_checkout(
 // ---- Caja negra: archived games ----
 
 /// `GET /v1/cloud/storage/games`: the per-game freeable footprint plus the quota
-/// figures. Drives the "free space" dialog.
+/// figures. Drives the "free space" dialog. `archived_only` skips the footprint,
+/// the expensive part, for a caller that only wants the archived games.
 #[tauri::command]
-pub async fn cloud_storage_games(app: AppHandle) -> Result<StorageGames, String> {
+pub async fn cloud_storage_games(
+    app: AppHandle,
+    archived_only: Option<bool>,
+) -> Result<StorageGames, String> {
     let creds = active_creds_or_msg(&app).await?;
-    cloud_account::storage_games(&creds.server_url, &creds.access_token)
-        .await
-        .map_err(cloud_err_to_string)
+    let answer = if archived_only.unwrap_or(false) {
+        cloud_account::storage_games_list(&creds.server_url, &creds.access_token, true).await
+    } else {
+        cloud_account::storage_games(&creds.server_url, &creds.access_token).await
+    };
+    answer.map_err(cloud_err_to_string)
 }
 
 /// `POST /v1/cloud/saves/:id/archive`: parks a game in the black box, freeing the

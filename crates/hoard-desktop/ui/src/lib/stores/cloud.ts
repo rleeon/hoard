@@ -371,9 +371,16 @@ export type ArchiveResult = {
   freed_bytes: number;
 };
 
-/** Per-game freeable footprint + quota, to drive the archive dialog. */
+/** Per-game freeable footprint + quota, to drive the archive dialog. The
+ *  heaviest thing the server works out for an account: only where those
+ *  figures are shown. */
 export async function storageGamesCloud(): Promise<StorageGames> {
   return await invoke<StorageGames>("cloud_storage_games");
+}
+
+/** The archived games alone, with no footprint worked out. */
+async function archivedGamesCloud(): Promise<StorageGames> {
+  return await invoke<StorageGames>("cloud_storage_games", { archivedOnly: true });
 }
 
 /** Archive a game into the black box: frees quota now, keeps it downloadable
@@ -403,7 +410,7 @@ export async function refreshArchivedSaves(): Promise<void> {
     return;
   }
   try {
-    const data = await storageGamesCloud();
+    const data = await archivedGamesCloud();
     const map: Record<string, string> = {};
     for (const g of data.games) {
       if (g.archived && g.purge_after) map[g.save_id] = g.purge_after;

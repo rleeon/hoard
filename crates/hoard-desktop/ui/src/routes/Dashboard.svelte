@@ -274,6 +274,17 @@
     }
   }
 
+  // The footprint is the heaviest thing the server works out for an account
+  // (15 s for one with 34 saves on 2026-11-26), and every committed version
+  // asks for it again. One at a time, the asks that land meanwhile folded into
+  // a single later one, and never two closer than this.
+  const FOOTPRINTS_GAP_MS = 30_000;
+  let footprintsBusy = false;
+  let footprintsAgain = false;
+  let footprintsAt = 0;
+  let footprintsTimer: ReturnType<typeof setTimeout> | undefined;
+  onDestroy(() => clearTimeout(footprintsTimer));
+
   async function fetchFootprints() {
     // Cloud only. Self-hosted (and signed out) settle straight into "asked and
     // there's nothing", so `undefined` keeps meaning "still loading" and the
@@ -282,6 +293,30 @@
       footprintsLoaded = true;
       return;
     }
+    if (footprintsBusy || footprintsTimer) {
+      footprintsAgain = true;
+      return;
+    }
+    const wait = footprintsAt + FOOTPRINTS_GAP_MS - Date.now();
+    if (wait > 0) {
+      footprintsTimer = setTimeout(() => {
+        footprintsTimer = undefined;
+        void fetchFootprints();
+      }, wait);
+      return;
+    }
+    footprintsBusy = true;
+    footprintsAgain = false;
+    try {
+      await loadFootprints();
+    } finally {
+      footprintsBusy = false;
+      footprintsAt = Date.now();
+      if (footprintsAgain) void fetchFootprints();
+    }
+  }
+
+  async function loadFootprints() {
     try {
       const s = await storageGamesCloud();
       const next: Record<string, number> = {};
