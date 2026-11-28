@@ -316,67 +316,6 @@ pub struct SharedGroup {
     pub bytes: i64,
 }
 
-/// Blobs referenced by more than one *live* save, grouped by the exact set of
-/// saves referencing them. Archived saves are excluded: their references are
-/// already released, so they can't hold anything hostage.
-///
-/// Split out of the handler so it can be exercised against a real database
-/// without standing up a `CloudState`. The array decode (`text[]` to `Vec<String>`,
-/// which hinges on `saves.id` being TEXT rather than UUID) is the kind of thing
-/// that compiles happily and 500s in production.
-///
-/// The catalogue entries count only while some version still points at them
-/// (`used`): pruning versions leaves entries behind, and a path nothing restores
-/// any more holds nothing hostage. Read through the user's own saves for the
-/// reason given at [`game_footprints`].
-pub async fn shared_groups(pool: &PgPool, user_id: Uuid) -> Result<Vec<SharedGroup>, CloudError> {
-    let rows: Vec<(Vec<String>, i64)> = sqlx::query_as(
-        r#"
-        WITH v AS MATERIALIZED (
-            SELECT v.id
-            FROM save_versions v
-            JOIN saves s ON s.id = v.save_id
-            WHERE s.user_id = $1 AND s.archived_at IS NULL
-        ),
-        e AS MATERIALIZED (
-            SELECT e.id, e.save_id, e.sha256
-            FROM file_entries e
-            JOIN saves s ON s.id = e.save_id
-            WHERE s.user_id = $1 AND s.archived_at IS NULL
-        ),
-        used AS MATERIALIZED (
-            SELECT DISTINCT vf.entry_id
-            FROM v
-            JOIN version_files vf ON vf.version_id = v.id
-        ),
-        per_blob AS (
-            SELECT e.sha256, array_agg(DISTINCT e.save_id ORDER BY e.save_id) AS save_ids
-            FROM e
-            JOIN used u ON u.entry_id = e.id
-            GROUP BY e.sha256
-            HAVING COUNT(DISTINCT e.save_id) > 1
-        )
-        SELECT pb.save_ids, COALESCE(SUM(b.size_bytes), 0)::bigint AS bytes
-        FROM per_blob pb
-        JOIN cloud_blobs b ON b.user_id = $1 AND b.sha256 = pb.sha256
-        WHERE b.refcount > 0
-        GROUP BY pb.save_ids
-        -- A group that frees nothing is not a group. Two saves sharing an empty
-        -- file satisfy the condition above and reached the client as "shares 0 B
-        -- with X: archive both to free it".
-        HAVING COALESCE(SUM(b.size_bytes), 0) > 0
-        ORDER BY 2 DESC
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(save_ids, bytes)| SharedGroup { save_ids, bytes })
-        .collect())
-}
-
 #[derive(Debug, Serialize)]
 pub struct StorageGamesOut {
     pub plan: &'static str,
@@ -392,83 +331,139 @@ pub struct StorageGamesOut {
     pub shared_groups: Vec<SharedGroup>,
 }
 
+/// What the "free up space" dialog works from.
+#[derive(Debug, Default)]
+pub struct StorageFootprint {
+    /// Every save, heaviest first.
+    pub games: Vec<GameFootprint>,
+    /// Heaviest first.
+    pub shared_groups: Vec<SharedGroup>,
+}
+
+/// Works out [`StorageFootprint`] for one account.
+///
 /// Per save, the bytes archiving it would free: blobs whose every reference
 /// comes from this save (refcount <= refs contributed here). Archived saves
 /// report 0, they are already out of the quota.
 ///
+/// And the [`SharedGroup`]s: blobs referenced by more than one *live* save,
+/// grouped by the exact set of saves referencing them. Archived saves are
+/// excluded: their references are already released, so they can't hold
+/// anything hostage. The array decode (`text[]` to `Vec<String>`, which hinges
+/// on `saves.id` being TEXT rather than UUID) is the kind of thing that compiles
+/// happily and 500s in production.
+///
+/// The catalogue entries count only while some version still points at them:
+/// pruning versions leaves entries behind, and a path nothing restores any more
+/// holds nothing hostage.
+///
 /// Each side of the manifest is read through the user's own saves, never
 /// through the `manifest_files` view. Over the view the planner hashed the whole
 /// of `file_entries` (801,126 rows, every account) to keep one account's 46,054,
-/// and spilled to disk: 16.4 s for this query and as much again for
-/// [`shared_groups`], past the 30 s the client waits. Every `Reload` of the
-/// service asked for it, so changing a setting in History hung the window for a
-/// minute (an account with 30 saves, Oct 2026). `MATERIALIZED` holds the order:
-/// left to itself the planner swapped to a sequential scan of `version_files`
-/// (4.7 M rows, 31 s). Now 2-4 s on the same account, warm or cold.
-pub async fn game_footprints(
+/// and spilled to disk: 16.4 s for the footprints and as much again for the
+/// groups, past the 30 s the client waits. Every `Reload` of the service asked
+/// for it, so changing a setting in History hung the window for a minute (an
+/// account with 30 saves, Oct 2026). `MATERIALIZED` holds the order: left to
+/// itself the planner swapped to a sequential scan of `version_files` (4.7 M
+/// rows, 31 s).
+///
+/// One statement for both answers, because the account's own file entries are
+/// the expensive read and two statements read them twice. On 2026-11-26 an
+/// account with 34 saves, 180 versions and 54,823 entries took 9.7 s for the
+/// footprints and 5.6 s for the groups, 5.2 s of each spent fetching those
+/// entries: 4,550 pages scattered over a 678 MB table, with 32 MB of shared
+/// buffers on the machine. Migration 0078 serves that read from an index.
+pub async fn storage_footprint(
     pool: &PgPool,
     user_id: Uuid,
-) -> Result<Vec<GameFootprint>, CloudError> {
-    // The SUM cast to bigint: NUMERIC does not decode into an i64.
-    let rows: Vec<(String, String, String, i64, Option<time::OffsetDateTime>)> = sqlx::query_as(
+) -> Result<StorageFootprint, CloudError> {
+    // A row per save (`save_id`, its freeable bytes) and a row per group
+    // (`save_ids`, its bytes). The SUMs cast to bigint: NUMERIC does not decode
+    // into an i64.
+    let rows: Vec<(Option<String>, Option<Vec<String>>, i64)> = sqlx::query_as(
         r#"
-        WITH v AS MATERIALIZED (
+        WITH s AS MATERIALIZED (
+            SELECT id, archived_at IS NULL AS live
+            FROM saves
+            WHERE user_id = $1
+        ),
+        v AS MATERIALIZED (
             SELECT v.id
             FROM save_versions v
-            JOIN saves s ON s.id = v.save_id
-            WHERE s.user_id = $1
+            JOIN s ON s.id = v.save_id
         ),
         e AS MATERIALIZED (
             SELECT e.id, e.save_id, e.sha256
             FROM file_entries e
-            JOIN saves s ON s.id = e.save_id
-            WHERE s.user_id = $1
+            JOIN s ON s.id = e.save_id
         ),
         vf AS MATERIALIZED (
             SELECT vf.version_id, vf.entry_id
             FROM v
             JOIN version_files vf ON vf.version_id = v.id
         ),
-        refs AS (
+        refs AS MATERIALIZED (
             SELECT e.save_id, e.sha256, COUNT(DISTINCT vf.version_id) AS refs_here
             FROM vf
             JOIN e ON e.id = vf.entry_id
             GROUP BY e.save_id, e.sha256
         ),
-        freeable AS (
-            SELECT r.save_id,
-                   COALESCE(SUM(CASE WHEN b.refcount <= r.refs_here THEN b.size_bytes ELSE 0 END), 0)::bigint AS bytes
+        held AS MATERIALIZED (
+            SELECT r.save_id, r.sha256, r.refs_here, b.size_bytes, b.refcount, s.live
             FROM refs r
             JOIN cloud_blobs b ON b.user_id = $1 AND b.sha256 = r.sha256
-            GROUP BY r.save_id
+            JOIN s ON s.id = r.save_id
+        ),
+        -- A version only points at its own save's entries, so what the live
+        -- saves hold is what the live versions reference.
+        shared AS (
+            SELECT array_agg(save_id ORDER BY save_id) AS save_ids,
+                   MAX(size_bytes) AS size_bytes
+            FROM held
+            WHERE live AND refcount > 0
+            GROUP BY sha256
+            HAVING COUNT(*) > 1
         )
-        SELECT s.id, s.game_slug, s.label,
-               COALESCE(fr.bytes, 0)::bigint AS freeable,
-               s.archived_at
-        FROM saves s
-        LEFT JOIN freeable fr ON fr.save_id = s.id
-        WHERE s.user_id = $1
-        ORDER BY COALESCE(fr.bytes, 0) DESC
+        SELECT save_id, NULL::text[] AS save_ids,
+               COALESCE(SUM(CASE WHEN refcount <= refs_here THEN size_bytes ELSE 0 END), 0)::bigint
+        FROM held
+        GROUP BY save_id
+        UNION ALL
+        -- A group that frees nothing is not a group. Two saves sharing an empty
+        -- file satisfy the condition above and reached the client as "shares 0 B
+        -- with X: archive both to free it".
+        SELECT NULL, save_ids, COALESCE(SUM(size_bytes), 0)::bigint
+        FROM shared
+        GROUP BY save_ids
+        HAVING COALESCE(SUM(size_bytes), 0) > 0
         "#,
     )
     .bind(user_id)
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(
-            |(save_id, game_slug, label, freeable, archived_at)| GameFootprint {
-                save_id,
-                game_slug,
-                label,
-                freeable_bytes: freeable,
-                archived: archived_at.is_some(),
-                purge_after: archived_at
-                    .map(|a| fmt_ts(a + time::Duration::days(ARCHIVE_GRACE_DAYS))),
-            },
-        )
-        .collect())
+    let mut freeable = std::collections::HashMap::new();
+    let mut shared_groups = Vec::new();
+    for (save_id, save_ids, bytes) in rows {
+        match (save_id, save_ids) {
+            (Some(save_id), _) => {
+                freeable.insert(save_id, bytes);
+            }
+            (None, Some(save_ids)) => shared_groups.push(SharedGroup { save_ids, bytes }),
+            (None, None) => {}
+        }
+    }
+    shared_groups.sort_by_key(|g| std::cmp::Reverse(g.bytes));
+
+    let mut games = listed_games(pool, user_id, false).await?;
+    for game in &mut games {
+        game.freeable_bytes = freeable.get(&game.save_id).copied().unwrap_or(0);
+    }
+    games.sort_by_key(|g| std::cmp::Reverse(g.freeable_bytes));
+    Ok(StorageFootprint {
+        games,
+        shared_groups,
+    })
 }
 
 /// Just the archived games, with no footprint worked out. The service asks
@@ -478,12 +473,27 @@ pub async fn archived_games(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<Vec<GameFootprint>, CloudError> {
-    let rows: Vec<(String, String, String, time::OffsetDateTime)> = sqlx::query_as(
+    listed_games(pool, user_id, true).await
+}
+
+/// Every save with its `archived` flag and no footprint: what a client listing
+/// the account's saves needs.
+pub async fn all_games(pool: &PgPool, user_id: Uuid) -> Result<Vec<GameFootprint>, CloudError> {
+    listed_games(pool, user_id, false).await
+}
+
+async fn listed_games(
+    pool: &PgPool,
+    user_id: Uuid,
+    archived_only: bool,
+) -> Result<Vec<GameFootprint>, CloudError> {
+    let rows: Vec<(String, String, String, Option<time::OffsetDateTime>)> = sqlx::query_as(
         "SELECT id, game_slug, label, archived_at
            FROM saves
-          WHERE user_id = $1 AND archived_at IS NOT NULL",
+          WHERE user_id = $1 AND (archived_at IS NOT NULL OR NOT $2)",
     )
     .bind(user_id)
+    .bind(archived_only)
     .fetch_all(pool)
     .await?;
     Ok(rows
@@ -493,26 +503,26 @@ pub async fn archived_games(
             game_slug,
             label,
             freeable_bytes: 0,
-            archived: true,
-            purge_after: Some(fmt_ts(
-                archived_at + time::Duration::days(ARCHIVE_GRACE_DAYS),
-            )),
+            archived: archived_at.is_some(),
+            purge_after: archived_at.map(|a| fmt_ts(a + time::Duration::days(ARCHIVE_GRACE_DAYS))),
         })
         .collect())
 }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct StorageGamesQuery {
-    /// Older servers ignore it and answer in full, which still carries the
-    /// `archived` flags a client asking this way reads.
+    /// Older servers ignore both and answer in full, which still carries the
+    /// `archived` flags and the saves a client asking this way reads.
     #[serde(default)]
     pub archived_only: bool,
+    #[serde(default)]
+    pub list_only: bool,
 }
 
 /// `GET /v1/cloud/storage/games`: per-game freeable footprint plus the quota
 /// figures, so the desktop can render the "archive the heaviest to fit" dialog
 /// and know how much to free. `?archived_only=true` lists the archived games
-/// and nothing else.
+/// and nothing else, `?list_only=true` every save with no footprint worked out.
 pub async fn storage_games(
     State(state): State<CloudState>,
     Extension(user): Extension<CloudUser>,
@@ -525,11 +535,11 @@ pub async fn storage_games(
 
     let (games, shared_groups) = if query.archived_only {
         (archived_games(&state.pool, user.user_id).await?, Vec::new())
+    } else if query.list_only {
+        (all_games(&state.pool, user.user_id).await?, Vec::new())
     } else {
-        (
-            game_footprints(&state.pool, user.user_id).await?,
-            shared_groups(&state.pool, user.user_id).await?,
-        )
+        let footprint = storage_footprint(&state.pool, user.user_id).await?;
+        (footprint.games, footprint.shared_groups)
     };
 
     let over = info.used_bytes.saturating_sub(info.limit_bytes);

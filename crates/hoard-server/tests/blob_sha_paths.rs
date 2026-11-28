@@ -320,7 +320,7 @@ async fn version_cap_preview_counts_without_touching_anything() {
     cleanup(&pool, user).await;
 }
 
-/// `shared_groups` joins the two sha columns directly
+/// `storage_footprint` joins the two sha columns directly
 /// (`cloud_blobs.sha256 = file_entries.sha256`). If one side changes
 /// storage type and the other does not, this is where Postgres says
 /// "operator does not exist".
@@ -329,9 +329,10 @@ async fn shared_groups_joins_manifest_against_blobs() {
     let Some(pool) = pool().await else { return };
     let (user, _save) = seed(&pool, 2, 2).await;
 
-    let groups = hoard_server::cloud::archive::shared_groups(&pool, user)
+    let groups = hoard_server::cloud::archive::storage_footprint(&pool, user)
         .await
-        .expect("shared_groups runs");
+        .expect("storage_footprint runs")
+        .shared_groups;
     // A single save shares nothing with anybody, so the join must run and come
     // back empty rather than error.
     assert!(groups.is_empty());

@@ -394,9 +394,10 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
     .await
     .expect("orphan entry");
 
-    let groups = hoard_server::cloud::archive::shared_groups(&pool, id)
+    let footprint = hoard_server::cloud::archive::storage_footprint(&pool, id)
         .await
-        .expect("shared groups");
+        .expect("storage footprint");
+    let groups = &footprint.shared_groups;
     assert_eq!(groups.len(), 1, "only the twins share: {groups:?}");
     assert_eq!(groups[0].bytes, 1000);
     let mut ids = groups[0].save_ids.clone();
@@ -407,11 +408,9 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
 
     // What archiving each one alone would free: nothing for a twin, its own
     // blob for the third.
-    let footprints = hoard_server::cloud::archive::game_footprints(&pool, id)
-        .await
-        .expect("footprints");
     let freeable = |save: &str| {
-        footprints
+        footprint
+            .games
             .iter()
             .find(|g| g.save_id == save)
             .map(|g| g.freeable_bytes)
@@ -427,9 +426,10 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
         .execute(&pool)
         .await
         .expect("archive one");
-    let groups = hoard_server::cloud::archive::shared_groups(&pool, id)
+    let groups = hoard_server::cloud::archive::storage_footprint(&pool, id)
         .await
-        .expect("shared groups after archive");
+        .expect("storage footprint after archive")
+        .shared_groups;
     assert!(
         groups.is_empty(),
         "one live save left holding the blob is not a shared group: {groups:?}"
@@ -444,6 +444,15 @@ async fn shared_blobs_between_two_saves_are_reported_as_a_group() {
             .collect::<Vec<_>>(),
         vec![twin_a.as_str()]
     );
+    // The bare list clients read the account's saves from: all three, the
+    // archived one flagged, nothing worked out.
+    let listed = hoard_server::cloud::archive::all_games(&pool, id)
+        .await
+        .expect("all games");
+    assert_eq!(listed.len(), 3, "{listed:?}");
+    assert!(listed
+        .iter()
+        .all(|g| g.archived == (g.save_id == twin_a) && g.freeable_bytes == 0));
 
     for save_id in [&twin_a, &twin_b, &lonely] {
         let _ = sqlx::query("DELETE FROM saves WHERE id = $1")
